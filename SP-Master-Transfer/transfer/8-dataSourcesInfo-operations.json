@@ -1,0 +1,118 @@
+{
+  "description": "Copy-paste these three operations into the 'documents' api section of dataSourcesInfo.ts",
+  "instructions": "In .power/schemas/appschemas/dataSourcesInfo.ts, find the 'documents' data source, then find its 'apis' object. Add these three operations to that 'apis' object.",
+  "CreateFile": {
+    "path": "/{connectionId}/datasets/{dataset}/files",
+    "method": "POST",
+    "parameters": [
+      {
+        "name": "connectionId",
+        "in": "path",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "dataset",
+        "in": "path",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "folderPath",
+        "in": "query",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "in": "query",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "body",
+        "in": "body",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "Content-Type",
+        "in": "header",
+        "required": false,
+        "type": "string"
+      }
+    ],
+    "responseInfo": {
+      "200": {
+        "type": "object"
+      },
+      "default": {
+        "type": "void"
+      }
+    }
+  },
+  "GetFileContent": {
+    "path": "/{connectionId}/datasets/{dataset}/files/{id}/content",
+    "method": "GET",
+    "parameters": [
+      {
+        "name": "connectionId",
+        "in": "path",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "dataset",
+        "in": "path",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "type": "string"
+      }
+    ],
+    "responseInfo": {
+      "200": {
+        "type": "string"
+      },
+      "default": {
+        "type": "void"
+      }
+    }
+  },
+  "DeleteFile": {
+    "path": "/{connectionId}/datasets/{dataset}/files/{id}",
+    "method": "DELETE",
+    "parameters": [
+      {
+        "name": "connectionId",
+        "in": "path",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "dataset",
+        "in": "path",
+        "required": true,
+        "type": "string"
+      },
+      {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "type": "string"
+      }
+    ],
+    "responseInfo": {
+      "204": {
+        "type": "void"
+      },
+      "default": {
+        "type": "void"
+      }
+    }
+  }
+}

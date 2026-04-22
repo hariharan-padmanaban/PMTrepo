@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Manrope", sans-serif;
+
+  --color-primary: #151d5d;
+  --color-primary-container: #2c3474;
+  --color-secondary: #745b27;
+  --color-surface: #f9f9f9;
+  --color-surface-container-low: #f3f3f3;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-surface-variant: #464650;
+  --color-outline-variant: #c7c5d2;
+  --color-error: #ba1a1a;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-primary font-sans antialiased;
+  }
+
+  button,
+  [role="button"],
+  a,
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
+
+.chart-card {
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+
+.chart-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.chart-svg {
+  transition: transform 320ms ease;
+}
+
+.chart-card:hover .chart-svg {
+  transform: scale(1.03);
+}
+
+.chart-bar {
+  transform-origin: bottom;
+  animation: chart-grow 700ms ease both;
+}
+
+@keyframes chart-grow {
+  from {
+    transform: scaleY(0.35);
+    opacity: 0.55;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}

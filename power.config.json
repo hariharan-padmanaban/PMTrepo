@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "appId": "1dfbf99a-5f8b-4f89-bc84-7eb10003c983",
+  "appDisplayName": "PMT",
+  "region": "prod",
+  "environmentId": "91da7a86-6df9-e7e3-8e48-1a083f7cd943",
+  "description": " ",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {
+    "b1ed723b-6173-458c-9dff-bef7329deee4": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint",
+      "dataSources": [
+        "sharepointonline"
+      ],
+      "dataSets": {}
+    }
+  },
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "projects": {
+          "entitySetName": "new_projects",
+          "logicalName": "new_project",
+          "isHidden": false
+        },
+        "programs": {
+          "entitySetName": "new_programs",
+          "logicalName": "new_program",
+          "isHidden": false
+        },
+        "users": {
+          "entitySetName": "new_userses",
+          "logicalName": "new_users",
+          "isHidden": false
+        },
+        "enjazmasterdatas": {
+          "entitySetName": "new_enjazmasterdatas",
+          "logicalName": "new_enjazmasterdata",
+          "isHidden": false
+        },
+        "adminaudits": {
+          "entitySetName": "new_adminaudits",
+          "logicalName": "new_adminaudit",
+          "isHidden": false
+        },
+        "vendors": {
+          "entitySetName": "new_vendors",
+          "logicalName": "new_vendor",
+          "isHidden": false
+        },
+        "deliverables": {
+          "entitySetName": "new_deliverables",
+          "logicalName": "new_deliverable",
+          "isHidden": false
+        }
+      },
+      "environmentVariableName": ""
+    }
+  }
+}
