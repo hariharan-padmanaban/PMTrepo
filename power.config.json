@@ -56,6 +56,91 @@
           "entitySetName": "new_deliverables",
           "logicalName": "new_deliverable",
           "isHidden": false
+        },
+        "reports": {
+          "entitySetName": "new_reports",
+          "logicalName": "new_report",
+          "isHidden": false
+        },
+        "tasks": {
+          "entitySetName": "new_tasks",
+          "logicalName": "new_task",
+          "isHidden": false
+        },
+        "teammembers": {
+          "entitySetName": "new_teammembers",
+          "logicalName": "new_teammember",
+          "isHidden": false
+        },
+        "issues": {
+          "entitySetName": "new_issues",
+          "logicalName": "new_issue",
+          "isHidden": false
+        },
+        "feedbacks": {
+          "entitySetName": "new_feedbacks",
+          "logicalName": "new_feedback",
+          "isHidden": false
+        },
+        "pipelines": {
+          "entitySetName": "new_pipelines",
+          "logicalName": "new_pipeline",
+          "isHidden": false
+        },
+        "clients": {
+          "entitySetName": "new_clients",
+          "logicalName": "new_client",
+          "isHidden": false
+        },
+        "sprints": {
+          "entitySetName": "new_sprints",
+          "logicalName": "new_sprint",
+          "isHidden": false
+        },
+        "sprintissues": {
+          "entitySetName": "new_sprintissues",
+          "logicalName": "new_sprintissue",
+          "isHidden": false
+        },
+        "taskdetails": {
+          "entitySetName": "new_taskdetails",
+          "logicalName": "new_taskdetail",
+          "isHidden": false
+        },
+        "subtasks": {
+          "entitySetName": "new_subtasks",
+          "logicalName": "new_subtask",
+          "isHidden": false
+        },
+        "subissues": {
+          "entitySetName": "new_subissues",
+          "logicalName": "new_subissue",
+          "isHidden": false
+        },
+        "issuedetails": {
+          "entitySetName": "new_issuedetails",
+          "logicalName": "new_issuedetail",
+          "isHidden": false
+        },
+        "classicwaterfalls": {
+          "entitySetName": "new_classicwaterfalls",
+          "logicalName": "new_classicwaterfall",
+          "isHidden": false
+        },
+        "configs": {
+          "entitySetName": "new_configs",
+          "logicalName": "new_config",
+          "isHidden": false
+        },
+        "meetingdetails": {
+          "entitySetName": "new_meetingdetails",
+          "logicalName": "new_meetingdetail",
+          "isHidden": false
+        },
+        "sponsors": {
+          "entitySetName": "new_sponsors",
+          "logicalName": "new_sponsor",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

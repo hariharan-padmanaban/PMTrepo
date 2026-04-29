@@ -1,105 +1,279 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calendar, ChevronDown, ClipboardList, LayoutDashboard, MoreHorizontal, Search, ShieldCheck, Users, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Activity, ChevronDown, ClipboardList, FileSpreadsheet, HelpCircle, Inbox, LayoutDashboard, LogOut, UserCircle } from 'lucide-react';
+import { enj } from './ui/enjForm';
 import { NewUsersService, type NewUserRow } from './services/NewUsersService';
-import ManageMasterDataScreen from './ManageMasterDataScreen';
-import { NotificationToast, type ToastType } from './NotificationToast';
+import { SponsorsService } from './services/SponsorsService';
+import ManageDataScreen from './ManageDataScreen';
+import { type OnboardingForm, roleLabel } from './ManageUsersScreen';
+import { ScreenLoader } from './ScreenLoader';
+import { ActivityHistoryModal } from './ActivityHistoryModal';
+import { UserProfileModal } from './UserProfileModal';
+import { getSessionUserEmail } from './sessionUser';
+import { ThemeModeToggle } from './themeMode';
+import { LogoMark } from './LogoMark';
+type AuditLogEntry = {
+  id: string;
+  timestamp: string;
+  user: string;
+  role: string;
+  action: 'Login' | 'Logout' | 'Record Created' | 'Record Updated' | 'Record Deleted' | 'Role Assigned' | 'Role Revoked' | 'Settings Changed';
+  details: string;
+  status: 'Success' | 'Failed';
+};
+
+const AUDIT_SAMPLE: AuditLogEntry[] = [
+  { id: '1',  timestamp: '2026-04-29 09:02:11', user: 'admin@enjaz.sa',       role: 'Admin',    action: 'Login',           details: 'Admin portal login',                             status: 'Success' },
+  { id: '2',  timestamp: '2026-04-29 09:05:33', user: 'admin@enjaz.sa',       role: 'Admin',    action: 'Role Assigned',   details: 'Assigned Program Manager role to sara@enjaz.sa', status: 'Success' },
+  { id: '3',  timestamp: '2026-04-29 09:12:47', user: 'sara@enjaz.sa',        role: 'Program',  action: 'Login',           details: 'Program Manager portal login',                   status: 'Success' },
+  { id: '4',  timestamp: '2026-04-29 09:18:02', user: 'sara@enjaz.sa',        role: 'Program',  action: 'Record Created',  details: 'Created project: CRM Phase 2',                   status: 'Success' },
+  { id: '5',  timestamp: '2026-04-29 10:00:00', user: 'khalid@enjaz.sa',      role: 'Project',  action: 'Login',           details: 'Project Manager portal login',                   status: 'Success' },
+  { id: '6',  timestamp: '2026-04-29 10:04:15', user: 'khalid@enjaz.sa',      role: 'Project',  action: 'Record Created',  details: 'Created task: API Integration — Sprint 3',       status: 'Success' },
+  { id: '7',  timestamp: '2026-04-29 10:22:38', user: 'khalid@enjaz.sa',      role: 'Project',  action: 'Record Updated',  details: 'Updated issue status: ISS-045 → In Progress',    status: 'Success' },
+  { id: '8',  timestamp: '2026-04-29 11:00:09', user: 'reem@enjaz.sa',        role: 'Team',     action: 'Login',           details: 'Team Member portal login',                       status: 'Success' },
+  { id: '9',  timestamp: '2026-04-29 11:07:55', user: 'reem@enjaz.sa',        role: 'Team',     action: 'Record Updated',  details: 'Updated task: UI Design — status → Done',        status: 'Success' },
+  { id: '10', timestamp: '2026-04-29 11:30:00', user: 'unknown@external.com', role: '—',        action: 'Login',           details: 'Unrecognised user login attempt',                 status: 'Failed'  },
+  { id: '11', timestamp: '2026-04-29 12:05:21', user: 'admin@enjaz.sa',       role: 'Admin',    action: 'Role Revoked',    details: 'Revoked Business role from omar@enjaz.sa',       status: 'Success' },
+  { id: '12', timestamp: '2026-04-29 12:15:00', user: 'admin@enjaz.sa',       role: 'Admin',    action: 'Settings Changed','details': 'Dark mode preference updated for system',     status: 'Success' },
+  { id: '13', timestamp: '2026-04-29 13:00:44', user: 'nora@enjaz.sa',        role: 'Business', action: 'Login',           details: 'Business portal login',                          status: 'Success' },
+  { id: '14', timestamp: '2026-04-29 13:18:30', user: 'nora@enjaz.sa',        role: 'Business', action: 'Record Created',  details: 'Created feedback record for client: Aramco',     status: 'Success' },
+  { id: '15', timestamp: '2026-04-29 14:02:11', user: 'khalid@enjaz.sa',      role: 'Project',  action: 'Record Deleted',  details: 'Deleted draft task: Duplicate — Sprint 2',       status: 'Success' },
+];
+
+const ACTION_FILTER_OPTIONS = ['All', 'Login', 'Logout', 'Record Created', 'Record Updated', 'Record Deleted', 'Role Assigned', 'Role Revoked', 'Settings Changed'] as const;
+
+function actionBadgeClass(action: AuditLogEntry['action']): string {
+  if (action === 'Login' || action === 'Logout') return 'bg-sky-100 text-sky-700';
+  if (action === 'Record Created') return 'bg-emerald-100 text-emerald-700';
+  if (action === 'Record Updated') return 'bg-amber-100 text-amber-800';
+  if (action === 'Record Deleted') return 'bg-rose-100 text-rose-700';
+  if (action === 'Role Assigned' || action === 'Role Revoked') return 'bg-purple-100 text-purple-700';
+  return 'bg-gray-100 text-gray-600';
+}
+
+function AuditLogsPanel() {
+  const [filter, setFilter] = useState<string>('All');
+  const [search, setSearch] = useState('');
+
+  const filtered = AUDIT_SAMPLE.filter((e) => {
+    const matchAction = filter === 'All' || e.action === filter;
+    const q = search.toLowerCase();
+    const matchSearch = !q || e.user.toLowerCase().includes(q) || e.details.toLowerCase().includes(q) || e.action.toLowerCase().includes(q);
+    return matchAction && matchSearch;
+  });
+
+  return (
+    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className={enj.pageTitle}>Audit Logs</h2>
+          <p className="text-xs text-gray-500 mt-0.5">System activity trail — logins, record changes, and role assignments.</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 items-center">
+        <input
+          type="text"
+          placeholder="Search user or action…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={`${enj.control} max-w-xs`}
+        />
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className={`${enj.control} max-w-[200px]`}
+        >
+          {ACTION_FILTER_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+        <span className="text-[11px] text-gray-400 ml-auto">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <table className={`${enj.tableBrand} text-xs`}>
+          <thead>
+            <tr>
+              <th className="px-3 py-2 text-left">Timestamp</th>
+              <th className="px-3 py-2 text-left">User</th>
+              <th className="px-3 py-2 text-left">Role</th>
+              <th className="px-3 py-2 text-left">Action</th>
+              <th className="px-3 py-2 text-left">Details</th>
+              <th className="px-3 py-2 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center text-sm text-gray-500">No audit records match the selected filters.</td>
+              </tr>
+            ) : (
+              filtered.map((e) => (
+                <tr key={e.id} className="transition-colors">
+                  <td className="px-3 py-2 font-mono text-[10px] text-[#6B7280] whitespace-nowrap">{e.timestamp}</td>
+                  <td className="px-3 py-2 font-medium max-w-[160px] truncate text-[#2563EB]" title={e.user}>{e.user}</td>
+                  <td className="px-3 py-2 text-gray-600">{e.role}</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${actionBadgeClass(e.action)}`}>{e.action}</span>
+                  </td>
+                  <td className="px-3 py-2 max-w-[300px] truncate text-gray-600" title={e.details}>{e.details}</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${e.status === 'Success' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{e.status}</span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 type AdminDashboardProps = {
   onLogout: () => void;
 };
 
-type OnboardingForm = {
-  fullName: string;
-  userId: string;
-  employeeId: string;
-  gender: 'Male' | 'Female' | 'Other';
-  department: '100000000' | '100000001' | '100000002' | '100000003' | '100000004';
-  resume: File | null;
-};
-
-const EMPTY_FORM: OnboardingForm = {
-  fullName: '',
-  userId: '',
-  employeeId: '',
-  gender: 'Male',
-  department: '100000001',
-  resume: null,
-};
-
-const roleLabel: Record<OnboardingForm['department'], string> = {
-  '100000000': 'Admin',
-  '100000001': 'Business',
-  '100000002': 'Program',
-  '100000003': 'Project',
-  '100000004': 'Team',
-};
-
-function statusName(code?: string | number): 'Active' | 'InActive' {
-  return String(code) === '100000001' ? 'InActive' : 'Active';
-}
-
-function fallbackGuid() {
-  const template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
-  return template.replace(/[xy]/g, (c) => {
-    const r = Math.floor(Math.random() * 16);
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-function validateUserForm(form: OnboardingForm): Partial<Record<keyof OnboardingForm, string>> {
-  const next: Partial<Record<keyof OnboardingForm, string>> = {};
-  if (!form.fullName.trim()) next.fullName = 'Full name is required';
-  if (!form.userId.trim()) next.userId = 'User ID is required';
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.userId.trim())) next.userId = 'User ID must be a valid email';
-  if (!form.employeeId.trim()) next.employeeId = 'Employee ID is required';
-  return next;
-}
-
-function NotificationBell() {
-  return (
-    <button type="button" className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700" aria-label="Notifications">
-      <Users size={16} />
-    </button>
-  );
-}
-
 function ProfileDropdown({
   onLogout,
   displayName,
-  departments,
+  roleLabel,
 }: {
   onLogout: () => void;
   displayName: string;
-  departments: string[];
+  roleLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [activityHistoryOpen, setActivityHistoryOpen] = useState(false);
+  const [userProfileOpen, setUserProfileOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const initials = displayName
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase() ?? '')
     .join('') || 'U';
+
+  const items = [
+    { label: 'User Profile', icon: <UserCircle size={14} className="text-[#c7a56a]" /> },
+    { label: 'Inbox', icon: <Inbox size={14} className="text-[#c7a56a]" /> },
+    { label: 'Activity History', icon: <Activity size={14} className="text-[#c7a56a]" /> },
+    { label: 'Help', icon: <HelpCircle size={14} className="text-[#c7a56a]" /> },
+  ];
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const onEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onEsc);
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onEsc);
+    };
+  }, [open]);
+
+  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveIndex((v) => (v + 1) % (items.length + 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveIndex((v) => (v - 1 + items.length + 1) % (items.length + 1));
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (activeIndex === items.length) {
+        onLogout();
+      }
+      setOpen(false);
+    }
+  };
+
   return (
-    <div className="relative">
-      <button type="button" className="flex items-center gap-1.5" onClick={() => setOpen((v) => !v)}>
-        <div className="w-8 h-8 rounded-full bg-[#b28a44] text-white text-[10px] font-semibold flex items-center justify-center">{initials}</div>
-        <ChevronDown size={13} className="text-gray-400" />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-10 z-50 w-52 rounded-lg border border-gray-200 bg-white shadow-lg p-1">
-          <div className="px-3 py-2 border-b border-gray-100">
-            <p className="text-sm font-semibold text-[#2d356b] truncate">{displayName}</p>
-            <p className="text-[10px] text-gray-400 truncate">
-              {departments.length > 0 ? departments.join(', ') : 'No Department'}
-            </p>
+    <>
+      <div className="relative">
+        <button
+          ref={triggerRef}
+          type="button"
+          className="flex items-center gap-1.5 hover:opacity-90 transition-opacity"
+          aria-label="Profile menu"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <div className="w-8 h-8 rounded-full bg-[#b28a44] text-white text-[10px] font-semibold flex items-center justify-center">{initials}</div>
+          <ChevronDown size={13} className="text-gray-400" />
+        </button>
+        {open && (
+          <div
+            ref={menuRef}
+            tabIndex={0}
+            onKeyDown={onMenuKeyDown}
+            className="absolute right-0 top-10 z-50 w-52 rounded-xl border border-gray-200 bg-white shadow-xl outline-none"
+          >
+            <div className="px-3 py-3 border-b border-gray-100">
+              <p className="text-sm font-semibold text-primary truncate">{displayName}</p>
+              <p className="text-[10px] text-gray-400 truncate">{roleLabel}</p>
+            </div>
+            <div className="py-1">
+              {items.map((item, index) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => {
+                    if (item.label === 'User Profile') {
+                      setUserProfileOpen(true);
+                      setOpen(false);
+                      return;
+                    }
+                    if (item.label === 'Activity History') {
+                      setActivityHistoryOpen(true);
+                      setOpen(false);
+                      return;
+                    }
+                    if (item.label === 'Inbox') {
+                      window.open('https://outlook.office.com/mail/', '_blank', 'noopener,noreferrer');
+                      setOpen(false);
+                    }
+                  }}
+                  className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 ${
+                    activeIndex === index ? 'bg-gray-50 text-[#2d356b]' : 'text-gray-500'
+                  }`}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-gray-100 p-1">
+              <button
+                type="button"
+                onClick={onLogout}
+                onMouseEnter={() => setActiveIndex(items.length)}
+                className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 rounded-lg ${
+                  activeIndex === items.length ? 'bg-red-50 text-red-600' : 'text-gray-500'
+                }`}
+              >
+                <LogOut size={14} className={activeIndex === items.length ? 'text-red-500' : 'text-[#c7a56a]'} />
+                Logout
+              </button>
+            </div>
           </div>
-          <button type="button" onClick={onLogout} className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 rounded-md">
-            Logout
-          </button>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+      <UserProfileModal open={userProfileOpen} onClose={() => setUserProfileOpen(false)} />
+      <ActivityHistoryModal open={activityHistoryOpen} onClose={() => setActivityHistoryOpen(false)} />
+    </>
   );
 }
 
@@ -124,7 +298,7 @@ function UsersByRoleChart({ rows }: { rows: NewUserRow[] }) {
   const scale = 170 / max;
 
   return (
-    <svg viewBox="0 0 520 260" className="w-full h-72">
+    <svg viewBox="0 0 520 260" className={enj.chartSvgLg}>
       {[0, 2, 4, 6, 8, 10, 12].map((v) => (
         <g key={v}>
           <line x1="46" x2="500" y1={210 - v * (170 / 12)} y2={210 - v * (170 / 12)} stroke="#edf2f7" />
@@ -162,7 +336,7 @@ function OnboardingByMonthChart({ rows }: { rows: NewUserRow[] }) {
   }).length);
 
   return (
-    <svg viewBox="0 0 420 260" className="w-full h-72">
+    <svg viewBox="0 0 420 260" className={enj.chartSvgLg}>
       {[0, 1, 2, 3, 4].map((v) => (
         <g key={v}>
           <line x1="46" x2="392" y1={210 - v * 40} y2={210 - v * 40} stroke="#edf2f7" />
@@ -182,321 +356,28 @@ function OnboardingByMonthChart({ rows }: { rows: NewUserRow[] }) {
   );
 }
 
-function UserOnboardingScreen({ onCreated }: { onCreated: () => Promise<void> }) {
-  const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState<OnboardingForm>(EMPTY_FORM);
-  const [errors, setErrors] = useState<Partial<Record<keyof OnboardingForm, string>>>({});
-  const [message, setMessage] = useState('');
+type AdminNavId = 'Dashboard' | 'mm-reference' | 'audit-logs';
 
-  const validate = useCallback(() => {
-    const next = validateUserForm(form);
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  }, [form]);
-
-  const onSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMessage('');
-    if (!validate()) return;
-    setSubmitting(true);
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      const payload = {
-        new_usersid: globalThis.crypto?.randomUUID?.() ?? fallbackGuid(),
-        new_name: form.fullName.trim(),
-        new_userid: form.userId.trim(),
-        new_role: Number(form.department),
-        new_status: 100000000,
-        new_onboardeddate: today,
-        // Primary name column (EmailID) is required.
-        new_newcolumn: form.employeeId.trim(),
-      };
-      const res = await NewUsersService.create(payload);
-      if (!res.success) throw new Error(res.error?.message ?? 'Failed to create user');
-      setMessage('User created successfully.');
-      setForm(EMPTY_FORM);
-      setErrors({});
-      await onCreated();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to create user');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [form, onCreated, validate]);
-
-  const inputCls = 'mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm';
-
-  return (
-    <div className="space-y-4">
-      <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <h2 className="text-xl font-semibold text-[#2d356b]">User Onboarding</h2>
-        <p className="text-xs text-gray-500 mt-1">Capture onboarding details for new users.</p>
-      </section>
-
-      <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <form onSubmit={onSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label>
-            <span className="text-xs text-gray-600">Full Name *</span>
-            <input className={inputCls} value={form.fullName} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} />
-            {errors.fullName && <p className="text-[11px] text-red-600 mt-1">{errors.fullName}</p>}
-          </label>
-
-          <label>
-            <span className="text-xs text-gray-600">User ID (Email) *</span>
-            <input className={inputCls} value={form.userId} onChange={(e) => setForm((f) => ({ ...f, userId: e.target.value }))} />
-            {errors.userId && <p className="text-[11px] text-red-600 mt-1">{errors.userId}</p>}
-          </label>
-
-          <label>
-            <span className="text-xs text-gray-600">Employee ID *</span>
-            <input className={inputCls} value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))} />
-            {errors.employeeId && <p className="text-[11px] text-red-600 mt-1">{errors.employeeId}</p>}
-          </label>
-
-          <label>
-            <span className="text-xs text-gray-600">Gender *</span>
-            <select className={inputCls} value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value as OnboardingForm['gender'] }))}>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Other">Other</option>
-            </select>
-          </label>
-
-          <label>
-            <span className="text-xs text-gray-600">Department *</span>
-            <select className={inputCls} value={form.department} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value as OnboardingForm['department'] }))}>
-              {Object.entries(roleLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </label>
-
-          <label>
-            <span className="text-xs text-gray-600">Resume (File Upload)</span>
-            <input type="file" accept=".pdf,.doc,.docx" className={`${inputCls} py-1.5`} onChange={(e) => setForm((f) => ({ ...f, resume: e.target.files?.[0] ?? null }))} />
-          </label>
-
-          <div className="text-xs text-gray-500 md:col-span-2">
-            Onboarded Date and Status are set automatically on submit (Today, Active).
-          </div>
-
-          <div className="md:col-span-2 flex justify-end">
-            <button type="submit" disabled={submitting} className="h-9 px-6 rounded-md bg-[#b28a44] text-white text-sm font-medium disabled:opacity-50">
-              {submitting ? 'Submitting...' : 'Submit'}
-            </button>
-          </div>
-        </form>
-        {message && <p className="text-sm text-gray-700 mt-3">{message}</p>}
-      </section>
-    </div>
-  );
-}
-
-function ManageUsersScreen({
-  rows,
-  loading,
-  onRefresh,
-}: {
-  rows: NewUserRow[];
-  loading: boolean;
-  onRefresh: () => Promise<void>;
-}) {
-  const [searchText, setSearchText] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState<'All' | OnboardingForm['department']>('All');
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'InActive'>('All');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [menuRowId, setMenuRowId] = useState<string | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<OnboardingForm>(EMPTY_FORM);
-  const [editErrors, setEditErrors] = useState<Partial<Record<keyof OnboardingForm, string>>>({});
-  const [editBusy, setEditBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
-
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      const name = (r.new_name ?? '').toLowerCase();
-      const userId = (r.new_userid ?? '').toLowerCase();
-      const deptCode = String(r.new_role) as OnboardingForm['department'];
-      const deptName = (r.new_rolename ?? roleLabel[deptCode] ?? '').toLowerCase();
-      const status = statusName(r.new_status);
-      const onboarded = r.new_onboardeddate ? r.new_onboardeddate.slice(0, 10) : '';
-
-      if (searchText.trim()) {
-        const q = searchText.trim().toLowerCase();
-        if (!name.includes(q) && !userId.includes(q) && !deptName.includes(q)) return false;
-      }
-      if (departmentFilter !== 'All' && deptCode !== departmentFilter) return false;
-      if (statusFilter !== 'All' && status !== statusFilter) return false;
-      if (fromDate && onboarded && onboarded < fromDate) return false;
-      if (toDate && onboarded && onboarded > toDate) return false;
-      return true;
-    });
-  }, [rows, searchText, departmentFilter, statusFilter, fromDate, toDate]);
-
-  const openEdit = (row: NewUserRow) => {
-    setEditingId(row.new_usersid ?? null);
-    setEditForm({
-      fullName: row.new_name ?? '',
-      userId: row.new_userid ?? '',
-      employeeId: (row.new_newcolumn as string | undefined) ?? '',
-      gender: 'Male',
-      department: (String(row.new_role) as OnboardingForm['department']) || '100000001',
-      resume: null,
-    });
-    setEditErrors({});
-    setEditOpen(true);
-    setMenuRowId(null);
-  };
-
-  const saveEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingId) return;
-    const next = validateUserForm(editForm);
-    setEditErrors(next);
-    if (Object.keys(next).length > 0) return;
-    setEditBusy(true);
-    setMessage('');
-    try {
-      const payload = {
-        new_name: editForm.fullName.trim(),
-        new_userid: editForm.userId.trim(),
-        new_role: Number(editForm.department),
-        new_newcolumn: editForm.employeeId.trim(),
-      };
-      const res = await NewUsersService.update(editingId, payload);
-      if (!res.success) throw new Error(res.error?.message ?? 'Failed to update user');
-      setMessage('User updated successfully.');
-      setToast({ type: 'success', message: 'User updated successfully.' });
-      setEditOpen(false);
-      await onRefresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to update user');
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to update user' });
-    } finally {
-      setEditBusy(false);
-    }
-  };
-
-  return (
-    <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-      {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
-      <h2 className="text-xl font-semibold text-[#2d356b]">Manage</h2>
-      <p className="text-xs text-gray-500 mt-1 mb-3">Onboarded users list.</p>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 mb-3">
-        <input
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          placeholder="Search name, user ID, department"
-          className="h-9 rounded-md border border-gray-200 px-3 text-sm xl:col-span-2"
-        />
-        <select className="h-9 rounded-md border border-gray-200 px-3 text-sm" value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value as 'All' | OnboardingForm['department'])}>
-          <option value="All">All Departments</option>
-          {Object.entries(roleLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <select className="h-9 rounded-md border border-gray-200 px-3 text-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'All' | 'Active' | 'InActive')}>
-          <option value="All">All Status</option>
-          <option value="Active">Active</option>
-          <option value="InActive">InActive</option>
-        </select>
-        <div className="flex gap-2">
-          <input type="date" className="h-9 rounded-md border border-gray-200 px-2 text-sm w-full" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          <input type="date" className="h-9 rounded-md border border-gray-200 px-2 text-sm w-full" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-        </div>
-      </div>
-      {message && <p className="text-sm text-gray-700 mb-2">{message}</p>}
-
-      <div className="overflow-auto">
-        <table className="w-full min-w-[860px]">
-          <thead className="bg-gray-50 border-b border-gray-100">
-            <tr className="text-left text-[11px] uppercase text-gray-500">
-              <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2">User ID</th>
-              <th className="px-3 py-2">Department</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Onboarded</th>
-              <th className="px-3 py-2 text-center">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td className="px-3 py-3 text-sm text-gray-500" colSpan={6}>Loading users...</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td className="px-3 py-3 text-sm text-gray-500" colSpan={6}>No users found.</td></tr>
-            ) : filtered.map((r) => (
-              <tr key={r.new_usersid} className="border-b border-gray-100 text-sm text-gray-700">
-                <td className="px-3 py-2">{r.new_name ?? '-'}</td>
-                <td className="px-3 py-2">{r.new_userid ?? '-'}</td>
-                <td className="px-3 py-2">{r.new_rolename ?? roleLabel[String(r.new_role) as OnboardingForm['department']] ?? '-'}</td>
-                <td className="px-3 py-2">{r.new_statusname ?? statusName(r.new_status)}</td>
-                <td className="px-3 py-2">{r.new_onboardeddate ? r.new_onboardeddate.slice(0, 10) : '-'}</td>
-                <td className="px-3 py-2 text-center">
-                  <div className="relative inline-block text-left">
-                    <button type="button" onClick={() => setMenuRowId((v) => (v === (r.new_usersid ?? null) ? null : (r.new_usersid ?? null)))} className="h-8 w-8 rounded-md border border-gray-200 inline-flex items-center justify-center hover:bg-gray-50">
-                      <MoreHorizontal size={16} />
-                    </button>
-                    {menuRowId === r.new_usersid && (
-                      <div className="absolute right-0 mt-1 w-24 rounded-md border border-gray-200 bg-white shadow-lg z-20">
-                        <button type="button" onClick={() => openEdit(r)} className="w-full px-3 py-2 text-left text-xs hover:bg-gray-50">
-                          Edit
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {editOpen && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={() => setEditOpen(false)}>
-          <div className="w-full max-w-3xl rounded-xl border border-gray-100 bg-white p-5 shadow-xl" role="dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-[#2d356b]">Edit User</h3>
-              <button type="button" onClick={() => setEditOpen(false)} className="h-8 w-8 rounded-md hover:bg-gray-100 inline-flex items-center justify-center">
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={saveEdit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label><span className="text-xs text-gray-600">Full Name *</span><input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={editForm.fullName} onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))} />{editErrors.fullName && <p className="text-[11px] text-red-600 mt-1">{editErrors.fullName}</p>}</label>
-              <label><span className="text-xs text-gray-600">User ID (Email) *</span><input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={editForm.userId} onChange={(e) => setEditForm((f) => ({ ...f, userId: e.target.value }))} />{editErrors.userId && <p className="text-[11px] text-red-600 mt-1">{editErrors.userId}</p>}</label>
-              <label><span className="text-xs text-gray-600">Employee ID *</span><input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={editForm.employeeId} onChange={(e) => setEditForm((f) => ({ ...f, employeeId: e.target.value }))} />{editErrors.employeeId && <p className="text-[11px] text-red-600 mt-1">{editErrors.employeeId}</p>}</label>
-              <label><span className="text-xs text-gray-600">Gender *</span><select className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={editForm.gender} onChange={(e) => setEditForm((f) => ({ ...f, gender: e.target.value as OnboardingForm['gender'] }))}><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></label>
-              <label><span className="text-xs text-gray-600">Department *</span><select className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={editForm.department} onChange={(e) => setEditForm((f) => ({ ...f, department: e.target.value as OnboardingForm['department'] }))}>{Object.entries(roleLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-              <label><span className="text-xs text-gray-600">Resume (File Upload)</span><input type="file" accept=".pdf,.doc,.docx" className="mt-1 h-9 w-full rounded-md border border-gray-200 px-2 text-sm" onChange={(e) => setEditForm((f) => ({ ...f, resume: e.target.files?.[0] ?? null }))} /></label>
-              <div className="md:col-span-2 flex justify-end gap-2 mt-1">
-                <button type="button" onClick={() => setEditOpen(false)} className="h-9 px-5 rounded-md border border-[#b28a44] text-[#b28a44] text-sm">Cancel</button>
-                <button type="submit" disabled={editBusy} className="h-9 px-5 rounded-md bg-[#b28a44] text-white text-sm disabled:opacity-50">{editBusy ? 'Updating...' : 'Update User'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
+const REFERENCE_DATA_SUB: { id: AdminNavId; label: string; icon: ReactNode }[] = [
+  { id: 'mm-reference', label: 'Manage Data', icon: <FileSpreadsheet size={16} /> },
+  { id: 'audit-logs', label: 'Audit Logs', icon: <ClipboardList size={16} /> },
+];
 
 export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
-  const [activeNav, setActiveNav] = useState('Dashboard');
+  const [activeNav, setActiveNav] = useState<AdminNavId>('Dashboard');
   const [rows, setRows] = useState<NewUserRow[]>([]);
+  const [sponsorTableCount, setSponsorTableCount] = useState(0);
   const [loading, setLoading] = useState(false);
-
-  const navItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
-    { name: 'Onboarding', icon: <Users size={16} /> },
-    { name: 'Manage', icon: <ClipboardList size={16} /> },
-    { name: 'Manage Master', icon: <ShieldCheck size={16} /> },
-    { name: 'View Audit', icon: <Calendar size={16} /> },
-  ];
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await NewUsersService.getAll({ top: 200, orderBy: ['createdon desc'] });
-      if (res.success) setRows(res.data ?? []);
+      const [userRes, sponsorRes] = await Promise.all([
+        NewUsersService.getAll({ top: 200, orderBy: ['createdon desc'] }),
+        SponsorsService.getAll({ top: 5000 }),
+      ]);
+      if (userRes.success) setRows(userRes.data ?? []);
+      if (sponsorRes.success) setSponsorTableCount((sponsorRes.data ?? []).length);
     } finally {
       setLoading(false);
     }
@@ -510,86 +391,106 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     const users = rows.length;
     const clients = rows.filter((r) => String(r.new_role) === '100000001').length;
     const vendors = rows.filter((r) => String(r.new_role) === '100000002').length;
-    const sponsors = rows.filter((r) => String(r.new_role) === '100000003' || String(r.new_role) === '100000004').length;
-    return { users, clients, vendors, sponsors };
+    return { users, clients, vendors };
+  }, [rows]);
+
+  const sessionMatchedUser = useMemo(() => {
+    const sessionEmail = getSessionUserEmail()?.toLowerCase();
+    if (!sessionEmail) return null;
+    return (
+      rows.find((r) => {
+        const emailId = String(r.new_newcolumn ?? '').trim().toLowerCase();
+        const userIdField = String(r.new_userid ?? '').trim().toLowerCase();
+        return emailId === sessionEmail || userIdField === sessionEmail;
+      }) ?? null
+    );
   }, [rows]);
 
   const currentUser = useMemo(() => {
-    const first = rows[0];
-    if (!first) {
+    const matched = sessionMatchedUser ?? rows[0];
+    if (!matched) {
       return { name: 'Admin User', departments: ['Admin'] };
     }
-    const dept = first.new_rolename ?? roleLabel[String(first.new_role) as OnboardingForm['department']] ?? 'Admin';
-    // departments as array for future multi-department support.
-    return { name: first.new_name ?? 'Admin User', departments: [dept] };
-  }, [rows]);
+    const dept = matched.new_rolename ?? roleLabel[String(matched.new_role) as OnboardingForm['department']] ?? 'Admin';
+    return { name: matched.new_name ?? 'Admin User', departments: [dept] };
+  }, [rows, sessionMatchedUser]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
-      <aside className="w-52 bg-[#f3f4f8] border-r border-gray-100 flex flex-col flex-shrink-0">
+      <aside className="z-[60] w-56 bg-[#f3f4f8] border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         <div className="px-5 py-5 border-b border-gray-100">
-          <div className="text-xl font-bold text-[#151d5d]">ENJAZ</div>
+          <LogoMark />
         </div>
-        <nav className="flex-1 py-4 px-3 space-y-1">
-          {navItems.map(({ name, icon }) => (
+        <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-1">
+          <button
+            type="button"
+            onClick={() => setActiveNav('Dashboard')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeNav === 'Dashboard' ? 'bg-white text-[#151d5d]' : 'text-gray-500 hover:bg-white hover:text-gray-700'
+            }`}
+          >
+            <LayoutDashboard size={16} />
+            Dashboard
+          </button>
+          {REFERENCE_DATA_SUB.map(({ id, label, icon }) => (
             <button
-              key={name}
+              key={id}
               type="button"
-              onClick={() => setActiveNav(name)}
+              onClick={() => setActiveNav(id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeNav === name ? 'bg-white text-[#151d5d]' : 'text-gray-500 hover:bg-white hover:text-gray-700'
+                activeNav === id ? 'bg-white text-[#151d5d]' : 'text-gray-500 hover:bg-white hover:text-gray-700'
               }`}
             >
               {icon}
-              {name}
+              {label}
             </button>
           ))}
         </nav>
+        <div className="shrink-0 border-t border-gray-100 px-3 py-4">
+          <ThemeModeToggle />
+        </div>
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-4 h-10 w-[420px] max-w-[52vw]">
-              <input className="bg-transparent text-sm text-gray-500 outline-none w-full" placeholder="Search anything..." />
-              <Search size={18} className="text-gray-400" />
-            </div>
-            <NotificationBell />
-            <ProfileDropdown onLogout={onLogout} displayName={currentUser.name} departments={currentUser.departments} />
+            <ProfileDropdown onLogout={onLogout} displayName={currentUser.name} roleLabel="Admin" />
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-5 space-y-4">
-          {activeNav === 'Onboarding' ? (
-            <UserOnboardingScreen onCreated={fetchUsers} />
-          ) : activeNav === 'Manage' ? (
-            <ManageUsersScreen rows={rows} loading={loading} onRefresh={fetchUsers} />
-          ) : activeNav === 'Manage Master' ? (
-            <ManageMasterDataScreen />
-          ) : activeNav === 'Dashboard' ? (
-            <>
+        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-5">
+          {loading && <ScreenLoader overlay />}
+          {activeNav === 'audit-logs' ? (
+            <AuditLogsPanel />
+          ) : activeNav === 'mm-reference' ? (
+            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <ManageDataScreen
+                userRows={rows}
+                userLoading={loading}
+                onRefreshUsers={fetchUsers}
+                ownUserRecordId={sessionMatchedUser?.new_usersid ? String(sessionMatchedUser.new_usersid) : null}
+              />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
               <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <StatCard value={totals.users} label="Total Users" color="#c7763f" />
                 <StatCard value={totals.clients} label="Total Clients" color="#6aa3c5" />
                 <StatCard value={totals.vendors} label="Total Vendors" color="#c9a64a" />
-                <StatCard value={totals.sponsors} label="Total Sponsors" color="#4b3f8a" />
+                <StatCard value={sponsorTableCount} label="Total Sponsors" color="#4b3f8a" />
               </section>
 
               <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                  <h3 className="text-sm font-semibold text-[#2d356b] text-center mb-2">Active / Inactive Users per Department</h3>
+                <div className={`${enj.card} ${enj.cardPad} chart-card`}>
+                  <h3 className={`${enj.subhead} text-center mb-2`}>Active / Inactive Users per Department</h3>
                   <UsersByRoleChart rows={rows} />
                 </div>
-                <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                  <h3 className="text-sm font-semibold text-[#2d356b] text-center mb-2">Monthwise Onboarding Count</h3>
+                <div className={`${enj.card} ${enj.cardPad} chart-card`}>
+                  <h3 className={`${enj.subhead} text-center mb-2`}>Monthwise Onboarding Count</h3>
                   <OnboardingByMonthChart rows={rows} />
                 </div>
               </section>
-            </>
-          ) : (
-            <section className="rounded-xl border border-gray-100 bg-white p-5 text-sm text-gray-600 shadow-sm">
-              {activeNav} screen placeholder.
-            </section>
+            </div>
           )}
         </main>
       </div>

@@ -12,6 +12,27 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "new_classicwaterfalls": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_classicwaterfallid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_clients": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_clientid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_configs": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_configid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "new_deliverables": {
     "tableId": "",
     "version": "",
@@ -26,6 +47,41 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "new_feedbacks": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_feedbackid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_issuedetails": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_issuedetailid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_issues": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_issueid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_meetingdetails": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_meetingdetailid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_pipelines": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_pipelineid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "new_programs": {
     "tableId": "",
     "version": "",
@@ -37,6 +93,69 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "new_projectid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_reports": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_reportid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_sponsors": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_sponsorid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_sprintissues": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_sprintissueid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_sprints": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_sprintid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_subissues": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_subissueid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_subtasks": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_subtaskid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_taskdetails": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_taskdetailid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_tasks": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_taskid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "new_teammembers": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "new_teammemberid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

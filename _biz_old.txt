@@ -1,0 +1,900 @@
+﻿function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
+  const [activeNav, setActiveNav] = useState('Dashboard');
+  const [timelineFilter, setTimelineFilter] = useState<'Weekly' | 'Monthly' | 'Yearly'>('Yearly');
+  const [timelineMonth, setTimelineMonth] = useState(() => yyyymmFromDate(new Date()));
+  const monthInputRef = useRef<HTMLInputElement>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const programPickerRef = useRef<HTMLDivElement>(null);
+  const [programMenuOpen, setProgramMenuOpen] = useState(false);
+  const [selectedProgramGroup, setSelectedProgramGroup] = useState('Knowledge & Educational Excellence');
+  const [timelineScrollRatio, setTimelineScrollRatio] = useState(0);
+  const [timelineCanScrollH, setTimelineCanScrollH] = useState(false);
+  const years = ['2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024'];
+  const completed = [14, 18, 25, 41, 29, 33, 19, 18, 17, 22, 28, 24];
+  const delayed = [20, 28, 23, 46, 34, 29, 34, 25, 38, 43, 37, 22];
+  const onTrack = [16, 24, 22, 40, 31, 31, 30, 23, 39, 43, 36, 20];
+  const progressData = [
+    { label: 'Completed', value: 48, color: '#1d4ed8' },
+    { label: 'On Track', value: 34, color: '#10b981' },
+    { label: 'Delayed', value: 21, color: '#ef4444' },
+    { label: 'On Hold', value: 22, color: '#f59e0b' },
+  ];
+  const budgetData = [
+    { label: 'Financial', value: 352, color: '#3b82f6' },
+    { label: 'Knowledge', value: 90.5, color: '#8b5cf6' },
+    { label: 'External', value: 130, color: '#f59e0b' },
+    { label: 'HR', value: 14.6, color: '#22c55e' },
+    { label: 'Admin', value: 496, color: '#9ca3af' },
+    { label: 'Digital', value: 135, color: '#a16207' },
+  ];
+  const navItems = [
+    { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+    { name: 'Business pipeline', icon: <Briefcase size={16} /> },
+    { name: 'Timeline', icon: <Calendar size={16} /> },
+    { name: 'Reports', icon: <TrendingUp size={16} /> },
+    { name: 'Feedback', icon: <MessageSquare size={16} /> },
+  ];
+  const summaryCards = [
+    { title: 'Completed Projects', value: 32, color: '#2563eb', delta: '10+ more from last week', trend: [5, 8, 7, 10, 11, 9, 12] },
+    { title: 'On Track Projects', value: 10, color: '#10b981', delta: '10+ more from last week', trend: [4, 5, 5, 6, 8, 7, 9] },
+    { title: 'Delayed Project', value: 8, color: '#ef4444', delta: '08+ more from last week', trend: [3, 4, 4, 5, 4, 6, 5] },
+  ];
+  const kpiData = [
+    { label: 'Pinnacle', value: 44, color: '#d4a759' },
+    { label: 'Quality', value: 68, color: '#b58a3a' },
+    { label: 'Risk', value: 35, color: '#e1c179' },
+    { label: 'Efficiency', value: 52, color: '#8b6a2d' },
+  ];
+  const categoryData = [
+    { label: 'Security', value: 59, color: '#2563eb' },
+    { label: 'Application', value: 43, color: '#f59e0b' },
+    { label: 'Support', value: 36, color: '#4f46e5' },
+    { label: 'Infrastructure', value: 23, color: '#60a5fa' },
+  ];
+  const projectCounts = [
+    { label: 'Network', value: 12, color: '#4f46e5' },
+    { label: 'Infra', value: 42, color: '#d4a759' },
+    { label: 'Support', value: 20, color: '#8b5e34' },
+    { label: 'Security', value: 48, color: '#60a5fa' },
+    { label: 'Integr.', value: 30, color: '#dc2626' },
+  ];
+  const budgetVsPlanned = [
+    { month: 'JAN', actual: 140, planned: 190 }, { month: 'FEB', actual: 560, planned: 520 },
+    { month: 'MAR', actual: 420, planned: 470 }, { month: 'APR', actual: 630, planned: 610 },
+    { month: 'MAY', actual: 350, planned: 390 }, { month: 'JUN', actual: 420, planned: 410 },
+    { month: 'JUL', actual: 480, planned: 450 }, { month: 'AUG', actual: 520, planned: 500 },
+    { month: 'SEP', actual: 310, planned: 370 }, { month: 'OCT', actual: 640, planned: 590 },
+    { month: 'NOV', actual: 220, planned: 290 }, { month: 'DEC', actual: 500, planned: 460 },
+  ];
+  const budgetDeviation = [
+    { month: 'JAN', val: -20 }, { month: 'FEB', val: 16 }, { month: 'MAR', val: 22 }, { month: 'APR', val: 30 },
+    { month: 'MAY', val: -24 }, { month: 'JUN', val: 16 }, { month: 'JUL', val: -14 }, { month: 'AUG', val: 26 },
+    { month: 'SEP', val: -30 }, { month: 'OCT', val: 14 }, { month: 'NOV', val: 20 }, { month: 'DEC', val: 28 },
+  ];
+  const reportFilterLabels = ['Sector', 'Program', 'Project', 'KPI', 'Type', 'Budget', 'Program Manager', 'Project Manager', 'Duration', 'Status'];
+  const reportStats = [
+    { label: 'Sectors', value: 104, color: '#34d399' },
+    { label: 'Delayed Projects', value: 87, color: '#f87171' },
+    { label: 'Programs', value: 63, color: '#60a5fa' },
+    { label: 'Projects', value: 108, color: '#fbbf24' },
+    { label: 'On Hold', value: 46, color: '#fb7185' },
+    { label: 'Completed Programs', value: 71, color: '#3b82f6' },
+  ];
+  const reportRows = [
+    { project: 'DP Factor', priority: 'High', type: 'New', budget: '$42', owner: 'Ahmed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 88, status: 'COMPLETED', statusColor: 'bg-blue-100 text-blue-700' },
+    { project: 'Code.Tech', priority: 'Medium', type: 'Enhanc.', budget: '$25', owner: 'Omar Sami', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 52, status: 'SLIGHTLY DELAYED', statusColor: 'bg-amber-100 text-amber-700' },
+    { project: 'Ex.Process', priority: 'Medium', type: 'Change Request', budget: '$30', owner: 'Waleed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 76, status: 'ON TRACK', statusColor: 'bg-emerald-100 text-emerald-700' },
+    { project: 'Scaling', priority: 'Low', type: 'Change Request', budget: '$30', owner: 'Amr Fahmy', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 21, status: 'DELAYED', statusColor: 'bg-rose-100 text-rose-700' },
+    { project: 'DP Factor', priority: 'High', type: 'New', budget: '$42', owner: 'Ahmed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 90, status: 'COMPLETED', statusColor: 'bg-blue-100 text-blue-700' },
+  ];
+  const pipelineBars = [
+    { label: '2023 Q2', value: 6, color: '#7c3aed' },
+    { label: '2023 Q3', value: 32, color: '#4cc9f0' },
+    { label: '2023 Q4', value: 12, color: '#16a34a' },
+    { label: '2024 Q1', value: 39, color: '#2563eb' },
+    { label: '2024 Q1', value: 21, color: '#74c69d' },
+    { label: '2024 Q2', value: 27, color: '#fb923c' },
+    { label: '2024 Q2', value: 20, color: '#ef4444' },
+    { label: '2024 Q3', value: 30, color: '#22c55e' },
+    { label: '2024 Q3', value: 32, color: '#e9c46a' },
+    { label: '2024 Q4', value: 14, color: '#6b7280' },
+  ];
+  const pipelineLegend = [
+    { label: 'Strategic', color: '#16a34a' }, { label: 'Construction', color: '#6366f1' },
+    { label: 'Support', color: '#2563eb' }, { label: 'Outsource', color: '#e9c46a' },
+    { label: 'Implementation', color: '#7c3aed' }, { label: 'Infrastructure', color: '#22c55e' },
+    { label: 'Time & Material', color: '#10b981' }, { label: 'Security', color: '#f59e0b' },
+    { label: 'Managed Services', color: '#0ea5e9' }, { label: 'Application', color: '#ef4444' },
+  ];
+  const pipelineRows = [
+    { name: 'Pinnacle', benefit: 'Productivity', budget: '$42', pm: 'Ahmed Ali', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'RFP' },
+    { name: 'Right Path', benefit: 'Efficiency', budget: '$25', pm: 'Omar Sami', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'awarding' },
+    { name: 'Road Map', benefit: 'Productivity', budget: '$30', pm: 'Waleed Ali', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'business case approval' },
+    { name: 'Coreline', benefit: 'Improvement', budget: '$30', pm: 'Amr Fahmy', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'budget approval' },
+    { name: 'Growth', benefit: 'Plan Realisation', budget: '$42', pm: 'Ahmed Ali', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'acquiring resources' },
+    { name: 'TopWay', benefit: 'Identify Benefits', budget: '$30', pm: 'Omar Sami', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'allocate resources' },
+    { name: 'Green Pro', benefit: 'Identify Benefits', budget: '$30', pm: 'Waleed Ali', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'contract signing' },
+  ];
+  const timelinePrograms = [
+    { group: 'Pinnacle Program', items: ['Code.Tech', 'Inno.Sales', 'Serv.In'] },
+    { group: 'Financial Program', items: ['Code.Tech', 'Inno.Sales', 'Serv.In'] },
+    { group: 'Growth Program', items: ['Code.Tech', 'Inno.Sales', 'Serv.In', 'Inno.Sales', 'Serv.In'] },
+    { group: 'Road.map Program', items: ['Code.Tech', 'Inno.Sales', 'Serv.In'] },
+    { group: 'RightPath Program', items: [] },
+    { group: 'Production Program', items: [] },
+  ];
+  const timelineTracks = [
+    { label: 'Profile', start: 10, width: 14, row: 1, color: '#59628a', progress: '44%' },
+    { label: 'Logo', start: 3, width: 20, row: 2, color: '#19c37d', progress: '38%' },
+    { label: 'Testimonial', start: 18, width: 18, row: 3, color: '#59628a', progress: '63%' },
+    { label: 'Menu', start: 18, width: 12, row: 4, color: '#f4b400', progress: '87%' },
+    { label: 'Settings', start: 70, width: 16, row: 5, color: '#1766e5', progress: '90%' },
+    { label: 'Portfolio', start: 14, width: 34, row: 6, color: '#1766e5', progress: '63%' },
+    { label: 'Menu', start: 15, width: 10, row: 7, color: '#19c37d', progress: '54%' },
+    { label: 'Profile', start: 3, width: 18, row: 9, color: '#59628a', progress: '46%' },
+    { label: 'Services', start: 36, width: 22, row: 10, color: '#f4b400', progress: '54%' },
+    { label: 'Website', start: 60, width: 20, row: 2, color: '#f4b400', progress: '54%' },
+    { label: 'Homepage', start: 74, width: 18, row: 6, color: '#19c37d', progress: '71%' },
+  ];
+
+  const sparklinePath = (values: number[], width: number, height: number) => {
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    return values
+      .map((v, i) => {
+        const x = (i / (values.length - 1)) * width;
+        const y = height - ((v - min) / (max - min || 1)) * height;
+        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+      })
+      .join(' ');
+  };
+
+  const portfolioFilterOptions = [
+    'Knowledge & Educational Excellence',
+    'Strategic portfolio',
+    'Operational programs',
+  ];
+  const timelineMonthLabels = sixMonthNamesStarting(timelineMonth);
+  const timelineWeekLabels = weekLabelsFromMonthStart(timelineMonth, 24);
+  const timelineMaxRow = Math.max(...timelineTracks.map((t) => t.row), 1);
+  const timelineBodyMinHeight = Math.max(560, timelineMaxRow * 48 + 72);
+
+  useEffect(() => {
+    const onDocDown = (e: MouseEvent) => {
+      if (!programMenuOpen) return;
+      const el = programPickerRef.current;
+      if (el && !el.contains(e.target as Node)) setProgramMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [programMenuOpen]);
+
+  useEffect(() => {
+    const el = timelineScrollRef.current;
+    if (!el || activeNav !== 'Timeline') return;
+    const sync = () => {
+      const max = el.scrollWidth - el.clientWidth;
+      setTimelineCanScrollH(max > 2);
+      setTimelineScrollRatio(max <= 0 ? 0 : el.scrollLeft / max);
+    };
+    sync();
+    el.addEventListener('scroll', sync, { passive: true });
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', sync);
+      ro.disconnect();
+    };
+  }, [activeNav, timelineMonth]);
+
+  const openMonthPicker = () => {
+    const el = monthInputRef.current;
+    if (!el) return;
+    const inp = el as HTMLInputElement & { showPicker?: () => void | Promise<void> };
+    const ret = inp.showPicker?.();
+    if (ret != null && typeof (ret as Promise<void>).then === 'function') {
+      void (ret as Promise<void>).catch(() => {
+        inp.click();
+      });
+    } else if (ret == null) {
+      inp.click();
+    }
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
+      <aside className="w-52 bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
+        <div className="px-5 py-5 border-b border-gray-100">
+          <LogoMark />
+        </div>
+        <nav className="flex-1 py-4 px-3 space-y-0.5">
+          {navItems.map(({ name, icon }) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setActiveNav(name)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                activeNav === name ? 'bg-indigo-50 text-[#151d5d]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+              }`}
+            >
+              <span className={`w-0.5 h-5 rounded-full ${activeNav === name ? 'bg-[#b28a44]' : 'bg-transparent'}`} />
+              {icon}
+              {name}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
+          <div className="ml-auto flex items-center gap-4">
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-4 h-10 w-[420px] max-w-[52vw]">
+              <input className="bg-transparent text-sm text-gray-500 outline-none w-full" placeholder="Search anything..." />
+              <Search size={18} className="text-gray-400" />
+            </div>
+            <NotificationBell />
+            <ProfileDropdown onLogout={onLogout} />
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-auto p-5 space-y-4">
+          {activeNav === 'Timeline' ? (
+            <>
+              <section className="bg-white rounded-xl p-4 shadow-sm chart-card">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <h2 className="text-2xl font-semibold text-[#2d356b]">Timeline</h2>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={monthInputRef}
+                      type="month"
+                      value={timelineMonth}
+                      onChange={(e) => setTimelineMonth(e.target.value)}
+                      className="sr-only"
+                      tabIndex={-1}
+                      aria-hidden
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setTimelineMonth(yyyymmFromDate(new Date()))}
+                      className="h-8 px-4 rounded-full border border-amber-300 text-[11px] text-amber-700 hover:bg-amber-50 transition-colors"
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openMonthPicker}
+                      className="h-8 px-4 rounded-full border border-gray-200 text-[11px] text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      {formatTimelineMonthHeading(timelineMonth)}
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-3 min-h-0">
+                  <div className="bg-[#f6f8fb] rounded-lg p-3 flex flex-col min-h-0">
+                    <div className="relative mb-2 shrink-0" ref={programPickerRef}>
+                      <button
+                        type="button"
+                        onClick={() => setProgramMenuOpen((o) => !o)}
+                        className="w-full h-7 px-2 rounded-md border border-gray-200 text-[10px] text-left text-gray-600 flex items-center justify-between gap-2 bg-white"
+                      >
+                        <span className="truncate">{selectedProgramGroup}</span>
+                        <ChevronDown size={10} className={`shrink-0 text-gray-400 transition-transform ${programMenuOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {programMenuOpen && (
+                        <ul className="absolute left-0 right-0 top-full z-20 mt-1 py-1 rounded-md border border-gray-200 bg-white shadow-lg max-h-40 overflow-auto">
+                          {portfolioFilterOptions.map((opt) => (
+                            <li key={opt}>
+                              <button
+                                type="button"
+                                className={`w-full text-left px-2 py-1.5 text-[10px] hover:bg-gray-50 ${opt === selectedProgramGroup ? 'text-[#151d5d] font-semibold bg-indigo-50/50' : 'text-gray-600'}`}
+                                onClick={() => {
+                                  setSelectedProgramGroup(opt);
+                                  setProgramMenuOpen(false);
+                                }}
+                              >
+                                {opt}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="space-y-2 flex-1 min-h-0 max-h-[560px] overflow-y-auto overflow-x-hidden pr-1 overscroll-contain">
+                      {timelinePrograms.map((program) => (
+                        <div key={program.group} className="bg-white border border-gray-100 rounded-md p-2">
+                          <div className="flex items-center justify-between text-[11px] font-semibold text-[#3a4275]">
+                            <span>{program.group}</span>
+                            <ChevronDown size={10} className="text-gray-400" />
+                          </div>
+                          {program.items.length > 0 && (
+                            <ul className="mt-2 space-y-1">
+                              {program.items.map((item, index) => (
+                                <li key={`${program.group}-${item}-${index}`} className="text-[10px] text-gray-400 flex items-center gap-2">
+                                  <span className="w-2 h-2 border border-gray-300 rounded-sm shrink-0" />
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 space-y-2 shrink-0">
+                      {['Human Resources', 'Financial Resources', 'Digital Transformation', 'Administrative Affairs', 'Administrative Affairs'].map((item, i) => (
+                        <button
+                          key={`${item}-${i}`}
+                          type="button"
+                          className="w-full h-7 px-2 rounded-md border border-gray-200 text-[10px] text-left text-gray-600 flex items-center justify-between hover:bg-white/80"
+                        >
+                          <span className="truncate">{item}</span>
+                          <ChevronDown size={10} className="shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-white border border-gray-100 rounded-lg overflow-hidden flex flex-col min-h-0 min-w-0">
+                    <div
+                      ref={timelineScrollRef}
+                      className="overflow-x-auto overflow-y-auto max-h-[560px] overscroll-contain scroll-smooth"
+                    >
+                      <div className="min-w-[1040px]">
+                        <div className="sticky top-0 z-10 bg-white px-3 py-2 border-b border-gray-100 shadow-sm">
+                          <div className="text-[9px] uppercase text-gray-400 flex justify-between gap-4 min-w-[880px] px-0.5">
+                            {timelineMonthLabels.map((m) => (
+                              <span key={m} className="flex-1 text-center min-w-0 truncate">
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="mt-1 text-[10px] text-gray-500 flex items-center gap-4 min-w-max pr-2">
+                            {timelineWeekLabels.map((w, i) => (
+                              <span key={`${w}-${i}`} className="w-6 shrink-0 text-center whitespace-nowrap">
+                                {w}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div
+                          className="relative bg-[repeating-linear-gradient(to_right,_#f1f5f9_0,_#f1f5f9_1px,_transparent_1px,_transparent_34px)] chart-svg"
+                          style={{ minHeight: timelineBodyMinHeight }}
+                        >
+                          {timelineTracks.map((track, idx) => (
+                            <div
+                              key={`${track.label}-${idx}`}
+                              className="absolute h-6 rounded-full text-white text-[9px] px-3 flex items-center justify-between shadow-sm transition-all duration-300 hover:scale-[1.02]"
+                              style={{
+                                left: `${track.start}%`,
+                                width: `${track.width}%`,
+                                top: `${track.row * 48}px`,
+                                backgroundColor: track.color,
+                              }}
+                            >
+                              <span className="truncate">{track.label}</span>
+                              <span className="bg-white/85 text-gray-500 px-1.5 rounded-full shrink-0">{track.progress}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="h-6 bg-gray-100 border-t border-gray-100 flex items-center px-2 gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={0.25}
+                        value={timelineScrollRatio * 100}
+                        disabled={!timelineCanScrollH}
+                        onChange={(e) => {
+                          const el = timelineScrollRef.current;
+                          if (!el) return;
+                          const max = el.scrollWidth - el.clientWidth;
+                          el.scrollLeft = (Number(e.target.value) / 100) * max;
+                        }}
+                        className="w-full h-1.5 accent-gray-500 disabled:opacity-30 cursor-ew-resize disabled:cursor-not-allowed"
+                        aria-label="Scroll timeline horizontally"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </>
+          ) : activeNav === 'Business pipeline' ? (
+            <>
+              <section className="bg-white rounded-xl p-4 shadow-sm chart-card">
+                <h2 className="text-xl font-semibold text-gray-800 mb-4">Business Pipeline</h2>
+                <div className="border border-gray-100 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Projects</p>
+                    <div className="flex items-center gap-2">
+                      <button className="h-7 px-2 rounded-md border border-gray-200 text-[10px] text-gray-500">Year 2024</button>
+                      <button className="h-7 px-2 rounded-md border border-gray-200 text-[10px] text-gray-500">All Categories</button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-center">
+                    <div className="lg:col-span-3">
+                      <svg viewBox="0 0 700 210" className="w-full h-52 chart-svg">
+                        {[0, 10, 20, 30, 40].map((v) => (
+                          <g key={v}>
+                            <line x1="26" x2="680" y1={180 - v * 3.6} y2={180 - v * 3.6} stroke="#edf2f7" />
+                            <text x="14" y={184 - v * 3.6} fontSize="9" fill="#94a3b8">{v}</text>
+                          </g>
+                        ))}
+                        {pipelineBars.map((bar, index) => (
+                          <g key={`${bar.label}-${index}`}>
+                            <rect className="chart-bar" x={48 + index * 62} y={180 - bar.value * 3.6} width="18" height={bar.value * 3.6} rx="4" fill={bar.color} />
+                            <text x={57 + index * 62} y="198" fontSize="8" textAnchor="middle" fill="#94a3b8">{bar.label}</text>
+                          </g>
+                        ))}
+                        <text x="690" y="198" fontSize="8" fill="#94a3b8">TIMELINE</text>
+                      </svg>
+                    </div>
+                    <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-[10px]">
+                      {pipelineLegend.map((item) => (
+                        <div key={item.label} className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span className="text-gray-500">{item.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-y border-gray-100">
+                    <tr className="text-[10px] text-gray-400 uppercase text-left">
+                      <th className="px-4 py-2">Program Name</th>
+                      <th className="px-4 py-2">Benefits</th>
+                      <th className="px-4 py-2">Budget</th>
+                      <th className="px-4 py-2">Duration</th>
+                      <th className="px-4 py-2">Current Stage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pipelineRows.map((row) => (
+                      <tr key={row.name} className="border-b border-gray-100 text-xs text-gray-700">
+                        <td className="px-4 py-2 text-indigo-700 underline">{row.name}</td>
+                        <td className="px-4 py-2">{row.benefit}</td>
+                        <td className={`px-4 py-2 font-semibold ${row.budget === '$25' ? 'text-emerald-500' : row.budget === '$42' ? 'text-rose-500' : 'text-indigo-700'}`}>{row.budget}</td>
+                        <td className="px-4 py-2">
+                          <div className="leading-4">
+                            <p className="text-[10px] text-gray-400">Start date</p>
+                            <p>{row.start}</p>
+                            <p className="text-[10px] text-gray-400 mt-1">End date</p>
+                            <p>{row.end}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2">{row.stage}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            </>
+          ) : activeNav === 'Reports' ? (
+            <>
+              <section className="bg-white rounded-xl p-4 shadow-sm">
+                <h2 className="text-lg font-semibold text-gray-800 mb-3">Reports</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-10 gap-2">
+                  {reportFilterLabels.map((label) => (
+                    <div key={label} className="min-w-0">
+                      <p className="text-[10px] text-gray-400 mb-1">{label}</p>
+                      <button className="w-full h-7 rounded-md border border-gray-200 bg-gray-50 text-[10px] text-gray-500 flex items-center justify-between px-2">
+                        <span>All</span>
+                        <ChevronDown size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                {reportStats.map((card) => (
+                  <div key={card.label} className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 chart-card">
+                    <p className="text-[10px] text-gray-400">{card.label}</p>
+                    <p className="text-3xl font-bold text-gray-800 mt-1">{card.value}</p>
+                    <div className="h-0.5 rounded-full mt-3" style={{ backgroundColor: card.color }} />
+                  </div>
+                ))}
+              </section>
+
+              <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
+                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Project Category</h3>
+                  <DonutChart
+                    className="w-full h-40 chart-svg"
+                    slices={[
+                      { label: 'Application', value: 43, color: '#1667de' },
+                      { label: 'Security', value: 59, color: '#d3525a' },
+                      { label: 'Support', value: 36, color: '#3b3a80' },
+                      { label: 'Infrastructure', value: 23, color: '#f6be00' },
+                    ]}
+                    ringWidth={42}
+                  />
+                </div>
+                <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
+                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Projects Count</h3>
+                  <svg viewBox="0 0 220 170" className="w-full h-40 chart-svg">
+                    {[20, 40, 60, 80].map((v) => (
+                      <line key={v} x1="26" x2="214" y1={140 - v} y2={140 - v} stroke="#f1f5f9" />
+                    ))}
+                    <text x="6" y="141" fontSize="8" fill="#9ca3af">0</text>
+                    <text x="2" y="121" fontSize="8" fill="#9ca3af">20</text>
+                    <text x="2" y="101" fontSize="8" fill="#9ca3af">40</text>
+                    <text x="2" y="81" fontSize="8" fill="#9ca3af">60</text>
+                    <text x="2" y="61" fontSize="8" fill="#9ca3af">80</text>
+                    {projectCounts.map((bar, index) => (
+                      <g key={bar.label}>
+                        <rect className="chart-bar" x={35 + index * 36} y={140 - bar.value * 1.6} width="12" height={bar.value * 1.6} rx="3" fill={bar.color} />
+                        <text x={40 + index * 36} y="154" fontSize="8" textAnchor="middle" fill="#9ca3af" transform={`rotate(-65 40 ${154})`}>
+                          {bar.label}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                </div>
+                <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
+                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Budget</h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <DonutChart
+                      className="w-[62%] h-40 chart-svg"
+                      showOuterLabels={false}
+                      ringWidth={44}
+                      slices={[
+                        { label: 'Financial', value: 352, color: '#1667de' },
+                        { label: 'Knowledge', value: 90, color: '#f6be00' },
+                        { label: 'External', value: 130, color: '#3b3a80' },
+                        { label: 'HR', value: 15, color: '#d3525a' },
+                        { label: 'Admin', value: 496, color: '#64748b' },
+                      ]}
+                    />
+                    <div className="w-[38%] text-[8px] text-gray-500 space-y-1">
+                      <p>AED890,600 <span className="block">Knowledge & External</span></p>
+                      <p>AED14,600 <span className="block">HR</span></p>
+                      <p>AED436,000 <span className="block">Administrative Affairs</span></p>
+                      <p>AED325,000 <span className="block">Financial Resources</span></p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
+                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Projects by progress</h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <DonutChart
+                      className="w-[68%] h-40 chart-svg"
+                      showOuterLabels={false}
+                      ringWidth={44}
+                      slices={[
+                        { label: 'Completed', value: 46, color: '#1667de' },
+                        { label: 'On Hold', value: 27, color: '#f6be00' },
+                        { label: 'Delayed', value: 21, color: '#d3525a' },
+                      ]}
+                    />
+                    <div className="w-[32%] text-[8px] text-gray-500 space-y-1">
+                      <p className="text-blue-600"><span className="font-semibold">46</span> Completed</p>
+                      <p className="text-amber-500"><span className="font-semibold">27</span> On Hold</p>
+                      <p className="text-rose-500"><span className="font-semibold">21</span> Delayed</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-y border-gray-100">
+                    <tr className="text-[10px] text-gray-400 uppercase text-left">
+                      <th className="px-3 py-2">Project Name</th>
+                      <th className="px-3 py-2">Priority</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Budget</th>
+                      <th className="px-3 py-2">Strag. Obj</th>
+                      <th className="px-3 py-2">PM</th>
+                      <th className="px-3 py-2">Dates</th>
+                      <th className="px-3 py-2">Progress Level</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows.map((row, idx) => (
+                      <tr key={`${row.project}-${idx}`} className="border-b border-gray-100 text-xs text-gray-700">
+                        <td className="px-3 py-2 text-indigo-700 underline">{row.project}</td>
+                        <td className="px-3 py-2">{row.priority}</td>
+                        <td className="px-3 py-2">{row.type}</td>
+                        <td className="px-3 py-2 font-semibold text-rose-500">{row.budget}</td>
+                        <td className="px-3 py-2">{row.pm}</td>
+                        <td className="px-3 py-2">{row.owner}</td>
+                        <td className="px-3 py-2">
+                          <div className="leading-4">
+                            <p className="text-[10px] text-gray-400">Start date</p>
+                            <p>{row.start}</p>
+                            <p className="text-[10px] text-gray-400 mt-1">End date</p>
+                            <p>{row.end}</p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${row.progress}%` }} />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-1 rounded-full text-[9px] font-semibold ${row.statusColor}`}>{row.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="px-3 py-2 text-[10px] text-gray-400 text-right">1-10 of 15</div>
+              </section>
+            </>
+          ) : activeNav === 'Feedback' ? (
+            <BusinessFeedbackList />
+          ) : (
+            <>
+          <section className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
+            {summaryCards.map((card) => (
+              <div key={card.title} className="bg-white rounded-xl p-4 shadow-sm lg:col-span-1 chart-card min-h-[170px]">
+                <p className="text-xs text-gray-500">{card.title}</p>
+                <p className="text-2xl font-bold mt-1">{card.value}</p>
+                <svg viewBox="0 0 140 40" className="w-full h-12 mt-2 chart-svg">
+                  <path d={sparklinePath(card.trend, 140, 34)} fill="none" stroke={card.color} strokeWidth="2.5" />
+                </svg>
+                <p className="text-[11px] text-gray-400">{card.delta}</p>
+              </div>
+            ))}
+
+            <div className="bg-white rounded-xl p-4 shadow-sm lg:col-span-2 chart-card min-h-[220px]">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">Projects by progress</h3>
+              <div className="flex items-center gap-4">
+                <svg viewBox="0 0 160 160" className="w-36 h-36 chart-svg">
+                  {(() => {
+                    const total = progressData.reduce((sum, item) => sum + item.value, 0);
+                    let angle = -90;
+                    return progressData.map((slice) => {
+                      const sweep = (slice.value / total) * 360;
+                      const start = (Math.PI / 180) * angle;
+                      const end = (Math.PI / 180) * (angle + sweep);
+                      const largeArc = sweep > 180 ? 1 : 0;
+                      const x1 = 80 + Math.cos(start) * 52;
+                      const y1 = 80 + Math.sin(start) * 52;
+                      const x2 = 80 + Math.cos(end) * 52;
+                      const y2 = 80 + Math.sin(end) * 52;
+                      angle += sweep;
+                      return (
+                        <path
+                          key={slice.label}
+                          d={`M ${x1} ${y1} A 52 52 0 ${largeArc} 1 ${x2} ${y2}`}
+                          stroke={slice.color}
+                          strokeWidth="20"
+                          fill="none"
+                          strokeLinecap="round"
+                        />
+                      );
+                    });
+                  })()}
+                </svg>
+                <div className="space-y-2 text-xs">
+                  {progressData.map((item) => (
+                    <div key={item.label} className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="text-gray-500 w-20">{item.label}</span>
+                      <span className="font-semibold text-gray-800">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
+            <div className="bg-white rounded-xl p-4 shadow-sm lg:col-span-3 chart-card">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-bold text-gray-900">Project Timeline</h2>
+                <div className="flex items-center gap-2 text-xs">
+                  {(['Weekly', 'Monthly', 'Yearly'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setTimelineFilter(filter)}
+                      className={timelineFilter === filter ? 'text-amber-700 font-semibold' : 'text-gray-400'}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <svg viewBox="0 0 640 220" className="w-full h-64 chart-svg">
+                {[10, 20, 30, 40, 50].map((v) => (
+                  <line key={v} x1="42" x2="620" y1={210 - v * 3.5} y2={210 - v * 3.5} stroke="#f1f5f9" />
+                ))}
+                {years.map((year, i) => (
+                  <text key={year} x={48 + i * 52} y="212" fontSize="9" fill="#94a3b8">{year}</text>
+                ))}
+                <polyline
+                  fill="none"
+                  stroke="#2563eb"
+                  strokeWidth="2.2"
+                  points={completed.map((v, i) => `${48 + i * 52},${210 - v * 3.5}`).join(' ')}
+                />
+                <polyline
+                  fill="none"
+                  stroke="#b0823a"
+                  strokeWidth="2.2"
+                  points={delayed.map((v, i) => `${48 + i * 52},${210 - v * 3.5}`).join(' ')}
+                />
+                <polyline
+                  fill="none"
+                  stroke="#374151"
+                  strokeWidth="1.6"
+                  strokeDasharray="5 4"
+                  points={onTrack.map((v, i) => `${48 + i * 52},${210 - v * 3.5}`).join(' ')}
+                />
+              </svg>
+            </div>
+
+            <div className="lg:col-span-2 h-full flex">
+              <section className="bg-white rounded-xl p-4 shadow-sm h-full w-full chart-card">
+                <h3 className="text-sm font-bold text-gray-900 mb-2">Budget</h3>
+                <div className="flex items-center gap-4">
+                  <svg viewBox="0 0 160 160" className="w-36 h-36 chart-svg">
+                    {(() => {
+                      const total = budgetData.reduce((sum, item) => sum + item.value, 0);
+                      let angle = -90;
+                      return budgetData.map((slice) => {
+                        const sweep = (slice.value / total) * 360;
+                        const start = (Math.PI / 180) * angle;
+                        const end = (Math.PI / 180) * (angle + sweep);
+                        const largeArc = sweep > 180 ? 1 : 0;
+                        const x1 = 80 + Math.cos(start) * 56;
+                        const y1 = 80 + Math.sin(start) * 56;
+                        const x2 = 80 + Math.cos(end) * 56;
+                        const y2 = 80 + Math.sin(end) * 56;
+                        angle += sweep;
+                        return (
+                          <path
+                            key={slice.label}
+                            d={`M 80 80 L ${x1} ${y1} A 56 56 0 ${largeArc} 1 ${x2} ${y2} Z`}
+                            fill={slice.color}
+                          />
+                        );
+                      });
+                    })()}
+                    <circle cx="80" cy="80" r="18" fill="#fff" />
+                  </svg>
+                  <div className="space-y-1.5 text-[10px]">
+                    {budgetData.slice(0, 5).map((item) => (
+                      <div key={item.label} className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span className="text-gray-500 w-16">{item.label}</span>
+                        <span className="text-gray-700">AED{item.value}k</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[300px] chart-card">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">KPI</h3>
+              <div className="h-52 flex items-end justify-around gap-2">
+                {kpiData.map((bar) => (
+                  <div key={bar.label} className="flex flex-col items-center gap-2">
+                    <div className="w-9 rounded-t-md chart-bar" style={{ height: `${bar.value * 1.3}px`, backgroundColor: bar.color }} />
+                    <span className="text-[10px] text-gray-500">{bar.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[300px] chart-card">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">Projects Category</h3>
+              <div className="flex items-center gap-4 h-52">
+                <svg viewBox="0 0 160 160" className="w-36 h-36 flex-shrink-0 chart-svg">
+                  {(() => {
+                    const total = categoryData.reduce((sum, item) => sum + item.value, 0);
+                    let angle = -90;
+                    return categoryData.map((slice) => {
+                      const sweep = (slice.value / total) * 360;
+                      const start = (Math.PI / 180) * angle;
+                      const end = (Math.PI / 180) * (angle + sweep);
+                      const largeArc = sweep > 180 ? 1 : 0;
+                      const x1 = 80 + Math.cos(start) * 52;
+                      const y1 = 80 + Math.sin(start) * 52;
+                      const x2 = 80 + Math.cos(end) * 52;
+                      const y2 = 80 + Math.sin(end) * 52;
+                      angle += sweep;
+                      return (
+                        <path
+                          key={slice.label}
+                          d={`M ${x1} ${y1} A 52 52 0 ${largeArc} 1 ${x2} ${y2}`}
+                          stroke={slice.color}
+                          strokeWidth="22"
+                          fill="none"
+                          strokeLinecap="round"
+                        />
+                      );
+                    });
+                  })()}
+                </svg>
+                <div className="space-y-2 text-xs">
+                  {categoryData.map((item) => (
+                    <div key={item.label} className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-800">{item.value}</span>
+                      <span className="text-gray-500">{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[300px] chart-card">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">Projects Count</h3>
+              <div className="h-52 flex items-end justify-around gap-2">
+                {projectCounts.map((bar) => (
+                  <div key={bar.label} className="flex flex-col items-center gap-2">
+                    <div className="w-9 rounded-t-md chart-bar" style={{ height: `${bar.value * 2.2}px`, backgroundColor: bar.color }} />
+                    <span className="text-[10px] text-gray-500">{bar.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm chart-card">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">BUDGETING - Actual VS Planned</h3>
+              <div className="h-44 flex items-end gap-1 overflow-hidden">
+                {budgetVsPlanned.map((item) => (
+                  <div key={item.month} className="flex-1 flex flex-col items-center justify-end">
+                    <div className="flex items-end gap-[2px] h-36">
+                      <div className="rounded-t bg-[#d9bf89] chart-bar" style={{ width: '6px', height: `${item.actual / 5}px` }} />
+                      <div className="rounded-t bg-[#a07b3c] chart-bar" style={{ width: '6px', height: `${item.planned / 5}px` }} />
+                    </div>
+                    <span className="text-[9px] text-gray-400 mt-1">{item.month}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 shadow-sm chart-card">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">BUDGETING - Deviation</h3>
+              <svg viewBox="0 0 600 200" className="w-full h-44 chart-svg">
+                <line x1="20" y1="100" x2="580" y2="100" stroke="#d1d5db" />
+                {budgetDeviation.map((item, i) => (
+                  <g key={item.month}>
+                    <rect
+                      x={26 + i * 46}
+                      y={item.val >= 0 ? 100 - item.val * 2 : 100}
+                      width="18"
+                      height={Math.abs(item.val * 2)}
+                      fill="#a07b3c"
+                      rx="2"
+                    />
+                    <text x={35 + i * 46} y="194" textAnchor="middle" fontSize="9" fill="#9ca3af">{item.month}</text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+          </section>
+            </>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [activeNav, setActiveNav] = useState('Dashboard');
+  const [showAddProjectForm, setShowAddProjectForm] = useState(false);
+  const [showAddMeetingForm, setShowAddMeetingForm] = useState(false);
+  const [showAddDeliverableForm, setShowAddDeliverableForm] = useState(false);
+  const [showAddReportForm, setShowAddReportForm] = useState(false);
+  const [showAddProgramForm, setShowAddProgramForm] = useState(false);
+  const [programFormMode, setProgramFormMode] = useState<'add' | 'edit'>('add');
+  const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
+  const [programForm, setProgramForm] = useState({
+    programName: '',
+    benefits: '',

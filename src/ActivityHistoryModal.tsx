@@ -43,13 +43,13 @@ export function ActivityHistoryModal({ open, onClose }: ActivityHistoryModalProp
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <h2 id="activity-history-title" className="text-base font-semibold text-[#151d5d]">
+          <h2 id="activity-history-title" className="text-base font-semibold text-primary">
             Activity History
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#151d5d]"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-primary"
             aria-label="Close"
           >
             <X size={20} strokeWidth={2} />
@@ -62,7 +62,7 @@ export function ActivityHistoryModal({ open, onClose }: ActivityHistoryModalProp
               PN
             </div>
             <div>
-              <p className="text-sm font-semibold text-[#151d5d]">pms admin</p>
+              <p className="text-sm font-semibold text-primary">pms admin</p>
               <p className="text-xs text-gray-500">Employee ID: EMP1</p>
             </div>
           </div>
@@ -70,19 +70,19 @@ export function ActivityHistoryModal({ open, onClose }: ActivityHistoryModalProp
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <p className="text-xs font-semibold text-gray-600">Onboard Date</p>
-              <p className="text-sm text-[#2d356b]">2025-08-11</p>
+              <p className="text-sm text-primary">2025-08-11</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold text-gray-600">Status</p>
-              <p className="text-sm text-[#2d356b]">Active</p>
+              <p className="text-sm text-primary">Active</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold text-gray-600">Last In Time</p>
-              <p className="text-sm text-[#2d356b]">19/04/2026 22:32</p>
+              <p className="text-sm text-primary">19/04/2026 22:32</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold text-gray-600">Last Out Time</p>
-              <p className="text-sm text-[#2d356b]">1/29/2026 2:49 PM</p>
+              <p className="text-sm text-primary">1/29/2026 2:49 PM</p>
             </div>
           </div>
         </div>

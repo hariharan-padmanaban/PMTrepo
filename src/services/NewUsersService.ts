@@ -5,13 +5,16 @@ import type { IGetAllOptions } from '../generated/models/CommonModels';
 export type NewUserRow = {
   new_usersid?: string;
   new_name?: string;
+  /** Dataverse "UserID" — stores the employee / user identifier. */
   new_userid?: string;
+  /** Dataverse "EmailID" (primary name) — stores the user’s email. */
   new_newcolumn?: string;
   new_role?: string | number;
   new_rolename?: string;
   new_status?: string | number;
   new_statusname?: string;
   new_onboardeddate?: string;
+  new_lastloggedapp?: string;
   [key: string]: unknown;
 };
 
@@ -30,5 +33,9 @@ export class NewUsersService {
 
   public static async update(id: string, changedFields: Partial<NewUserRow>) {
     return client.updateRecordAsync<Partial<NewUserRow>, NewUserRow>(DATA_SOURCE, id, changedFields);
+  }
+
+  public static async delete(id: string): Promise<void> {
+    await client.deleteRecordAsync(DATA_SOURCE, id);
   }
 }

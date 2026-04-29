@@ -5,14 +5,14 @@
 
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { enj } from './ui/enjForm';
 
 export type UserProfileModalProps = {
   open: boolean;
   onClose: () => void;
 };
 
-const readOnlyInputCls =
-  'w-full cursor-default rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#2d356b] outline-none';
+const readOnlyInputCls = `${enj.control} cursor-default bg-gray-50`;
 
 /** Read-only profile summary opened from the profile menu (matches ENJAZ dashboard styling). */
 export function UserProfileModal({ open, onClose }: UserProfileModalProps) {
@@ -46,21 +46,13 @@ export function UserProfileModal({ open, onClose }: UserProfileModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 id="user-profile-title" className="text-base font-semibold text-[#151d5d]">
-              User Profile
-            </h2>
-            <button
-              type="button"
-              className="rounded-md bg-sky-100 px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-200"
-            >
-              Audit
-            </button>
-          </div>
+          <h2 id="user-profile-title" className={enj.sectionTitle}>
+            User Profile
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#151d5d]"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-primary"
             aria-label="Close"
           >
             <X size={20} strokeWidth={2} />
@@ -68,16 +60,10 @@ export function UserProfileModal({ open, onClose }: UserProfileModalProps) {
         </div>
 
         <div className="space-y-4 px-5 py-5">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-gray-600">First Name</span>
-              <input readOnly tabIndex={-1} value="PMS" className={readOnlyInputCls} />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-gray-600">Last Name</span>
-              <input readOnly tabIndex={-1} value="Admin" className={readOnlyInputCls} />
-            </label>
-          </div>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-medium text-gray-600">Name</span>
+            <input readOnly tabIndex={-1} value="PMS Admin" className={readOnlyInputCls} />
+          </label>
 
           <label className="block space-y-1.5">
             <span className="text-xs font-medium text-gray-600">Email</span>
@@ -101,10 +87,6 @@ export function UserProfileModal({ open, onClose }: UserProfileModalProps) {
             <label className="block space-y-1.5">
               <span className="text-xs font-medium text-gray-600">Department</span>
               <input readOnly tabIndex={-1} value="Admin" className={readOnlyInputCls} />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-xs font-medium text-gray-600">Access Type</span>
-              <input readOnly tabIndex={-1} value="User" className={readOnlyInputCls} />
             </label>
           </div>
         </div>

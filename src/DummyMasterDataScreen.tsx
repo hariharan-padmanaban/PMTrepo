@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/EnjazMasterDataService';
+import { enj } from './ui/enjForm';
 
 const CATEGORIES = [
   'Program Code',
@@ -72,7 +73,7 @@ export default function DummyMasterDataScreen() {
   return (
     <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-xl font-semibold text-[#2d356b]">Dummy - ENJAZ Master Data</h2>
+        <h2 className="text-xl font-semibold text-primary">Dummy - ENJAZ Master Data</h2>
         <button
           type="button"
           onClick={() => void loadRows()}
@@ -83,13 +84,13 @@ export default function DummyMasterDataScreen() {
       </div>
       {message && <p className="text-sm text-gray-700 mb-3">{message}</p>}
       <div className="overflow-auto rounded-lg border border-gray-100">
-        <table className="w-full min-w-[760px]">
-          <thead className="bg-gray-50 border-b border-gray-100">
-            <tr className="text-left text-[11px] uppercase text-gray-500">
-              <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2">Category</th>
-              <th className="px-3 py-2">Code (ID)</th>
-              <th className="px-3 py-2">Status</th>
+        <table className={`${enj.table} min-w-[760px] text-sm`}>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Category</th>
+              <th>Code (ID)</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>

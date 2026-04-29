@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Inter:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -23,15 +23,35 @@
 
   button,
   [role="button"],
+  [role="combobox"],
   a,
-  summary {
+  summary,
+  select,
+  input[type="date"],
+  input[type="datetime-local"] {
     cursor: pointer;
   }
 
   button:disabled,
-  [aria-disabled="true"] {
+  [aria-disabled="true"],
+  select:disabled,
+  input[type="date"]:disabled,
+  input[type="datetime-local"]:disabled {
     cursor: not-allowed;
   }
+}
+
+/* App-wide dark mode without rewriting each Tailwind utility class. */
+html.enjaz-dark #root {
+  filter: invert(0.9) hue-rotate(180deg) brightness(1.1) contrast(0.95) saturate(0.95);
+  background: #2b3445;
+  transition: filter 220ms ease, background-color 220ms ease;
+}
+
+html.enjaz-dark img,
+html.enjaz-dark video {
+  filter: invert(0.9) hue-rotate(180deg) brightness(1.1) contrast(0.95) saturate(0.95);
+  transition: filter 220ms ease;
 }
 
 .chart-card {
@@ -56,6 +76,19 @@
   animation: chart-grow 700ms ease both;
 }
 
+input[type="date"],
+input[type="datetime-local"] {
+  position: relative;
+  padding-right: 2rem;
+}
+
+/* Keep a visible native calendar icon and pointer feedback. */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+}
+
 @keyframes chart-grow {
   from {
     transform: scaleY(0.35);
@@ -64,5 +97,404 @@
   to {
     transform: scaleY(1);
     opacity: 1;
+  }
+}
+
+.enj-progress-fill {
+  transform-origin: left center;
+  animation: progress-slide-in 500ms ease-out both;
+}
+
+@keyframes progress-slide-in {
+  from {
+    transform: scaleX(0);
+    opacity: 0.6;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+/* Business role — layout and cards aligned with admin dashboard */
+.enjaz-business-ui .enjaz-business-ui-main .bg-white.rounded-xl,
+.enjaz-business-ui .enjaz-business-ui-main section.rounded-xl {
+  border: 1px solid rgb(243 244 246);
+}
+
+.enjaz-business-dashboard h2,
+.enjaz-business-dashboard h3 {
+  color: #2d356b;
+  font-weight: 600;
+}
+
+/* ── Enjaz shared form controls: one height (h-9), one border/focus, all screens ── */
+@layer components {
+  .enj-control {
+    @apply h-9 min-h-9 max-h-9 w-full max-w-full rounded-md border border-gray-200 bg-white px-3 text-sm leading-none text-gray-800 shadow-sm
+      transition-[color,background-color,border-color,box-shadow] duration-150
+      focus:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#b28a44]/30 focus:ring-offset-0
+      disabled:cursor-not-allowed disabled:opacity-50
+      placeholder:text-gray-400;
+  }
+  .enj-control[aria-invalid="true"] {
+    @apply focus:ring-rose-200/80;
+  }
+  .enj-control[readonly]:not(select) {
+    @apply cursor-default bg-gray-50 text-gray-700;
+  }
+  select.enj-control {
+    @apply py-0 pr-9;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.55rem center;
+    background-size: 1rem 1rem;
+  }
+  .enj-textarea {
+    @apply min-h-[5.5rem] w-full max-w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 shadow-sm
+      transition-[color,background-color,border-color,box-shadow] duration-150
+      focus:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#b28a44]/30 focus:ring-offset-0
+      disabled:cursor-not-allowed disabled:opacity-50
+      placeholder:text-gray-400;
+  }
+  .enj-btn {
+    @apply inline-flex h-9 min-h-9 max-h-9 max-w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-4 text-sm font-medium leading-none shadow-sm
+      transition-[color,background-color,border-color,opacity,box-shadow,transform] duration-150
+      focus:outline-none focus:ring-2 focus:ring-[#b28a44]/30 focus:ring-offset-0
+      disabled:cursor-not-allowed disabled:opacity-50
+      active:scale-[0.99];
+  }
+  .enj-btn-default {
+    @apply border-gray-200 bg-white text-gray-800 hover:bg-gray-50;
+  }
+  .enj-btn-primary {
+    @apply border-[#b28a44] bg-[#b28a44] text-white hover:border-[#9a7638] hover:bg-[#9a7638];
+  }
+  .enj-btn-outline {
+    @apply border-[#b28a44] bg-white text-[#b28a44] hover:bg-amber-50/80;
+  }
+  .enj-btn-ghost {
+    @apply border-transparent bg-transparent text-gray-700 shadow-none hover:bg-gray-100;
+  }
+  .enj-btn-danger {
+    @apply border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700 focus:ring-rose-300/50;
+  }
+
+  /* ── Enjaz layout + typography scale (all roles / screens) ── */
+  .enj-app-main {
+    @apply px-4 py-4 sm:px-5 sm:py-5 md:px-6;
+  }
+  .enj-stack {
+    @apply space-y-4 sm:space-y-5;
+  }
+  .enj-page-title {
+    font-family: var(--font-headline);
+    @apply text-lg font-bold tracking-tight text-[#2f3150] sm:text-xl;
+  }
+  .enj-section-title {
+    @apply text-sm font-bold text-gray-900 sm:text-base;
+  }
+  .enj-subhead {
+    @apply text-xs font-semibold text-gray-800;
+  }
+  .enj-label {
+    @apply block text-[11px] font-medium leading-tight text-gray-500;
+  }
+  .enj-caption {
+    @apply text-[10px] leading-snug text-gray-500;
+  }
+  .enj-body {
+    @apply text-sm text-gray-800;
+  }
+  .enj-field-error {
+    @apply text-[11px] leading-snug text-rose-600;
+  }
+  .enj-card {
+    @apply overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm;
+  }
+  .enj-card-pad {
+    @apply p-4 sm:p-5;
+  }
+  .enj-chart-svg {
+    @apply h-44 min-h-44 w-full sm:h-48 sm:min-h-48;
+  }
+  /* ── Tables (TableDesign.md / Figma) — sizes inherit from parent; tokens for colors ── */
+  .enj-table {
+    @apply w-full min-w-0 table-auto border-collapse text-left text-sm font-normal text-[#374151];
+  }
+  .enj-table thead th {
+    @apply border-b border-[#E5E7EB] bg-[#F3F4F6] px-3 py-2.5 text-left font-semibold tracking-[0.03em] text-[#6B7280] first:pl-3 last:pr-3 sm:px-4;
+  }
+  .enj-table tbody td {
+    @apply border-b border-[#E5E7EB] px-3 py-2.5 align-middle font-normal text-[#374151] first:pl-3 last:pr-3 sm:px-4;
+  }
+  .enj-table tbody > tr:nth-child(odd) > td {
+    @apply bg-white;
+  }
+  .enj-table tbody > tr:nth-child(even) > td {
+    @apply bg-[#F9FAFB];
+  }
+  .enj-table tbody > tr:hover > td {
+    background-color: #f3f4f6;
+  }
+  /* Legacy “brand” alias — same look as base for consistency */
+  .enj-table--brand thead th {
+    @apply border-b border-[#E5E7EB] bg-[#F3F4F6] font-semibold tracking-[0.03em] text-[#6B7280];
+  }
+  .enj-table--brand tbody td {
+    @apply border-b border-[#E5E7EB] py-2.5 sm:py-3;
+  }
+  .enj-table--brand tbody > tr:hover > td {
+    background-color: #f3f4f6;
+  }
+
+  .enj-table-link {
+    @apply font-medium text-[#2563EB] hover:underline;
+  }
+  .enj-table-progress-track {
+    @apply h-2 min-h-2 overflow-hidden rounded-full bg-[#E5E7EB];
+  }
+  .enj-table-progress-fill {
+    @apply h-full rounded-full bg-[#2563EB] enj-progress-fill;
+  }
+
+  /* Status pills (TableDesign.md) */
+  .enj-table-status {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 font-semibold leading-tight;
+  }
+  .enj-table-status--completed {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+  }
+  .enj-table-status--ontrack {
+    background-color: #d1fae5;
+    color: #065f46;
+  }
+  .enj-table-status--delayed {
+    background-color: #fee2e2;
+    color: #991b1b;
+  }
+  .enj-table-status--neutral {
+    background-color: #f3f4f6;
+    color: #374151;
+  }
+
+  /**
+   * Program role — “Program” screen (Figma): DM Sans, lavender header bar, card-style body rows
+   */
+  .enj-program-screen-table.enj-table {
+    border-collapse: separate;
+    border-spacing: 0 10px;
+    @apply w-full;
+  }
+  .enj-program-screen-table.enj-table thead th {
+    @apply border-0 px-4 py-0 text-left align-middle;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: normal;
+    color: rgba(118, 131, 150, 1);
+    background-color: rgba(225, 227, 236, 1);
+    height: 40.99082565307617px;
+  }
+  /* No rounded corners for header bar (matches spec). */
+  .enj-program-screen-table.enj-table thead tr th {
+    border-radius: 0 !important;
+  }
+  .enj-program-screen-table.enj-table tbody td {
+    @apply border-0 px-4 align-middle;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.25;
+    color: rgba(35, 35, 96, 1);
+    background-color: #fff;
+    height: 61.48624038696289px;
+    display: flex;
+    align-items: center;
+    transition: background-color 0.15s ease, filter 0.15s ease;
+  }
+  .enj-program-screen-table.enj-table tbody tr td:first-child {
+    border-radius: 10.44px 0 0 10.44px;
+  }
+  .enj-program-screen-table.enj-table tbody tr td:last-child {
+    border-radius: 0 10.44px 10.44px 0;
+  }
+  .enj-program-screen-table.enj-table tbody tr.enj-program-screen-table__row {
+    filter: drop-shadow(0 1px 2px rgb(15 23 42 / 0.07));
+    transition: filter 0.18s ease;
+  }
+  .enj-program-screen-table.enj-table tbody tr.enj-program-screen-table__row:hover {
+    filter: drop-shadow(0 2px 10px rgb(15 23 42 / 0.12));
+  }
+  .enj-program-screen-table.enj-table tbody > tr:nth-child(odd) > td,
+  .enj-program-screen-table.enj-table tbody > tr:nth-child(even) > td {
+    background-color: #fff;
+  }
+  .enj-program-screen-table.enj-table tbody tr.enj-program-screen-table__row:hover > td {
+    background-color: rgb(248 250 252);
+  }
+  .enj-program-screen-table .enj-program-screen-table__name-btn {
+    @apply max-w-[min(280px,30vw)] cursor-pointer truncate text-left font-medium;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  }
+  .enj-program-screen-table .enj-table-status {
+    @apply px-2.5 py-1 text-[12px] font-medium;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  }
+  .enj-program-screen-table .enj-program-screen-table__pct {
+    @apply min-w-[2.25rem] text-right tabular-nums;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    color: rgba(118, 131, 150, 1);
+  }
+
+  /**
+   * Program role — project rows table (portfolio expanded rows)
+   * Mirrors the provided Figma card-row projects design.
+   */
+  .enj-program-projects-table.enj-table {
+    border-collapse: separate;
+    border-spacing: 0 8px;
+  }
+  .enj-program-projects-table.enj-table thead th {
+    @apply border-0 px-4 py-3 text-left align-middle;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1;
+    color: rgba(118, 131, 150, 1);
+    background-color: rgba(204, 210, 239, 1);
+  }
+  .enj-program-projects-table.enj-table thead tr th:first-child {
+    border-radius: 12px 0 0 12px;
+  }
+  .enj-program-projects-table.enj-table thead tr th:last-child {
+    border-radius: 0 12px 12px 0;
+  }
+  .enj-program-projects-table.enj-table tbody tr.enj-program-projects-table__row td {
+    @apply border-0 px-4 py-2 align-middle;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.875rem;
+    color: rgba(35, 35, 96, 1);
+    background: #fff;
+    transition: background-color 0.15s ease, filter 0.15s ease;
+  }
+  .enj-program-projects-table.enj-table tbody tr.enj-program-projects-table__row td:first-child {
+    border-radius: 12px 0 0 12px;
+  }
+  .enj-program-projects-table.enj-table tbody tr.enj-program-projects-table__row td:last-child {
+    border-radius: 0 12px 12px 0;
+  }
+  .enj-program-projects-table.enj-table tbody tr.enj-program-projects-table__row {
+    filter: drop-shadow(0 1px 2px rgb(15 23 42 / 0.07));
+  }
+  .enj-program-projects-table.enj-table tbody tr.enj-program-projects-table__row:hover {
+    filter: drop-shadow(0 2px 8px rgb(15 23 42 / 0.1));
+  }
+  .enj-program-projects-table.enj-table tbody tr.enj-program-projects-table__row:hover td {
+    background-color: rgb(248 250 252);
+  }
+  .enj-program-projects-table .enj-program-projects-table__schedule {
+    @apply flex items-start gap-2 text-[10px];
+  }
+  .enj-program-projects-table .enj-program-projects-table__schedule-sep {
+    @apply h-8 w-px bg-[#E5E7EB];
+  }
+  .enj-program-projects-table .enj-program-projects-table__label {
+    @apply font-normal text-[#6B7280];
+  }
+  .enj-program-projects-table .enj-program-projects-table__value {
+    @apply mt-0.5 inline-flex items-center gap-1 font-medium text-[#111827];
+  }
+
+  /* Dummy screen exact compact projects table look */
+  .enj-dummy-projects-table.enj-table {
+    border-collapse: separate;
+    border-spacing: 0 8px;
+  }
+  .enj-dummy-projects-table.enj-table thead th {
+    @apply h-[40.99px] border-0 px-3 py-2 text-left align-middle text-[13px] font-bold normal-case tracking-normal;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    color: rgba(118, 131, 150, 1);
+    background-color: rgba(225, 227, 236, 1);
+  }
+  .enj-dummy-projects-table.enj-table tbody tr.enj-dummy-projects-table__row td {
+    @apply h-[61.49px] border-0 px-3 py-2 align-middle text-[12px] leading-tight;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    color: rgba(35, 35, 96, 1);
+    font-weight: 500;
+    background: #fff;
+  }
+  .enj-dummy-projects-table.enj-table tbody tr.enj-dummy-projects-table__row td:first-child {
+    border-radius: 10.44px 0 0 10.44px;
+  }
+  .enj-dummy-projects-table.enj-table tbody tr.enj-dummy-projects-table__row td:last-child {
+    border-radius: 0 10.44px 10.44px 0;
+  }
+  .enj-dummy-projects-table.enj-table tbody tr.enj-dummy-projects-table__row {
+    filter: drop-shadow(0 1px 3px rgb(15 23 42 / 0.08));
+    transition: filter 0.15s ease;
+  }
+  .enj-dummy-projects-table.enj-table tbody tr.enj-dummy-projects-table__row:hover {
+    filter: drop-shadow(0 2px 8px rgb(15 23 42 / 0.1));
+  }
+  .enj-dummy-projects-table.enj-table tbody tr.enj-dummy-projects-table__row:hover td {
+    background-color: #f8fafc;
+  }
+  .enj-dummy-projects-table .enj-dummy-projects-table__schedule {
+    @apply grid grid-cols-[1fr_auto_1fr] items-start gap-2 text-[10px];
+  }
+  .enj-dummy-projects-table .enj-dummy-projects-table__schedule-sep {
+    @apply h-8 w-px bg-[#E5E7EB];
+  }
+  .enj-dummy-projects-table .enj-dummy-projects-table__label {
+    @apply text-[10px] font-medium text-[#6B7280];
+  }
+  .enj-dummy-projects-table .enj-dummy-projects-table__value {
+    @apply inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-medium text-[#111827];
+  }
+
+  .enj-table--compact tbody td {
+    @apply py-2 text-xs sm:text-sm;
+  }
+  .enj-table--compact thead th {
+    @apply py-2 text-[10px] sm:text-xs;
+  }
+
+  /* ── Badge / status pills ── */
+  .enj-badge {
+    @apply inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-tight;
+  }
+  .enj-badge-success { @apply bg-emerald-100 text-emerald-800; }
+  .enj-badge-danger  { @apply bg-rose-100 text-rose-800; }
+  .enj-badge-warning { @apply bg-amber-100 text-amber-900; }
+  .enj-badge-info    { @apply bg-sky-100 text-sky-800; }
+  .enj-badge-neutral { @apply bg-gray-100 text-gray-600; }
+
+  /* rounded-md variant for sprint/task status pills */
+  .enj-pill {
+    @apply inline-flex items-center justify-center rounded-md px-2 py-0.5 text-xs font-medium leading-tight;
+  }
+  .enj-pill-success { @apply bg-emerald-100 text-emerald-700; }
+  .enj-pill-warning { @apply bg-amber-100 text-amber-800; }
+  .enj-pill-danger  { @apply bg-rose-50 text-rose-600; }
+  .enj-pill-neutral { @apply bg-gray-100 text-gray-600; }
+
+  /* ── Chart size variants ── */
+  .enj-chart-svg--sm {
+    @apply h-32 min-h-32 w-full;
+  }
+  .enj-chart-svg--lg {
+    @apply h-72 min-h-72 w-full;
+  }
+
+  /* ── Tinted section panel background ── */
+  .enj-panel-bg {
+    @apply rounded-xl bg-[#eef0f6] p-3 sm:p-4;
   }
 }

@@ -3,6 +3,8 @@ import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/EnjazMasterDataService';
 import { NotificationToast, type ToastType } from './NotificationToast';
 import { New_enjazmasterdatasService } from './generated/services/New_enjazmasterdatasService';
+import { PagerBar } from './PagerBar';
+import { enj } from './ui/enjForm';
 
 const CATEGORIES = [
   'Program Code',
@@ -116,7 +118,12 @@ function optionsFromMetadataAttribute(attrs: Array<Record<string, unknown>>, log
     .filter((x): x is { label: string; value: number } => Boolean(x));
 }
 
-export default function ManageMasterDataScreen() {
+type ManageMasterDataScreenProps = {
+  /** When true, no outer “Manage Master Data” title or card border — used inside **Manage Data**. */
+  embeddedInManageData?: boolean;
+};
+
+export default function ManageMasterDataScreen({ embeddedInManageData = false }: ManageMasterDataScreenProps) {
   const [rows, setRows] = useState<EnjazMasterDataRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>(CATEGORIES[0]);
@@ -199,10 +206,11 @@ export default function ManageMasterDataScreen() {
       .sort((a, b) => codeNumber(a) - codeNumber(b));
   }, [rows, selectedCategory, searchText, categoryTextForRow]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageSafe = Math.min(Math.max(1, page), totalPages);
   const pagedRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
+    const start = (pageSafe - 1) * PAGE_SIZE;
     return filtered.slice(start, start + PAGE_SIZE);
-  }, [filtered, page]);
+  }, [filtered, pageSafe]);
 
   useEffect(() => {
     setPage(1);
@@ -459,19 +467,37 @@ export default function ManageMasterDataScreen() {
   };
 
   return (
-    <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+    <section
+      className={
+        embeddedInManageData
+          ? 'flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden p-0 border-0 bg-transparent shadow-none'
+          : 'rounded-xl border border-gray-100 bg-white p-4 shadow-sm'
+      }
+    >
       {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
-      <h2 className="text-xl font-semibold text-[#2d356b] mb-3">Manage Master Data</h2>
-      <p className="text-sm text-gray-600 mb-3">{`Manage '${selectedCategory}'`}</p>
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
-        <aside className="rounded-lg border border-gray-100 bg-gray-50 p-2 max-h-[70vh] overflow-auto">
+      {!embeddedInManageData && <h2 className={`${enj.pageTitle} mb-3`}>Manage Master Data</h2>}
+      <p className={embeddedInManageData ? 'shrink-0 text-xs text-gray-600 mb-2' : 'text-sm text-gray-600 mb-3'}>{`Manage '${selectedCategory}'`}</p>
+      <div
+        className={
+          embeddedInManageData
+            ? 'grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[220px_1fr]'
+            : 'grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4'
+        }
+      >
+        <aside
+          className={
+            embeddedInManageData
+              ? 'max-h-40 overflow-auto rounded-lg border border-gray-100 bg-gray-50 p-2 lg:max-h-none'
+              : 'rounded-lg border border-gray-100 bg-gray-50 p-2 max-h-[70vh] overflow-auto'
+          }
+        >
           {sortedCategories.map((cat) => (
             <button
               key={cat}
               type="button"
               onClick={() => setSelectedCategory(cat)}
               className={`w-full text-left px-3 py-2 rounded-md text-sm mb-1 ${
-                selectedCategory === cat ? 'bg-[#151d5d] text-white' : 'text-gray-700 hover:bg-white'
+                selectedCategory === cat ? 'bg-primary text-white' : 'text-gray-700 hover:bg-white'
               }`}
             >
               {cat}
@@ -479,18 +505,18 @@ export default function ManageMasterDataScreen() {
           ))}
         </aside>
 
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className={embeddedInManageData ? 'flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden' : 'space-y-3'}>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
             <div className="relative w-full md:w-[320px]">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
                 placeholder="Search by Name"
-                className="h-9 w-full rounded-md border border-gray-200 pl-9 pr-3 text-sm"
+                className={`${enj.control} pl-9`}
               />
             </div>
-            <button type="button" onClick={openAdd} className="h-9 px-4 rounded-md bg-[#b28a44] text-white text-sm inline-flex items-center gap-2">
+            <button type="button" onClick={openAdd} className={`${enj.btnPrimary} px-4`}>
               <Plus size={14} />
               Add New
             </button>
@@ -504,15 +530,24 @@ export default function ManageMasterDataScreen() {
             <div className="rounded-lg border border-gray-100 p-6 text-sm text-gray-500">No records found.</div>
           ) : (
             <>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div
+              className={
+                embeddedInManageData
+                  ? 'grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start items-start gap-2 overflow-y-auto pr-0.5 sm:grid-cols-2 md:grid-cols-3 [scrollbar-gutter:stable]'
+                  : 'grid content-start items-start grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'
+              }
+            >
               {pagedRows.map((row) => (
-                <article key={String(row.new_enjazmasterdataid ?? `${row.new_enjazmasterdata1}-${row.new_code}`)} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                <article
+                  key={String(row.new_enjazmasterdataid ?? `${row.new_enjazmasterdata1}-${row.new_code}`)}
+                  className="w-full max-w-full self-start rounded-xl border border-gray-100 bg-white p-3 shadow-sm"
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-[#2d356b]">{String(row.new_enjazmasterdata1 ?? '-')}</p>
+                      <p className="text-sm font-semibold text-primary">{String(row.new_enjazmasterdata1 ?? '-')}</p>
                       <p className="text-xs text-gray-500 mt-1">ID: {displayCodeForRow(row)}</p>
                     </div>
-                    <span className={`text-[11px] px-2 py-1 rounded-full ${statusText(row) === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
+                    <span className={`${enj.badge} ${statusText(row) === 'Active' ? enj.badgeSuccess : enj.badgeNeutral}`}>
                       {statusText(row)}
                     </span>
                   </div>
@@ -527,29 +562,15 @@ export default function ManageMasterDataScreen() {
                 </article>
               ))}
             </div>
-            <div className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-3 py-2">
-              <p className="text-xs text-gray-500">
-                Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  className="h-8 px-3 rounded-md border border-gray-200 text-sm disabled:opacity-50"
-                >
-                  Previous
-                </button>
-                <span className="text-xs text-gray-600">{page} / {totalPages}</span>
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  className="h-8 px-3 rounded-md border border-gray-200 text-sm disabled:opacity-50"
-                >
-                  Next
-                </button>
-              </div>
+            <div className="shrink-0 rounded-lg border border-gray-100 bg-white px-3 py-2">
+              <PagerBar
+                page={pageSafe}
+                pageSize={PAGE_SIZE}
+                total={filtered.length}
+                onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={loading}
+              />
             </div>
             </>
           )}
@@ -560,7 +581,7 @@ export default function ManageMasterDataScreen() {
         <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={() => setShowForm(false)}>
           <div className="w-full max-w-xl rounded-xl border border-gray-100 bg-white p-5 shadow-xl" role="dialog" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-[#2d356b]">
+              <h3 className={enj.sectionTitle}>
                 {editingId ? `Edit '${selectedCategory}'` : `Add '${selectedCategory}'`}
               </h3>
               <button type="button" onClick={() => setShowForm(false)} className="h-8 w-8 rounded-md hover:bg-gray-100 inline-flex items-center justify-center">
@@ -570,7 +591,7 @@ export default function ManageMasterDataScreen() {
             <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label>
                 <span className="text-xs text-gray-600">Name *</span>
-                <input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                <input className={`mt-1 ${enj.control}`} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
                 {errors.name && <p className="text-[11px] text-red-600 mt-1">{errors.name}</p>}
               </label>
               <label>
@@ -578,7 +599,7 @@ export default function ManageMasterDataScreen() {
                 <input
                   type="number"
                   readOnly
-                  className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-600"
+                  className={`mt-1 ${enj.control}`}
                   value={form.code}
                 />
                 {errors.code && <p className="text-[11px] text-red-600 mt-1">{errors.code}</p>}
@@ -586,15 +607,15 @@ export default function ManageMasterDataScreen() {
               {editingId && (
                 <label>
                   <span className="text-xs text-gray-600">Status</span>
-                  <select className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as FormState['status'] }))}>
+                  <select className={`mt-1 ${enj.control}`} value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as FormState['status'] }))}>
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
                   </select>
                 </label>
               )}
               <div className="md:col-span-2 flex justify-end gap-2">
-                <button type="button" onClick={() => setShowForm(false)} className="h-9 px-5 rounded-md border border-[#b28a44] text-[#b28a44] text-sm">Cancel</button>
-                <button type="submit" disabled={busy} className="h-9 px-5 rounded-md bg-[#b28a44] text-white text-sm disabled:opacity-50">
+                <button type="button" onClick={() => setShowForm(false)} className={enj.btnOutline}>Cancel</button>
+                <button type="submit" disabled={busy} className={enj.btnPrimary}>
                   {busy ? 'Saving...' : editingId ? 'Update' : 'Create'}
                 </button>
               </div>
@@ -614,14 +635,14 @@ export default function ManageMasterDataScreen() {
             role="dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold text-[#2d356b]">Confirm Delete</h3>
+            <h3 className={enj.sectionTitle}>Confirm Delete</h3>
             <p className="mt-2 text-sm text-gray-600">Do you want to delete this item?</p>
             <p className="mt-1 text-sm text-gray-500">{String(pendingDelete.new_enjazmasterdata1 ?? 'Record')}</p>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPendingDelete(null)}
-                className="h-9 px-5 rounded-md border border-gray-300 text-gray-700 text-sm"
+                className={enj.btnDefault}
               >
                 No
               </button>
@@ -632,7 +653,7 @@ export default function ManageMasterDataScreen() {
                   setPendingDelete(null);
                   if (row) await removeRow(row);
                 }}
-                className="h-9 px-5 rounded-md bg-rose-600 text-white text-sm"
+                className={enj.btnDanger}
               >
                 Yes
               </button>

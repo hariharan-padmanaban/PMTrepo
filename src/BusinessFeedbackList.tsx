@@ -3,15 +3,127 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { ChevronDown, Pencil, RefreshCw } from 'lucide-react';
 import { DonutChart } from './DonutChart';
+import { New_feedbacksService } from './generated/services/New_feedbacksService';
+import { New_projectsService } from './generated/services/New_projectsService';
+import { New_projectsnew_projectsponsor } from './generated/models/New_projectsModel';
+import { NewUsersService } from './services/NewUsersService';
+import type { New_feedbacks } from './generated/models/New_feedbacksModel';
+import { ScreenLoader } from './ScreenLoader';
+import { displayNameFromXrmString } from './sessionUser';
+import { enj } from './ui/enjForm';
 
 type Satisfaction = 'Very Satisfied' | 'Satisfied' | 'Unsatisfied';
 type Phase = 'UAT' | 'Live';
 
+const SATISFACTION_TO_CHOICE: Record<Satisfaction, number> = {
+  'Very Satisfied': 100000000,
+  Satisfied: 100000001,
+  Unsatisfied: 100000002,
+};
+
+const PHASE_TO_CHOICE: Record<Phase, number> = {
+  UAT: 100000000,
+  Live: 100000001,
+};
+
+const CHOICE_TO_SATISFACTION = (n: number | undefined): Satisfaction | null => {
+  if (n === 100000000) return 'Very Satisfied';
+  if (n === 100000001) return 'Satisfied';
+  if (n === 100000002) return 'Unsatisfied';
+  return null;
+};
+
+const CHOICE_TO_PHASE = (n: number | undefined): Phase | null => {
+  if (n === 100000000) return 'UAT';
+  if (n === 100000001) return 'Live';
+  return null;
+};
+
+type ProjectRow = Record<string, unknown>;
+
+function clip(s: string, max: number): string {
+  const t = s.trim();
+  return t.length <= max ? t : t.slice(0, max);
+}
+
+function readProjectName(row: ProjectRow): string {
+  return String(row.new_projectname ?? row.new_name ?? '').trim();
+}
+
+function readProjectSponsorLabel(row: ProjectRow): string {
+  const named = String(row.new_projectsponsorname ?? row.crcf8_projectsponsorname ?? '').trim();
+  if (named) return clip(named, 100);
+  return '';
+}
+
+/**
+ * Project.ProjectSponsor from new_project — Project Creation uses crcf8_projectsponsor;
+ * standard column is new_projectsponsor (option set) with new_projectsponsorname.
+ */
+function readProjectSponsorFromProject(row: ProjectRow): string {
+  const t = (v: unknown) => String(v ?? '').trim();
+
+  const crcf8 = t(row.crcf8_projectsponsor);
+  if (crcf8) {
+    const asNum = Number(crcf8);
+    if (Number.isFinite(asNum)) {
+      const opt = (New_projectsnew_projectsponsor as Record<number, string>)[asNum];
+      if (opt) {
+        return opt === 'LegalAffairs' ? 'Legal Affairs' : clip(String(opt).replace(/_/g, ' '), 100);
+      }
+    }
+    return clip(crcf8, 100);
+  }
+
+  const crcf8n = t(row.crcf8_projectsponsorname);
+  if (crcf8n) return clip(crcf8n, 100);
+
+  const n = Number(row.new_projectsponsor);
+  if (Number.isFinite(n)) {
+    const raw = (New_projectsnew_projectsponsor as Record<number, string>)[n];
+    if (raw) {
+      return raw === 'LegalAffairs' ? 'Legal Affairs' : clip(String(raw).replace(/_/g, ' '), 100);
+    }
+  }
+
+  return readProjectSponsorLabel(row);
+}
+
+function readAssignToProjectManager(row: ProjectRow): string {
+  return String(
+    row.crcf8_projectmanager ?? row.new_programmanager ?? row.new_projectmanagername ?? '',
+  ).trim();
+}
+
+function readProjectManagerDisplay(row: ProjectRow): string {
+  return String(row.new_projectmanagername ?? readAssignToProjectManager(row)).trim();
+}
+
+function parseProjectStartDateIso(row: ProjectRow): string {
+  const raw = String(row.new_startdate ?? '').trim();
+  if (!raw) return '';
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
+}
+
+function formatUsFromIso(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  if (!m || !d) return iso;
+  return `${m}/${d}/${y}`;
+}
+
 interface FeedbackRow {
-  id: number;
+  id: string;
   projectName: string;
   sponsor: string;
   pmInitials: string;
@@ -19,11 +131,12 @@ interface FeedbackRow {
   satisfaction: Satisfaction;
   date: string;
   phase: Phase;
-  startDateIso?: string;
-  businessOwnerName?: string;
-  recommendations?: string;
-  challenges?: string;
-  feedbackNote?: string;
+  startDateIso: string;
+  /** `new_name`: business owner (free text); legacy rows may store an email. */
+  businessOwnerName: string;
+  recommendations: string;
+  challenges: string;
+  feedbackNote: string;
 }
 
 type FeedbackFormState = {
@@ -41,117 +154,28 @@ type FeedbackFormState = {
 
 type FeedbackScreen = 'list' | 'add' | 'edit';
 
-const INITIAL_ROWS: FeedbackRow[] = [
-  {
-    id: 1,
-    projectName: 'test project',
-    sponsor: 'Sales',
-    pmInitials: 'HA',
-    pmEmail: 'h.abdelgaffar@almajles.gov.ae',
-    satisfaction: 'Satisfied',
-    date: '10/24/2025',
-    phase: 'Live',
-    startDateIso: '2025-10-24',
-    businessOwnerName: 'pms admin',
-    recommendations: 'Test Recommendations',
-    challenges: 'Challenges123',
-    feedbackNote: 'Test333 Feedback',
-  },
-  {
-    id: 2,
-    projectName: 'Ror test',
-    sponsor: 'Sales',
-    pmInitials: 'P4',
-    pmEmail: 'project.lead@company.com',
-    satisfaction: 'Very Satisfied',
-    date: '10/22/2025',
-    phase: 'UAT',
-    startDateIso: '2025-10-22',
-  },
-  {
-    id: 3,
-    projectName: 'HR Wallet',
-    sponsor: 'IT',
-    pmInitials: 'PN',
-    pmEmail: 'pm.wallet@company.com',
-    satisfaction: 'Satisfied',
-    date: '10/20/2025',
-    phase: 'UAT',
-    startDateIso: '2025-10-20',
-  },
-  {
-    id: 4,
-    projectName: 'Portal Revamp',
-    sponsor: 'IT',
-    pmInitials: 'HR',
-    pmEmail: 'hr.manager@company.com',
-    satisfaction: 'Satisfied',
-    date: '10/18/2025',
-    phase: 'UAT',
-    startDateIso: '2025-10-18',
-  },
-  {
-    id: 5,
-    projectName: 'Analytics Hub',
-    sponsor: 'Sales',
-    pmInitials: 'P4',
-    pmEmail: 'project.lead@company.com',
-    satisfaction: 'Satisfied',
-    date: '10/15/2025',
-    phase: 'Live',
-    startDateIso: '2025-10-15',
-  },
-];
-
 function satisfactionClass(s: Satisfaction): string {
-  if (s === 'Very Satisfied') return 'bg-amber-100 text-amber-900 font-medium';
-  if (s === 'Unsatisfied') return 'bg-rose-100 text-rose-800 font-medium';
-  return 'bg-emerald-100 text-emerald-900 font-medium';
+  if (s === 'Very Satisfied') return `${enj.badge} ${enj.badgeWarning}`;
+  if (s === 'Unsatisfied') return `${enj.badge} ${enj.badgeDanger}`;
+  return `${enj.badge} ${enj.badgeSuccess}`;
 }
 
 function phaseClass(p: Phase): string {
-  return p === 'Live' ? 'bg-emerald-100 text-emerald-900 font-medium' : 'bg-orange-100 text-orange-900 font-medium';
+  return p === 'Live' ? `${enj.badge} ${enj.badgeSuccess}` : `${enj.badge} ${enj.badgeWarning}`;
 }
 
-function initialsFromEmail(email: string): string {
-  const local = email.split('@')[0]?.trim() || '';
-  const parts = local.split(/[._\s-]+/).filter(Boolean);
+function initialsFromEmailOrName(s: string): string {
+  if (!s) return 'PM';
+  if (s.includes('@')) {
+    const local = s.split('@')[0]?.trim() || '';
+    const parts = local.split(/[._\s-]+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase().slice(0, 4);
+    return local.slice(0, 2).toUpperCase() || 'PM';
+  }
+  const parts = s.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase().slice(0, 4);
-  return local.slice(0, 2).toUpperCase() || 'PM';
+  return s.slice(0, 2).toUpperCase() || 'PM';
 }
-
-function formatUsDate(isoDate: string): string {
-  if (!isoDate) return '';
-  const [y, m, d] = isoDate.split('-');
-  if (!m || !d) return isoDate;
-  return `${m}/${d}/${y}`;
-}
-
-function parseUsDateToIso(us: string): string {
-  const parts = us.trim().split('/');
-  if (parts.length !== 3) return '';
-  const [m, d, y] = parts;
-  if (!y || !m || !d) return '';
-  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-}
-
-function rowToForm(row: FeedbackRow): FeedbackFormState {
-  const startDate = row.startDateIso ?? parseUsDateToIso(row.date);
-  return {
-    projectName: row.projectName,
-    sponsor: row.sponsor,
-    projectManager: row.pmEmail,
-    startDate,
-    businessOwnerName: row.businessOwnerName ?? '',
-    satisfaction: row.satisfaction,
-    phase: row.phase,
-    recommendations: row.recommendations ?? '',
-    challenges: row.challenges ?? '',
-    feedback: row.feedbackNote ?? '',
-  };
-}
-
-const PROJECT_OPTIONS = ['HR Wallet', 'test project', 'Ror test', 'Portal Revamp', 'Analytics Hub'];
 
 const EMPTY_FORM: FeedbackFormState = {
   projectName: '',
@@ -166,121 +190,335 @@ const EMPTY_FORM: FeedbackFormState = {
   feedback: '',
 };
 
-const ctl =
-  'rounded-md border border-gray-200 bg-white text-sm text-gray-800 shadow-sm placeholder:text-gray-400 focus:border-[#b28a44] focus:outline-none focus:ring-2 focus:ring-[#b28a44]/25';
-const fieldInputCls = `w-full ${ctl} h-9 px-3`;
-const fieldSelectCls = `w-full ${ctl} h-9 appearance-none px-3 pr-10`;
-const fieldTextareaShortCls = `w-full ${ctl} min-h-[88px] resize-y px-3 py-2 leading-snug`;
-const fieldTextareaFeedbackCls = `w-full ${ctl} min-h-[140px] resize-y px-3 py-2 leading-relaxed`;
+function isValidEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
+/** Shared enj form tokens — see `index.css` / `ui/enjForm`. */
+const fieldInputReadonlyCls = `w-full ${enj.control} cursor-default bg-slate-50/90 text-sm text-gray-700`;
+const fieldSelectCls = `w-full ${enj.control} text-sm`;
+const fieldTextareaShortCls = `w-full ${enj.textarea} min-h-[72px] resize-y text-xs leading-snug`;
+const fieldTextareaFeedbackCls = `w-full ${enj.textarea} min-h-[120px] text-xs leading-relaxed`;
+const fieldErrorCls = enj.fieldError;
 
 function RequiredLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="text-xs font-medium text-gray-700">
+    <span className="text-[11px] font-medium text-gray-600">
       {children}
       <span className="text-red-500"> *</span>
     </span>
   );
 }
 
+function dataverseRowToFeedbackRow(
+  r: New_feedbacks & Record<string, unknown>,
+  nameByEmail: Map<string, string>,
+): FeedbackRow | null {
+  const id = String(r.new_feedbackid ?? '').trim();
+  if (!id) return null;
+  const projectName = String((r as { new_feedback2?: string }).new_feedback2 ?? '').trim() || '—';
+  const satN = Number(r.new_satisfactionlevel);
+  const phN = Number(r.new_projectphase);
+  const sat = CHOICE_TO_SATISFACTION(satN) ?? 'Satisfied';
+  const ph = CHOICE_TO_PHASE(phN) ?? 'UAT';
+  const startRaw = String(r.new_date ?? '').trim();
+  let startDateIso = '';
+  if (startRaw) {
+    const m = startRaw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    startDateIso = m ? `${m[1]}-${m[2]}-${m[3]}` : startRaw;
+  }
+  const pm = String(r.new_projectmanager ?? '').trim();
+  const rawName = String(r.new_name ?? '').trim();
+  const nameIsEmail = isValidEmail(rawName);
+  const fromUsers = nameIsEmail ? nameByEmail.get(rawName.toLowerCase()) : '';
+  const fromEmailShape = nameIsEmail ? displayNameFromXrmString(rawName) : '';
+  const owneridname = String((r as New_feedbacks & { owneridname?: string }).owneridname ?? '').trim();
+  const createdBy = String((r as New_feedbacks & { createdbyname?: string }).createdbyname ?? '').trim();
+  const businessOwnerName =
+    (nameIsEmail
+      ? fromUsers || fromEmailShape
+      : rawName) ||
+    owneridname ||
+    createdBy ||
+    '—';
+  return {
+    id,
+    projectName,
+    sponsor: String(r.new_projectsponsor ?? '').trim() || '—',
+    pmInitials: initialsFromEmailOrName(pm),
+    pmEmail: pm,
+    satisfaction: sat,
+    date: startDateIso ? formatUsFromIso(startDateIso) : '—',
+    phase: ph,
+    startDateIso: startDateIso || startRaw,
+    businessOwnerName: businessOwnerName || '—',
+    recommendations: String(r.new_recommendations ?? '').trim(),
+    challenges: String(r.new_challenges ?? '').trim(),
+    feedbackNote: String(r.new_feedback1 ?? '').trim(),
+  };
+}
+
+function rowToForm(row: FeedbackRow): FeedbackFormState {
+  const bo = row.businessOwnerName === '—' ? '' : row.businessOwnerName;
+  return {
+    projectName: row.projectName === '—' ? '' : row.projectName,
+    sponsor: row.sponsor === '—' ? '' : row.sponsor,
+    projectManager: row.pmEmail,
+    startDate: row.startDateIso,
+    businessOwnerName: bo.trim(),
+    satisfaction: row.satisfaction,
+    phase: row.phase,
+    recommendations: row.recommendations,
+    challenges: row.challenges,
+    feedback: row.feedbackNote,
+  };
+}
+
 export default function BusinessFeedbackList() {
-  const [rows, setRows] = useState<FeedbackRow[]>(INITIAL_ROWS);
+  const [rows, setRows] = useState<FeedbackRow[]>([]);
   const [screen, setScreen] = useState<FeedbackScreen>('list');
-  const [editRowId, setEditRowId] = useState<number | null>(null);
+  const [editRowId, setEditRowId] = useState<string | null>(null);
   const [form, setForm] = useState<FeedbackFormState>(EMPTY_FORM);
+  const [listLoading, setListLoading] = useState(true);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [projectRows, setProjectRows] = useState<ProjectRow[]>([]);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  const projectNameOptions = useMemo(() => {
+    const names = projectRows.map(readProjectName).filter(Boolean);
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [projectRows]);
+
+  const loadProjects = useCallback(async () => {
+    setProjectsLoading(true);
+    try {
+      const res = await New_projectsService.getAll({ top: 5000, orderBy: ['new_projectname asc'] });
+      if (!res.success) throw new Error(res.error?.message ?? 'Failed to load projects');
+      setProjectRows((res.data ?? []) as unknown as ProjectRow[]);
+    } catch {
+      setProjectRows([]);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, []);
+
+  const loadFeedbacks = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const usersRes = await NewUsersService.getAll({ top: 2000, orderBy: ['createdon desc'] });
+      const nameByEmail = new Map<string, string>();
+      if (usersRes.success) {
+        for (const u of (usersRes.data ?? []) as Array<Record<string, unknown>>) {
+          const e1 = String(u.new_newcolumn ?? '').trim().toLowerCase();
+          const e2 = String(u.new_userid ?? '').trim().toLowerCase();
+          const nm = String(u.new_name ?? '').trim();
+          if (nm) {
+            if (e1.includes('@')) nameByEmail.set(e1, nm);
+            if (e2.includes('@')) nameByEmail.set(e2, nm);
+          }
+        }
+      }
+      const res = await New_feedbacksService.getAll({ top: 2000, orderBy: ['createdon desc'] });
+      if (!res.success) throw new Error(res.error?.message ?? 'Failed to load feedback');
+      const list = (res.data ?? [])
+        .map((r) => dataverseRowToFeedbackRow(r as New_feedbacks & Record<string, unknown>, nameByEmail))
+        .filter((x): x is FeedbackRow => Boolean(x));
+      setRows(list);
+    } catch {
+      setRows([]);
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
+
+  useEffect(() => {
+    void loadFeedbacks();
+  }, [loadFeedbacks]);
+
+  const applyProjectLookup = useCallback(
+    (projectName: string) => {
+      setFormErrors((e) => {
+        const next = { ...e };
+        delete next.projectName;
+        delete next.sponsor;
+        delete next.projectManager;
+        delete next.startDate;
+        return next;
+      });
+      const p = projectRows.find((r) => readProjectName(r) === projectName);
+      if (!p) {
+        setForm((f) => ({ ...f, projectName, sponsor: '', projectManager: '', startDate: '' }));
+        return;
+      }
+      setForm((f) => ({
+        ...f,
+        projectName,
+        sponsor: readProjectSponsorFromProject(p),
+        projectManager: clip(readAssignToProjectManager(p) || readProjectManagerDisplay(p), 100),
+        startDate: parseProjectStartDateIso(p),
+      }));
+    },
+    [projectRows],
+  );
 
   const goToList = useCallback(() => {
     setScreen('list');
     setEditRowId(null);
+    setFormErrors({});
     setForm(EMPTY_FORM);
   }, []);
 
   const openAddFeedback = useCallback(() => {
     setEditRowId(null);
+    setFormErrors({});
     setForm(EMPTY_FORM);
     setScreen('add');
   }, []);
 
   const openEditFeedback = useCallback((row: FeedbackRow) => {
     setEditRowId(row.id);
+    setFormErrors({});
     setForm(rowToForm(row));
     setScreen('edit');
   }, []);
 
   const clearFormAdd = useCallback(() => {
+    setFormErrors({});
     setForm(EMPTY_FORM);
   }, []);
 
-  const submitFeedback = useCallback(
-    (e: FormEvent) => {
-      e.preventDefault();
-      if (!form.projectName || !form.sponsor.trim() || !form.projectManager.trim()) return;
-      if (!form.startDate || !form.businessOwnerName.trim()) return;
-      if (!form.satisfaction || !form.phase) return;
-
-      const satisfaction: Satisfaction = form.satisfaction;
-      const phase: Phase = form.phase;
-      const pmEmail = form.projectManager.trim();
-
-      setRows((prev) => {
-        const nextId = prev.reduce((m, r) => Math.max(m, r.id), 0) + 1;
-        const newRow: FeedbackRow = {
-          id: nextId,
-          projectName: form.projectName,
-          sponsor: form.sponsor.trim(),
-          pmInitials: initialsFromEmail(pmEmail),
-          pmEmail,
-          satisfaction,
-          date: formatUsDate(form.startDate),
-          phase,
-          startDateIso: form.startDate,
-          businessOwnerName: form.businessOwnerName.trim(),
-          recommendations: form.recommendations,
-          challenges: form.challenges,
-          feedbackNote: form.feedback,
-        };
-        return [...prev, newRow];
-      });
-      goToList();
+  const buildPayload = useCallback(
+    (f: FeedbackFormState): Record<string, unknown> => {
+      const assignEmail = clip(readAssignToProjectManager(
+        projectRows.find((r) => readProjectName(r) === f.projectName) ?? {},
+      ) || f.projectManager, 100);
+      const pmDisplay = clip(
+        readProjectManagerDisplay(
+          projectRows.find((r) => readProjectName(r) === f.projectName) ?? {},
+        ) || f.projectManager,
+        100,
+      );
+      return {
+        new_name: clip(f.businessOwnerName, 100),
+        new_feedback1: clip(f.feedback, 850),
+        new_feedback2: clip(f.projectName, 100),
+        new_date: clip(f.startDate, 100),
+        new_projectsponsor: clip(f.sponsor, 100),
+        new_programmanager: assignEmail,
+        new_projectmanager: pmDisplay || assignEmail,
+        new_satisfactionlevel: SATISFACTION_TO_CHOICE[f.satisfaction as Satisfaction],
+        new_projectphase: PHASE_TO_CHOICE[f.phase as Phase],
+        new_recommendations: f.recommendations.trim() || undefined,
+        new_challenges: f.challenges.trim() || undefined,
+        statecode: 0,
+      };
     },
-    [form, goToList],
+    [projectRows],
+  );
+
+  const runValidation = useCallback((f: FeedbackFormState) => {
+    const e: Record<string, string> = {};
+    if (!f.projectName.trim()) e.projectName = 'Select a project.';
+    if (!f.sponsor.trim()) {
+      e.sponsor = 'This project has no Project Sponsor. Update the project or pick another one.';
+    }
+    if (!f.projectManager.trim()) {
+      e.projectManager = 'This project has no Assign To Project Manager. Update the project or pick another one.';
+    }
+    if (!f.startDate.trim()) {
+      e.startDate = 'This project has no Start Date. Update the project or pick another one.';
+    }
+    if (!f.businessOwnerName.trim()) {
+      e.businessOwnerName = 'Enter business owner name.';
+    } else if (f.businessOwnerName.length > 100) {
+      e.businessOwnerName = 'Business owner name must be 100 characters or less.';
+    }
+    if (!f.satisfaction) e.satisfaction = 'Select a satisfaction level.';
+    if (!f.phase) e.phase = 'Select a project phase.';
+    if (!f.feedback.trim()) e.feedback = 'Enter your feedback.';
+    if (f.feedback.length > 850) e.feedback = 'Feedback must be 850 characters or less.';
+    setFormErrors(e);
+    return Object.keys(e).length === 0;
+  }, []);
+
+  useEffect(() => {
+    if (Object.keys(formErrors).length === 0) return;
+    setFormErrors((prev) => {
+      const next = { ...prev };
+      if (next.projectName && form.projectName.trim()) delete next.projectName;
+      if (next.sponsor && form.sponsor.trim()) delete next.sponsor;
+      if (next.projectManager && form.projectManager.trim()) delete next.projectManager;
+      if (next.startDate && form.startDate.trim()) delete next.startDate;
+      if (next.businessOwnerName && form.businessOwnerName.trim() && form.businessOwnerName.length <= 100) {
+        delete next.businessOwnerName;
+      }
+      if (next.satisfaction && form.satisfaction) delete next.satisfaction;
+      if (next.phase && form.phase) delete next.phase;
+      if (next.feedback && form.feedback.trim() && form.feedback.length <= 850) delete next.feedback;
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [form, formErrors]);
+
+  const submitFeedback = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!runValidation(form)) {
+        setBanner({ type: 'error', message: 'Fix the highlighted fields and try again.' });
+        return;
+      }
+
+      setSaveBusy(true);
+      setBanner(null);
+      try {
+        const payload = buildPayload(form);
+        const res = await New_feedbacksService.create(
+          payload as unknown as Parameters<typeof New_feedbacksService.create>[0],
+        );
+        if (!res.success) throw new Error(res.error?.message ?? 'Failed to save feedback');
+        setBanner({ type: 'success', message: 'Feedback saved.' });
+        await loadFeedbacks();
+        goToList();
+      } catch (err) {
+        setBanner({ type: 'error', message: err instanceof Error ? err.message : 'Failed to save.' });
+      } finally {
+        setSaveBusy(false);
+      }
+    },
+    [form, buildPayload, loadFeedbacks, goToList, runValidation],
   );
 
   const submitEditFeedback = useCallback(
-    (e: FormEvent) => {
+    async (e: FormEvent) => {
       e.preventDefault();
       if (editRowId == null) return;
       const f = form;
-      if (!f.projectName.trim() || !f.sponsor.trim() || !f.projectManager.trim()) return;
-      if (!f.startDate || !f.businessOwnerName.trim()) return;
-      if (!f.satisfaction || !f.phase) return;
+      if (!runValidation(f)) {
+        setBanner({ type: 'error', message: 'Fix the highlighted fields and try again.' });
+        return;
+      }
 
-      const satisfaction: Satisfaction = f.satisfaction;
-      const phase: Phase = f.phase;
-      const pmEmail = f.projectManager.trim();
-
-      setRows((prev) =>
-        prev.map((r) => {
-          if (r.id !== editRowId) return r;
-          return {
-            ...r,
-            projectName: f.projectName.trim(),
-            sponsor: f.sponsor.trim(),
-            pmEmail,
-            pmInitials: initialsFromEmail(pmEmail),
-            satisfaction,
-            phase,
-            date: formatUsDate(f.startDate),
-            startDateIso: f.startDate,
-            businessOwnerName: f.businessOwnerName.trim(),
-            recommendations: f.recommendations,
-            challenges: f.challenges,
-            feedbackNote: f.feedback,
-          };
-        }),
-      );
-      goToList();
+      setSaveBusy(true);
+      setBanner(null);
+      try {
+        const payload = buildPayload(f);
+        const res = await New_feedbacksService.update(editRowId, payload);
+        if (!res.success) throw new Error(res.error?.message ?? 'Failed to update feedback');
+        setBanner({ type: 'success', message: 'Feedback updated.' });
+        await loadFeedbacks();
+        goToList();
+      } catch (err) {
+        setBanner({ type: 'error', message: err instanceof Error ? err.message : 'Failed to update.' });
+      } finally {
+        setSaveBusy(false);
+      }
     },
-    [editRowId, form, goToList],
+    [editRowId, form, buildPayload, loadFeedbacks, goToList, runValidation],
   );
 
   const analytics = useMemo(() => {
@@ -300,9 +538,11 @@ export default function BusinessFeedbackList() {
     return { uat, live, satisfied, verySatisfied, unsatisfied, total };
   }, [rows]);
 
-  const onRefresh = useCallback(() => {
-    setRows([...INITIAL_ROWS]);
-  }, []);
+  const onRefresh = useCallback(async () => {
+    setBanner(null);
+    await loadProjects();
+    await loadFeedbacks();
+  }, [loadProjects, loadFeedbacks]);
 
   const chartH = 100;
   const chartBottom = 108;
@@ -310,152 +550,202 @@ export default function BusinessFeedbackList() {
   const barScale = (chartH - 16) / maxY;
 
   const isFormScreen = screen === 'add' || screen === 'edit';
+  const isBusy = listLoading || projectsLoading;
 
   const formFields = (
     <>
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+      {banner && !isFormScreen && (
+        <div
+          className={`mb-3 rounded-md px-2.5 py-1.5 text-xs ${
+            banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
+          }`}
+        >
+          {banner.message}
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
         <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Project Name</RequiredLabel>
+          <RequiredLabel>Project</RequiredLabel>
           <div className="relative">
             <select
-              required
               value={form.projectName}
-              onChange={(e) => setForm((f) => ({ ...f, projectName: e.target.value }))}
-              className={`${fieldSelectCls} text-gray-800`}
+              onChange={(e) => applyProjectLookup(e.target.value)}
+              className={`${fieldSelectCls} text-gray-800 ${formErrors.projectName ? 'border-rose-400' : ''}`}
+              disabled={saveBusy}
             >
               <option value="" disabled>
                 Select
               </option>
-              {form.projectName && !PROJECT_OPTIONS.includes(form.projectName) && (
+              {form.projectName && !projectNameOptions.includes(form.projectName) && (
                 <option value={form.projectName}>{form.projectName}</option>
               )}
-              {PROJECT_OPTIONS.map((p) => (
+              {projectNameOptions.map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
               ))}
             </select>
-            <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
+          {formErrors.projectName && <p className={fieldErrorCls}>{formErrors.projectName}</p>}
         </label>
         <label className="block min-w-0 space-y-1.5">
           <RequiredLabel>Project Sponsor</RequiredLabel>
           <input
-            required
+            readOnly
             type="text"
             value={form.sponsor}
-            onChange={(e) => setForm((f) => ({ ...f, sponsor: e.target.value }))}
-            className={fieldInputCls}
+            className={`${fieldInputReadonlyCls} ${formErrors.sponsor ? 'border-rose-400' : ''}`}
+            title="LookUp(Project, ProjectSponsor) for the selected project"
           />
+          {formErrors.sponsor && <p className={fieldErrorCls}>{formErrors.sponsor}</p>}
         </label>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
         <label className="block min-w-0 space-y-1.5">
           <RequiredLabel>Project Manager</RequiredLabel>
           <input
-            required
+            readOnly
             type="text"
             value={form.projectManager}
-            onChange={(e) => setForm((f) => ({ ...f, projectManager: e.target.value }))}
-            className={fieldInputCls}
+            className={`${fieldInputReadonlyCls} ${formErrors.projectManager ? 'border-rose-400' : ''}`}
+            title="AssignToProjectManager from selected project"
           />
+          {formErrors.projectManager && <p className={fieldErrorCls}>{formErrors.projectManager}</p>}
         </label>
         <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Date</RequiredLabel>
+          <RequiredLabel>Start Date</RequiredLabel>
           <input
-            required
+            readOnly
             type="date"
             value={form.startDate}
-            onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-            className={fieldInputCls}
+            className={`${fieldInputReadonlyCls} ${formErrors.startDate ? 'border-rose-400' : ''}`}
+            title="Project start date from selected project"
           />
+          {formErrors.startDate && <p className={fieldErrorCls}>{formErrors.startDate}</p>}
         </label>
         <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Name</RequiredLabel>
+          <RequiredLabel>Business Owner Name</RequiredLabel>
           <input
-            required
             type="text"
-            placeholder="Business owner name"
             value={form.businessOwnerName}
-            onChange={(e) => setForm((f) => ({ ...f, businessOwnerName: e.target.value }))}
-            className={fieldInputCls}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, businessOwnerName: e.target.value }));
+              setFormErrors((x) => {
+                const n = { ...x };
+                delete n.businessOwnerName;
+                return n;
+              });
+            }}
+            maxLength={100}
+            autoComplete="name"
+            placeholder="Enter name"
+            className={`w-full ${enj.control} text-sm text-gray-800 ${formErrors.businessOwnerName ? 'border-rose-400' : ''}`}
+            title="Saved on the feedback record as Name (new_name)"
+            disabled={saveBusy}
           />
+          {formErrors.businessOwnerName && <p className={fieldErrorCls}>{formErrors.businessOwnerName}</p>}
         </label>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
         <label className="block min-w-0 space-y-1.5">
           <RequiredLabel>Satisfaction Level</RequiredLabel>
           <div className="relative">
             <select
-              required
               value={form.satisfaction}
-              onChange={(e) =>
+              onChange={(e) => {
                 setForm((f) => ({
                   ...f,
                   satisfaction: e.target.value as Satisfaction | '',
-                }))
-              }
-              className={`${fieldSelectCls} text-gray-800`}
+                }));
+                setFormErrors((x) => {
+                  const n = { ...x };
+                  delete n.satisfaction;
+                  return n;
+                });
+              }}
+              className={`${fieldSelectCls} text-gray-800 ${formErrors.satisfaction ? 'border-rose-400' : ''}`}
+              disabled={saveBusy}
             >
               <option value="" disabled>
-                Select (very satisfied, satisfied, unsatisfied)
+                Select
               </option>
               <option value="Very Satisfied">Very Satisfied</option>
               <option value="Satisfied">Satisfied</option>
               <option value="Unsatisfied">Unsatisfied</option>
             </select>
-            <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
+          {formErrors.satisfaction && <p className={fieldErrorCls}>{formErrors.satisfaction}</p>}
         </label>
         <label className="block min-w-0 space-y-1.5">
           <RequiredLabel>Project Phase</RequiredLabel>
           <div className="relative">
             <select
-              required
               value={form.phase}
-              onChange={(e) => setForm((f) => ({ ...f, phase: e.target.value as Phase | '' }))}
-              className={fieldSelectCls}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, phase: e.target.value as Phase | '' }));
+                setFormErrors((x) => {
+                  const n = { ...x };
+                  delete n.phase;
+                  return n;
+                });
+              }}
+              className={`${fieldSelectCls} ${formErrors.phase ? 'border-rose-400' : ''}`}
+              disabled={saveBusy}
             >
               <option value="" disabled>
-                Select (UAT, Live)
+                Select
               </option>
               <option value="UAT">UAT</option>
               <option value="Live">Live</option>
             </select>
-            <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
+          {formErrors.phase && <p className={fieldErrorCls}>{formErrors.phase}</p>}
         </label>
       </div>
 
       <label className="block min-w-0 space-y-1.5">
-        <span className="text-xs font-medium text-gray-700">Feedback</span>
+        <RequiredLabel>Feedback</RequiredLabel>
         <textarea
           rows={5}
           value={form.feedback}
-          onChange={(e) => setForm((f) => ({ ...f, feedback: e.target.value }))}
-          className={fieldTextareaFeedbackCls}
+          onChange={(e) => {
+            setForm((f) => ({ ...f, feedback: e.target.value }));
+            setFormErrors((x) => {
+              const n = { ...x };
+              delete n.feedback;
+              return n;
+            });
+          }}
+          className={`${fieldTextareaFeedbackCls} ${formErrors.feedback ? 'border-rose-400' : ''}`}
+          disabled={saveBusy}
         />
+        {formErrors.feedback && <p className={fieldErrorCls}>{formErrors.feedback}</p>}
       </label>
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
         <label className="block min-w-0 space-y-1.5">
-          <span className="text-xs font-medium text-gray-700">Challenges</span>
+          <span className="text-[11px] font-medium text-gray-600">Challenges</span>
           <textarea
             rows={4}
             value={form.challenges}
             onChange={(e) => setForm((f) => ({ ...f, challenges: e.target.value }))}
             className={fieldTextareaShortCls}
+            disabled={saveBusy}
           />
         </label>
         <label className="block min-w-0 space-y-1.5">
-          <span className="text-xs font-medium text-gray-700">Recommendations</span>
+          <span className="text-[11px] font-medium text-gray-600">Recommendations</span>
           <textarea
             rows={4}
             value={form.recommendations}
             onChange={(e) => setForm((f) => ({ ...f, recommendations: e.target.value }))}
             className={fieldTextareaShortCls}
+            disabled={saveBusy}
           />
         </label>
       </div>
@@ -466,38 +756,49 @@ export default function BusinessFeedbackList() {
     const title = screen === 'edit' ? 'Edit Feedback' : 'Feedback';
 
     return (
-      <div className="min-w-0 max-w-full xl:col-span-3">
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold text-[#151d5d] sm:text-2xl">{title}</h2>
+      <div className="min-w-0 max-w-full xl:col-span-3 relative text-[12px] leading-normal text-gray-700">
+        {(isBusy || saveBusy) && <ScreenLoader overlay />}
+        <div className="mb-3">
+          <h2 className={enj.sectionTitle}>{title}</h2>
         </div>
 
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
-          <form
-            onSubmit={screen === 'add' ? submitFeedback : submitEditFeedback}
-            className="space-y-5"
+        {banner && (
+          <div
+            className={`mb-3 rounded-md px-2.5 py-1.5 text-xs ${
+              banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
+            }`}
           >
+            {banner.message}
+          </div>
+        )}
+
+        <div className={`${enj.card} ${enj.cardPad}`}>
+          <form onSubmit={screen === 'add' ? submitFeedback : submitEditFeedback} className="space-y-4">
             {formFields}
 
-            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-100 pt-5">
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-3">
               {screen === 'add' && (
                 <>
                   <button
                     type="button"
                     onClick={clearFormAdd}
-                    className="h-9 min-w-[88px] rounded-md border border-[#b28a44] bg-white px-4 text-sm font-medium text-[#b28a44] hover:bg-amber-50/80"
+                    className={`${enj.btn} ${enj.btnOutline} min-w-[4.5rem] px-3 text-xs font-medium`}
+                    disabled={saveBusy}
                   >
                     Clear
                   </button>
                   <button
                     type="button"
                     onClick={goToList}
-                    className="h-9 min-w-[88px] rounded-md border border-[#b28a44] bg-white px-4 text-sm font-medium text-[#b28a44] hover:bg-amber-50/80"
+                    className={`${enj.btn} ${enj.btnOutline} min-w-[4.5rem] px-3 text-xs font-medium`}
+                    disabled={saveBusy}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="h-9 min-w-[148px] rounded-md bg-[#b28a44] px-4 text-sm font-medium text-white shadow-sm hover:bg-[#9a7638]"
+                    className={`${enj.btn} ${enj.btnPrimary} min-w-[7.5rem] px-3 text-xs font-medium shadow-sm hover:bg-[#9a7638] disabled:opacity-60`}
+                    disabled={saveBusy}
                   >
                     Submit Feedback
                   </button>
@@ -508,13 +809,15 @@ export default function BusinessFeedbackList() {
                   <button
                     type="button"
                     onClick={goToList}
-                    className="h-9 min-w-[88px] rounded-md border border-[#b28a44] bg-white px-4 text-sm font-medium text-[#b28a44] hover:bg-amber-50/80"
+                    className={`${enj.btn} ${enj.btnOutline} min-w-[4.5rem] px-3 text-xs font-medium`}
+                    disabled={saveBusy}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="h-9 min-w-[100px] rounded-md bg-[#b28a44] px-4 text-sm font-medium text-white shadow-sm hover:bg-[#9a7638]"
+                    className={`${enj.btn} ${enj.btnPrimary} min-w-[4.5rem] px-3 text-xs font-medium shadow-sm hover:bg-[#9a7638] disabled:opacity-60`}
+                    disabled={saveBusy}
                   >
                     Update
                   </button>
@@ -528,94 +831,100 @@ export default function BusinessFeedbackList() {
   }
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 min-w-0 max-w-full xl:grid-cols-3">
-      <div className="xl:col-span-2 space-y-4 min-w-0">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-2xl font-semibold tracking-tight text-[#151d5d]">Feedback list</h2>
-          <div className="flex flex-shrink-0 items-center gap-2">
+    <div className="grid grid-cols-1 items-start gap-3 min-w-0 max-w-full text-[12px] leading-normal text-gray-700 xl:grid-cols-3">
+      {isBusy && <ScreenLoader overlay className="min-h-[200px] rounded-xl" />}
+      <div className="xl:col-span-2 min-w-0 space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className={enj.sectionTitle}>Feedback list</h2>
+          <div className="flex flex-shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={openAddFeedback}
-              className="h-9 rounded-md bg-[#b28a44] px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#9a7638]"
+              className={`${enj.btn} ${enj.btnPrimary} px-3 text-xs font-medium shadow-sm transition-colors hover:bg-[#9a7638]`}
+              disabled={listLoading}
             >
               Add New Feedback
             </button>
             <button
               type="button"
               onClick={onRefresh}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className={`${enj.btn} ${enj.btnDefault} gap-1.5 px-2.5 text-xs font-medium`}
+              disabled={listLoading}
             >
-              <RefreshCw size={16} className="text-gray-500" />
+              <RefreshCw size={14} className="text-gray-500" />
               Refresh
             </button>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm min-w-0">
-          <table className="w-full table-fixed border-collapse text-xs sm:text-sm">
+        {banner && (
+          <div
+            className={`rounded-md px-2.5 py-1.5 text-xs ${
+              banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
+            }`}
+          >
+            {banner.message}
+          </div>
+        )}
+
+        <div className={`${enj.card} min-w-0`}>
+          <table className={`${enj.tableBrand} table-fixed text-[11px]`}>
             <thead>
-              <tr className="bg-[#e8eaf6] text-left text-[10px] font-semibold uppercase tracking-wide text-[#4a4f7a] sm:text-[11px]">
-                <th className="min-w-0 w-[14%] px-2 py-2.5 align-top font-semibold normal-case sm:px-3 sm:uppercase">
-                  <span className="inline-block leading-snug">Project Name</span>
-                </th>
-                <th className="min-w-0 w-[10%] px-2 py-2.5 align-top font-semibold normal-case sm:px-3 sm:uppercase">
-                  <span className="inline-block leading-snug">Sponsor</span>
-                </th>
-                <th className="min-w-0 w-[26%] px-2 py-2.5 align-top font-semibold normal-case sm:px-3 sm:uppercase">
-                  <span className="inline-block leading-snug">Project Manager</span>
-                </th>
-                <th className="min-w-0 w-[16%] px-2 py-2.5 align-top font-semibold normal-case sm:px-3 sm:uppercase">
-                  <span className="inline-block leading-snug">Satisfaction</span>
-                </th>
-                <th className="min-w-0 w-[11%] px-2 py-2.5 align-top font-semibold normal-case sm:px-3 sm:uppercase">
-                  <span className="inline-block leading-snug">Date</span>
-                </th>
-                <th className="min-w-0 w-[10%] px-2 py-2.5 align-top font-semibold normal-case sm:px-3 sm:uppercase">
-                  <span className="inline-block leading-snug">Phase</span>
-                </th>
-                <th className="min-w-0 w-[13%] px-2 py-2.5 text-center align-top font-semibold normal-case sm:px-3 sm:uppercase">
-                  Action
-                </th>
+              <tr>
+                <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Project Name</span></th>
+                <th className="min-w-0 w-[8%]"><span className="inline-block leading-tight">Sponsor</span></th>
+                <th className="min-w-0 w-[20%]"><span className="inline-block leading-tight">Project Manager</span></th>
+                <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Business owner</span></th>
+                <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Satisfaction</span></th>
+                <th className="min-w-0 w-[9%]"><span className="inline-block leading-tight">Date</span></th>
+                <th className="min-w-0 w-[8%]"><span className="inline-block leading-tight">Phase</span></th>
+                <th className="min-w-0 w-[9%] text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
+              {rows.length === 0 && !listLoading && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-5 text-center text-xs text-gray-500">
+                    No feedback yet. Add new feedback to get started.
+                  </td>
+                </tr>
+              )}
               {rows.map((row) => (
                 <tr key={row.id} className="text-gray-700 hover:bg-gray-50/80">
-                  <td className="min-w-0 break-words px-2 py-2.5 align-top font-medium text-[#2d356b] sm:px-3">
+                  <td className="min-w-0 break-words px-2 py-2 align-top font-medium text-primary sm:px-2.5">
                     {row.projectName}
                   </td>
-                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-600 sm:px-3">{row.sponsor}</td>
-                  <td className="min-w-0 px-2 py-2.5 align-top sm:px-3">
-                    <div className="flex min-w-0 items-start gap-2">
-                      <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-[9px] font-semibold text-gray-600 sm:h-8 sm:w-8 sm:text-[10px]">
+                  <td className="min-w-0 break-words px-2 py-2 align-top text-gray-600 sm:px-2.5">{row.sponsor}</td>
+                  <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
+                    <div className="flex min-w-0 items-start gap-1.5">
+                      <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-[8px] font-semibold text-gray-600">
                         {row.pmInitials}
                       </span>
-                      <span className="min-w-0 break-words text-[11px] text-gray-600 sm:text-xs">{row.pmEmail}</span>
+                      <span className="min-w-0 break-words text-[10px] text-gray-600 leading-snug">{row.pmEmail}</span>
                     </div>
                   </td>
-                  <td className="min-w-0 px-2 py-2.5 align-top sm:px-3">
-                    <span
-                      className={`inline-flex max-w-full rounded-full px-2 py-1 text-[10px] leading-snug sm:text-[11px] ${satisfactionClass(row.satisfaction)}`}
-                    >
+                  <td className="min-w-0 break-words px-2 py-2 align-top text-gray-700 sm:px-2.5">
+                    {row.businessOwnerName}
+                  </td>
+                  <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
+                    <span className={`${satisfactionClass(row.satisfaction)} max-w-full`}>
                       {row.satisfaction}
                     </span>
                   </td>
-                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-600 sm:px-3">{row.date}</td>
-                  <td className="min-w-0 px-2 py-2.5 align-top sm:px-3">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-1 text-[10px] sm:text-[11px] ${phaseClass(row.phase)}`}
-                    >
+                  <td className="min-w-0 break-words px-2 py-2 align-top text-gray-600 sm:px-2.5">{row.date}</td>
+                  <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
+                    <span className={phaseClass(row.phase)}>
                       {row.phase}
                     </span>
                   </td>
-                  <td className="px-2 py-2.5 text-center align-top sm:px-3">
+                  <td className="px-2 py-2 text-center align-top sm:px-2.5">
                     <button
                       type="button"
                       onClick={() => openEditFeedback(row)}
-                      className="inline-flex rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-[#151d5d]"
+                      className="inline-flex rounded-md p-0.5 text-gray-400 hover:bg-gray-100 hover:text-primary"
                       aria-label="Edit"
                     >
-                      <Pencil size={16} />
+                      <Pencil size={14} />
                     </button>
                   </td>
                 </tr>
@@ -625,10 +934,10 @@ export default function BusinessFeedbackList() {
         </div>
       </div>
 
-      <div className="space-y-4 xl:sticky xl:top-4">
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold text-[#2d356b]">Project Phase</h3>
-          <svg viewBox="0 0 220 130" className="h-36 w-full">
+      <div className="space-y-3 xl:sticky xl:top-4">
+        <div className={`${enj.card} p-3 chart-card`}>
+          <h3 className={`${enj.subhead} mb-2 uppercase tracking-wide`}>Project phase</h3>
+          <svg viewBox="0 0 220 130" className={enj.chartSvgSm}>
             {[0, 2, 4, 6, 8, 10].map((v) => (
               <g key={v}>
                 <line
@@ -671,18 +980,18 @@ export default function BusinessFeedbackList() {
           </svg>
         </div>
 
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold text-[#2d356b]">Satisfaction Level</h3>
+        <div className={`${enj.card} p-3 chart-card`}>
+          <h3 className={`${enj.subhead} mb-2 uppercase tracking-wide`}>Satisfaction level</h3>
           <div className="flex justify-center">
             <DonutChart
-              className="h-44 w-full max-w-[290px]"
+              className="h-40 w-full max-w-[270px] chart-svg"
               slices={[
                 { label: 'Satisfied', value: analytics.satisfied, color: '#1667de' },
                 { label: 'Very Satisfied', value: analytics.verySatisfied, color: '#3b3a80' },
                 { label: 'Unsatisfied', value: analytics.unsatisfied, color: '#d3525a' },
               ]}
               ringWidth={46}
-              centerText={`${analytics.total}`}
+              centerText={`${rows.length}`}
             />
           </div>
         </div>

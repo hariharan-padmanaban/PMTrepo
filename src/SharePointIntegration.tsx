@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SharePointService } from './generated/services/SharePointService';
+import { enj } from './ui/enjForm';
 
 type SharePointRow = {
   id: string;
@@ -234,18 +235,18 @@ export default function SharePointIntegration() {
       {message && <p className="mt-3 text-sm text-gray-700">{message}</p>}
 
       <div className="mt-4 overflow-auto">
-        <table className="min-w-full text-sm">
+        <table className={`${enj.table} min-w-full text-sm`}>
           <thead>
-            <tr className="border-b border-gray-200 text-left text-gray-500">
-              <th className="py-2 pr-4">Name</th>
-              <th className="py-2 pr-4">Modified</th>
-              <th className="py-2 pr-4">Size</th>
-              <th className="py-2">Actions</th>
+            <tr>
+              <th className="pr-4">Name</th>
+              <th className="pr-4">Modified</th>
+              <th className="pr-4">Size</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} className="border-b border-gray-100">
+              <tr key={row.id}>
                 <td className="py-2 pr-4">{row.name}</td>
                 <td className="py-2 pr-4">{row.modified || '-'}</td>
                 <td className="py-2 pr-4">{typeof row.size === 'number' ? row.size : '-'}</td>
@@ -272,17 +273,17 @@ export default function SharePointIntegration() {
 
       <div className="mt-6 overflow-auto">
         <h4 className="mb-2 text-sm font-semibold text-gray-900">IssueDetails List</h4>
-        <table className="min-w-full text-sm">
+        <table className={`${enj.table} min-w-full text-sm`}>
           <thead>
-            <tr className="border-b border-gray-200 text-left text-gray-500">
-              <th className="py-2 pr-4">ID</th>
-              <th className="py-2 pr-4">Title</th>
-              <th className="py-2 pr-4">Modified</th>
+            <tr>
+              <th className="pr-4">ID</th>
+              <th className="pr-4">Title</th>
+              <th className="pr-4">Modified</th>
             </tr>
           </thead>
           <tbody>
             {listRows.map((row) => (
-              <tr key={`${row.id}-${row.title}`} className="border-b border-gray-100">
+              <tr key={`${row.id}-${row.title}`}>
                 <td className="py-2 pr-4">{row.id}</td>
                 <td className="py-2 pr-4">{row.title}</td>
                 <td className="py-2 pr-4">{row.modified || '-'}</td>

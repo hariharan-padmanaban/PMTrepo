@@ -3,30 +3,61 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  Activity, AlertCircle, ArrowRight, Bell, Briefcase, Calendar, Check, CheckSquare,
-  ChevronDown, Clock, Eye, EyeOff, FileText, FolderOpen, HelpCircle, Inbox, LayoutDashboard, Pencil,
-  LogOut, MessageSquare, Moon, Search, Settings, ShieldCheck, TrendingUp, UserCircle, Users,
+  Activity, AlertCircle, ArrowRight, Briefcase, Calendar, CheckCircle, CheckSquare,
+  ChevronDown, Clock, FileText, FolderOpen, HelpCircle, Inbox, LayoutDashboard, ListTree, Pencil, RefreshCw,
+  LogOut, MessageSquare, ShieldCheck, Trash2, TrendingUp, UserCircle, Users,
 } from 'lucide-react';
 import BusinessFeedbackList from './BusinessFeedbackList';
+import BusinessPipelineScreen from './BusinessPipelineScreen';
+import { newPipelineToTableRow, type BusinessPipelineTableRow } from './pipelineMappers';
+import type { New_clients } from './generated/models/New_clientsModel';
+import type { New_pipelines } from './generated/models/New_pipelinesModel';
+import { New_clientsService } from './generated/services/New_clientsService';
+import { New_pipelinesService } from './generated/services/New_pipelinesService';
 import AdminDashboard from './AdminDashboard';
 import { ActivityHistoryModal } from './ActivityHistoryModal';
 import { UserProfileModal } from './UserProfileModal';
 import { DonutChart } from './DonutChart';
 import { New_programsService } from './generated/services/New_programsService';
 import { New_projectsService } from './generated/services/New_projectsService';
-import {
-  New_projectsnew_projectpriority,
-  New_projectsnew_projecttype,
-  New_projectsnew_strategicgoal,
-  New_projectsnew_projectstatus,
-} from './generated/models/New_projectsModel';
-import { New_vendorsService } from './generated/services/New_vendorsService';
+import { buildProgramIdToNameMap, normalizeDataverseId, resolveProjectProgramName } from './programNameResolve';
+import { New_projectsnew_projectcategory } from './generated/models/New_projectsModel';
+import { New_deliverablesService } from './generated/services/New_deliverablesService';
+import { New_issuesService } from './generated/services/New_issuesService';
+import { New_issuesnew_issueseverity, New_issuesnew_issuestatus } from './generated/models/New_issuesModel';
+import { New_tasksService } from './generated/services/New_tasksService';
+import { New_meetingdetailsService } from './generated/services/New_meetingdetailsService';
+import { New_subissuesService } from './generated/services/New_subissuesService';
+import { New_teammembersService } from './generated/services/New_teammembersService';
 import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/EnjazMasterDataService';
 import { NewUsersService } from './services/NewUsersService';
 import { NotificationToast, type ToastType } from './NotificationToast';
+import { ProgramProjectsSection } from './ProgramProjectsSection';
+import { DeliverablesListPanel } from './DeliverablesListPanel';
+import { AddNewTaskFormPanel } from './AddNewTaskFormPanel';
+import { ProjectTaskDetailView } from './ProjectTaskDetailView';
+import { TasksScreenBoard, taskStatusBucket } from './TasksScreenBoard';
+import { AddIssueFormPanel } from './AddIssueFormPanel';
+import { TeamSubIssueFormPanel } from './TeamSubIssueFormPanel';
+import { TeamIssueDetailPanel } from './TeamIssueDetailPanel';
+import { ScreenLoader } from './ScreenLoader';
+import { ProgramReportsPanel } from './ProgramReportsPanel';
+import { AddMeetingFormPanel } from './AddMeetingFormPanel';
+import { fetchSessionUserProfileFromUsers, getSessionUserEmail, type SessionUserProfile } from './sessionUser';
+import { buildInboxNotifications, NotificationBell } from './NotificationInbox';
+import { ThemeModeToggle } from './themeMode';
+import saudiHeroImage from '../refImages/ManAndWomanInSaudi.png?inline';
+import { LogoMark } from './LogoMark';
+import { enj } from './ui/enjForm';
+import { PagerBar } from './PagerBar';
+import {
+  TableBudgetDisplay,
+  portfolioProjectStatusBadgeClass,
+  programTableStatusBadgeClass,
+} from './tableDesign';
 
 /** Application roles — pick at sign-in to route the correct workspace. */
 export type AppRole = 'admin' | 'business' | 'program' | 'project' | 'team';
@@ -39,82 +70,950 @@ const ROLE_LABELS: Record<AppRole, string> = {
   team: 'Team',
 };
 
-const ENJAZ_LOGO_SRC = 'file:///C:/Users/hariharanp/.cursor/projects/c-Users-hariharanp-Downloads-ENJAX-1-ENJAX/assets/c__Users_hariharanp_AppData_Roaming_Cursor_User_workspaceStorage_769430d61f3c186f8dffc100eaf41079_images_image-89a2b325-bcb0-4c0b-a221-9957bd7128e0.png';
-
-function yyyymmFromDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+/** Dataverse-agnostic: calendar day in local time for timeline labels and bar math. */
+function parseTimelineDate(rawValue: unknown): Date | null {
+  if (rawValue == null || rawValue === '') return null;
+  if (rawValue instanceof Date) {
+    if (Number.isNaN(rawValue.getTime())) return null;
+    return new Date(rawValue.getFullYear(), rawValue.getMonth(), rawValue.getDate(), 0, 0, 0, 0);
+  }
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    const d = new Date(rawValue);
+    if (Number.isNaN(d.getTime())) return null;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  }
+  const raw = String(rawValue).trim();
+  if (!raw) return null;
+  // YYYY-MM-DD (any ISO that starts with a date) — do not use Date.parse to avoid UTC day shifts.
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnlyMatch) {
+    const y = Number(dateOnlyMatch[1]);
+    const m = Number(dateOnlyMatch[2]);
+    const d = Number(dateOnlyMatch[3]);
+    const localDate = new Date(y, m - 1, d, 0, 0, 0, 0);
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
+  }
+  // .NET: /Date(1198908717056)/
+  const msJson = raw.match(/\/Date\((-?\d+)\)\//);
+  if (msJson) {
+    const ms = Number(msJson[1]);
+    if (!Number.isFinite(ms)) return null;
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) return null;
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
 }
 
-function parseYyyymmStart(ym: string): Date {
-  const [y, m] = ym.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, 1);
+/**
+ * Inclusive end date from the API = calendar day; bars use [start, end) in time, so the visual
+ * block must extend through that whole day = exclusive instant at local midnight the next day.
+ */
+function exclusiveEndAfterInclusiveDate(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0).getTime();
 }
 
-function formatTimelineMonthHeading(ym: string): string {
-  return parseYyyymmStart(ym).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+function sameLocalCalendarDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function sixMonthNamesStarting(ym: string): string[] {
-  const d = parseYyyymmStart(ym);
-  return Array.from({ length: 6 }, (_, i) =>
-    new Date(d.getFullYear(), d.getMonth() + i, 1).toLocaleDateString(undefined, { month: 'long' }),
+function localDateOnlyFromTimeMs(t: number): Date {
+  const d = new Date(t);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+/** One calendar year, weeks as the base column count; Q / month bands = consecutive week spans. */
+type WeekHeaderBand = { text: string; span: number };
+function businessYearWeekTimelineModel(year: number) {
+  const start = new Date(year, 0, 1, 0, 0, 0, 0);
+  const endExclusive = new Date(year + 1, 0, 1, 0, 0, 0, 0);
+  const dayCount = Math.round((endExclusive.getTime() - start.getTime()) / 86400000);
+  const weeksInYear = Math.max(1, Math.ceil(dayCount / 7));
+  const weekMonth: number[] = [];
+  const weekQuarter: number[] = [];
+  for (let w = 0; w < weeksInYear; w++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + w * 7);
+    weekMonth.push(d.getMonth());
+    weekQuarter.push(Math.floor(d.getMonth() / 3));
+  }
+  const bands = (getKey: (i: number) => number, getLabel: (i: number) => string): WeekHeaderBand[] => {
+    const out: WeekHeaderBand[] = [];
+    let i = 0;
+    while (i < weeksInYear) {
+      const j = (() => {
+        let n = i + 1;
+        while (n < weeksInYear && getKey(n) === getKey(i)) n++;
+        return n;
+      })();
+      out.push({ text: getLabel(i), span: j - i });
+      i = j;
+    }
+    return out;
+  };
+  const monthWeekBands = bands(
+    (i) => weekMonth[i],
+    (i) => new Date(year, weekMonth[i], 1).toLocaleDateString(undefined, { month: 'short' }),
+  );
+  const quarterWeekBands = bands(
+    (i) => weekQuarter[i],
+    (i) => `Q${weekQuarter[i] + 1}`,
+  );
+  const bottomLabels = Array.from({ length: weeksInYear }, (_, i) => `W${i + 1}`);
+  return {
+    start,
+    endExclusive,
+    yearLabel: String(year),
+    bottomLabels,
+    quarterWeekBands,
+    monthWeekBands,
+  };
+}
+
+function formatTimelineDateLabel(date: Date | null): string {
+  if (!date) return '—';
+  return date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+/** Best-effort Created By email from a Dataverse project row (matches Filter Project by creator). */
+function getProjectRowCreatedByEmail(row: Record<string, unknown>): string {
+  const c = row.createdby;
+  if (c && typeof c === 'object') {
+    const o = c as Record<string, unknown>;
+    const a = o.internalemailaddress ?? o.emailaddress1 ?? o.primaryemail;
+    if (typeof a === 'string' && a.includes('@')) return a.trim();
+  }
+  const name = row.createdbyname;
+  if (typeof name === 'string' && name.includes('@')) return name.trim();
+  return '';
+}
+
+function distinctSortedStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((v) => v.trim()).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' }),
   );
 }
 
-/** ISO week number (approximation sufficient for timeline labels). */
-function isoWeekNumber(d: Date): number {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+/** Power Apps: Filter(Users, Department = "Project") — map to role Project + optional Department field. */
+function isUserProjectDepartment(u: Record<string, unknown>): boolean {
+  if (String(u.new_rolename ?? '') === 'Project' || String(u.new_rolename ?? '').toLowerCase() === 'project') return true;
+  if (String(u.new_role ?? '') === '100000003') return true;
+  const dep = u.new_department ?? u.crcf8_department ?? u.new_departmentname;
+  if (dep !== undefined && dep !== null && String(dep).trim() !== '' && String(dep).toLowerCase() === 'project') return true;
+  return false;
 }
 
-function weekLabelsFromMonthStart(ym: string, count: number): string[] {
-  const start = isoWeekNumber(parseYyyymmStart(ym));
-  return Array.from({ length: count }, (_, i) => `W ${start + i}`);
-}
+// --- Business dashboard: derive charts from project rows (Dataverse) ---
+const BUDGET_DONUT_COLORS = [
+  '#1667de', '#f6be00', '#3b3a80', '#d3525a', '#64748b', '#16a34a', '#8b5cf6',
+] as const;
+const PROJECT_CATEGORY_DONUT_COLORS = [
+  '#2563eb', '#f59e0b', '#4f46e5', '#60a5fa', '#10b981', '#d3525a',
+] as const;
+const COUNTS_BAR_COLORS = ['#4f46e5', '#d4a759', '#8b5e34', '#60a5fa', '#dc2626'] as const;
 
-function LogoMark({ sizeClass = 'w-10 h-10' }: { sizeClass?: string }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <div className={`${sizeClass} rounded-md bg-[#151d5d] flex items-center justify-center`}>
-        <span className="text-white text-[9px] font-extrabold tracking-widest">ENJAZ</span>
-      </div>
-    );
+/** Static sine-style wave for business KPI summary cards (not data-driven). */
+const BUSINESS_SUMMARY_STATIC_WAVE_D =
+  'M0 20 C10 10 20 30 30 20 S50 10 60 20 S80 30 90 20 S110 10 120 20 S130 20 140 20';
+
+function businessSummaryCardTone(title: string) {
+  if (title.includes('Completed')) {
+    return { Icon: CheckCircle, iconWrap: 'bg-blue-100', iconClass: 'text-blue-600' };
   }
+  if (title.includes('On Track')) {
+    return { Icon: TrendingUp, iconWrap: 'bg-emerald-100', iconClass: 'text-emerald-600' };
+  }
+  return { Icon: AlertCircle, iconWrap: 'bg-red-100', iconClass: 'text-red-600' };
+}
+
+type BusinessDonutSlice = {
+  label: string;
+  value: number;
+  color: string;
+  displayName?: string;
+  /** If set, used as the full label text instead of "Name (n)". */
+  labelLine?: string;
+};
+
+/**
+ * Filled-arc donut with small gaps (white/background) and "Name (n)" (or `labelLine`) with radial callout segments.
+ */
+function buildBusinessStyleDonutGeometry(
+  slices: ReadonlyArray<BusinessDonutSlice>,
+  o: { cx: number; cy: number; outerR: number; innerR: number; gapDeg: number; labelR: number; maxNameLen: number; calloutGap?: number },
+) {
+  const { cx, cy, outerR, innerR, gapDeg, labelR, maxNameLen, calloutGap = 6 } = o;
+  const positive = slices.filter((s) => s.value > 0);
+  const useData: BusinessDonutSlice[] =
+    positive.length > 0 ? [...positive] : [{ label: '—', value: 1, color: '#e5e7eb' }];
+  const sum = useData.reduce((a, s) => a + s.value, 0);
+  const n = useData.length;
+  const availableDeg = Math.max(0.1, 360 - n * gapDeg);
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const pt = (r: number, deg: number) => {
+    const t = toRad(deg);
+    return { x: cx + r * Math.cos(t), y: cy + r * Math.sin(t) };
+  };
+  const pathEls: { d: string; key: string; color: string }[] = [];
+  const calloutEls: { x1: number; y1: number; x2: number; y2: number; key: string }[] = [];
+  const labelEls: { key: string; x: number; y: number; line: string; anchor: 'start' | 'middle' | 'end' }[] = [];
+  let cursor = -90;
+  for (let i = 0; i < n; i++) {
+    const s = useData[i];
+    const seg = sum > 0 ? (s.value / sum) * availableDeg : availableDeg / n;
+    const a0 = cursor;
+    const a1 = cursor + seg;
+    cursor = a1 + gapDeg;
+    const large = seg > 180 ? 1 : 0;
+    const o0 = pt(outerR, a0);
+    const o1 = pt(outerR, a1);
+    const i0 = pt(innerR, a0);
+    const i1 = pt(innerR, a1);
+    const d = `M ${o0.x} ${o0.y} A ${outerR} ${outerR} 0 ${large} 1 ${o1.x} ${o1.y} L ${i1.x} ${i1.y} A ${innerR} ${innerR} 0 ${large} 0 ${i0.x} ${i0.y} Z`;
+    pathEls.push({ d, key: `${i}-${s.label}`, color: s.color });
+    const mid = (a0 + a1) / 2;
+    const tMid = toRad(mid);
+    const lp = pt(labelR, mid);
+    const pLineOut = { x: cx + (labelR - calloutGap) * Math.cos(tMid), y: cy + (labelR - calloutGap) * Math.sin(tMid) };
+    const pLineIn = { x: cx + (outerR + 2) * Math.cos(tMid), y: cy + (outerR + 2) * Math.sin(tMid) };
+    calloutEls.push({ x1: pLineIn.x, y1: pLineIn.y, x2: pLineOut.x, y2: pLineOut.y, key: `${i}-c` });
+    const base = (s.displayName ?? s.label).trim() || s.label;
+    const short = base.length > maxNameLen ? `${base.slice(0, maxNameLen - 1).trimEnd()}…` : base;
+    const line =
+      s.labelLine && s.labelLine.trim() !== ''
+        ? s.labelLine.trim().length > 36
+          ? `${s.labelLine.trim().slice(0, 33)}…`
+          : s.labelLine.trim()
+        : `${short} (${s.value})`;
+    let anchor: 'start' | 'middle' | 'end' = 'middle';
+    if (lp.x < cx - 6) anchor = 'end';
+    if (lp.x > cx + 6) anchor = 'start';
+    labelEls.push({ key: `${i}-l`, x: lp.x, y: lp.y, line, anchor });
+  }
+  return { pathEls, calloutEls, labelEls, cx, cy, innerR };
+}
+
+function formatAEDShort(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return '—';
+  if (n >= 1e6) return `AED ${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `AED ${(n / 1e3).toFixed(0)}K`;
+  return `AED ${n.toFixed(0)}`;
+}
+const PS_ONTRACK = 100000001;
+const PS_DELAYED = 100000002;
+const PS_COMPLETED = 100000003;
+
+type BusinessStatusBucket = 'toStart' | 'onTrack' | 'delayed' | 'completed';
+
+function businessProjectStatusBucket(row: Record<string, unknown>): BusinessStatusBucket {
+  const n = Number(row.new_projectstatus);
+  const name = String(row.new_projectstatusname ?? '').toLowerCase();
+  if (n === PS_COMPLETED || name.includes('complet')) return 'completed';
+  if (n === PS_DELAYED || name.includes('delay')) return 'delayed';
+  if (n === PS_ONTRACK || (name.includes('on') && name.includes('track'))) return 'onTrack';
+  return 'toStart';
+}
+
+function businessDashboardModel(
+  rows: Array<Record<string, unknown>>,
+  programIdToName?: ReadonlyMap<string, string> | null,
+  masterRows?: Array<Record<string, unknown>>,
+) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const monthAbbr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const statusCounts = { completed: 0, onTrack: 0, delayed: 0, toStart: 0 };
+  const totalProjects = rows.length;
+  let sumProgress = 0;
+  let nProgress = 0;
+  let sumBudget = 0;
+  let sumActual = 0;
+  const sectorBudget = new Map<string, { planned: number; actual: number }>();
+  const programCount = new Map<string, number>();
+  const categoryCount = new Map<string, number>();
+  for (const r of rows) {
+    const b = businessProjectStatusBucket(r);
+    statusCounts[b] += 1;
+    const p = Number(r.new_progress);
+    if (Number.isFinite(p)) {
+      sumProgress += p;
+      nProgress += 1;
+    }
+    const bu = Number(r.new_budget);
+    const act = Number(r.new_actualamount);
+    if (Number.isFinite(bu) && bu > 0) sumBudget += bu;
+    if (Number.isFinite(act) && act > 0) sumActual += act;
+    const sec = String(r.new_sectorname ?? r.new_sector ?? 'Other').trim() || 'Other';
+    if (!sectorBudget.has(sec)) sectorBudget.set(sec, { planned: 0, actual: 0 });
+    const s = sectorBudget.get(sec)!;
+    if (Number.isFinite(bu) && bu > 0) s.planned += bu;
+    if (Number.isFinite(act) && act > 0) s.actual += act;
+    const prog = resolveProjectProgramName(r, programIdToName) || 'Unassigned';
+    programCount.set(prog, (programCount.get(prog) ?? 0) + 1);
+    const cat = String(r.new_projectcategoryname ?? r.new_projectcategory ?? 'Uncategorized').trim() || 'Uncategorized';
+    categoryCount.set(cat, (categoryCount.get(cat) ?? 0) + 1);
+  }
+  const completedPct = totalProjects > 0 ? (statusCounts.completed / totalProjects) * 100 : 0;
+  const onTimePct = totalProjects > 0 ? (statusCounts.onTrack / totalProjects) * 100 : 0;
+  const delayedPct = totalProjects > 0 ? (statusCounts.delayed / totalProjects) * 100 : 0;
+  const avgProgress = nProgress > 0 ? sumProgress / nProgress : 0;
+  // Any valid start date on projects? (drives "Project timeline" chart)
+  const hasStartDate = rows.some((r) => {
+    const t = r.new_startdate;
+    if (t === undefined || t === null) return false;
+    const st = new Date(t as string | number);
+    return !Number.isNaN(st.getTime());
+  });
+  // Years: last 12 years (same point count as original dashboard timeline)
+  const yearSpan = 12;
+  const years: number[] = [];
+  for (let y = currentYear - yearSpan + 1; y <= currentYear; y++) years.push(y);
+  const byYear: Array<{ y: number; completed: number; onTrack: number; delayed: number; toStart: number }> = years.map((y) => ({
+    y,
+    completed: 0,
+    onTrack: 0,
+    delayed: 0,
+    toStart: 0,
+  }));
+  const yearIndex = new Map(years.map((y, i) => [y, i] as const));
+  for (const r of rows) {
+    const start = parseTimelineDate(r.new_startdate);
+    const end = parseTimelineDate(r.new_enddate) ?? start;
+    if (!start || !end) continue;
+    const startYear = start.getFullYear();
+    const endYear = end.getFullYear();
+    const b = businessProjectStatusBucket(r);
+    for (let y = startYear; y <= endYear; y += 1) {
+      const idx = yearIndex.get(y);
+      if (idx === undefined) continue;
+      if (b === 'completed') byYear[idx].completed += 1;
+      else if (b === 'onTrack') byYear[idx].onTrack += 1;
+      else if (b === 'delayed') byYear[idx].delayed += 1;
+      else byYear[idx].toStart += 1;
+    }
+  }
+  const ytotals = byYear.map((b) => b.completed + b.onTrack + b.delayed + b.toStart);
+  const maxY = Math.max(1, ...ytotals);
+  // Original line chart used ~0–50 vertical scale; keep comparable scale for smooth lines
+  const completedH = byYear.map((b) => Math.round((b.completed / maxY) * 50));
+  const onTrackH = byYear.map((b) => Math.round((b.onTrack / maxY) * 50));
+  const delayedH = byYear.map((b) => Math.round((b.delayed / maxY) * 50));
+  /** Last few years only (matches “2025 / 2026” style mock). */
+  const focusYears = 3;
+  const narrowFrom = Math.max(0, years.length - focusYears);
+  const yearsNarrow = years.slice(narrowFrom);
+  const maxYNarrow = Math.max(
+    1,
+    ...years.map((_, i) => {
+      if (i < narrowFrom) return 0;
+      const b = byYear[i];
+      return b.completed + b.onTrack + b.delayed + b.toStart;
+    }),
+  );
+  const projectTimelineNarrow = {
+    years: yearsNarrow.map(String),
+    completed: yearsNarrow.map((_, j) => {
+      const b = byYear[narrowFrom + j];
+      return Math.round((b.completed / maxYNarrow) * 50);
+    }),
+    onTrack: yearsNarrow.map((_, j) => {
+      const b = byYear[narrowFrom + j];
+      return Math.round((b.onTrack / maxYNarrow) * 50);
+    }),
+    delayed: yearsNarrow.map((_, j) => {
+      const b = byYear[narrowFrom + j];
+      return Math.round((b.delayed / maxYNarrow) * 50);
+    }),
+  };
+  // Budget donut: top sectors by planned budget
+  const segArr = Array.from(sectorBudget.entries())
+    .map(([name, v]) => ({ name, planned: v.planned, actual: v.actual }))
+    .filter((s) => s.planned > 0 || s.actual > 0)
+    .sort((a, b) => b.planned - a.planned);
+  const top = segArr.slice(0, 6);
+  const rest = segArr.slice(6);
+  const restPlanned = rest.reduce((s, x) => s + x.planned, 0);
+  const budgetSegments: { name: string; value: number; color: string }[] = [
+    ...top.map((s, i) => ({
+      name: s.name,
+      value: s.actual > 0 ? s.actual : s.planned,
+      color: BUDGET_DONUT_COLORS[i % BUDGET_DONUT_COLORS.length],
+    })),
+  ];
+  const restActual = rest.reduce((s, x) => s + x.actual, 0);
+  if (restPlanned > 0 || restActual > 0) {
+    budgetSegments.push({ name: 'Other', value: restActual > 0 ? restActual : restPlanned, color: 'var(--secondary-gray3)' });
+  }
+  const budgetPlannedTotal = top.reduce((s, x) => s + x.planned, 0) + restPlanned;
+  const budgetBySectorLegend = top.map((s) => {
+    const pct = budgetPlannedTotal > 0 ? (s.planned / budgetPlannedTotal) * 100 : 0;
+    return {
+      label: s.name,
+      value: s.actual > 0 ? s.actual : s.planned,
+      valueLabel: `${formatAEDShort(s.actual)} / ${formatAEDShort(s.planned)}`,
+      sub: `Actual / Planned • Share ${pct.toFixed(0)}%`,
+    };
+  });
+  if (restPlanned > 0) {
+    const pct = budgetPlannedTotal > 0 ? (restPlanned / budgetPlannedTotal) * 100 : 0;
+    budgetBySectorLegend.push({
+      label: 'Other',
+      value: restActual > 0 ? restActual : restPlanned,
+      valueLabel: `${formatAEDShort(restActual)} / ${formatAEDShort(restPlanned)}`,
+      sub: `Actual / Planned • Share ${pct.toFixed(0)}%`,
+    });
+  }
+  const hasBudgetData = sumBudget > 0 && segArr.some((s) => s.planned > 0);
+  // 12 months current year: planned vs actual
+  const budgetMonthPlanned: number[] = Array(12).fill(0);
+  const budgetMonthActual: number[] = Array(12).fill(0);
+  for (const r of rows) {
+    const t = r.new_startdate;
+    if (t === undefined || t === null) continue;
+    const st = new Date(t as string | number);
+    if (Number.isNaN(st.getTime()) || st.getFullYear() !== currentYear) continue;
+    const m = st.getMonth();
+    const bu = Number(r.new_budget);
+    const act = Number(r.new_actualamount);
+    if (Number.isFinite(bu) && bu > 0) budgetMonthPlanned[m] += bu;
+    if (Number.isFinite(act) && act > 0) budgetMonthActual[m] += act;
+  }
+  const bmax = Math.max(1, ...budgetMonthPlanned, ...budgetMonthActual);
+  const hasAnyBudgetMonth = budgetMonthPlanned.some((v) => v > 0) || budgetMonthActual.some((v) => v > 0);
+  // Match original /5 height formula: scale to same numeric ballpark (0–~600) as the mock
+  const toDemoScale = (v: number) => (v / bmax) * 600;
+  const barPlanned = budgetMonthPlanned.map((v) => toDemoScale(v));
+  const barActual = budgetMonthActual.map((v) => toDemoScale(v));
+  /** Per-sector bars (mock uses sector names on X, not months). */
+  const sectorBudgetList = Array.from(sectorBudget.entries())
+    .map(([name, v]) => ({ name, planned: v.planned, actual: v.actual }))
+    .filter((s) => s.planned > 0 || s.actual > 0)
+    .sort((a, b) => Math.max(b.planned, b.actual) - Math.max(a.planned, a.actual))
+    .slice(0, 14);
+  const smax = Math.max(1, ...sectorBudgetList.map((s) => Math.max(s.planned, s.actual)));
+  const budgetingSectors = sectorBudgetList.map((s) => {
+    const dev = s.planned > 0 ? ((s.actual - s.planned) / s.planned) * 100 : s.actual > 0 ? 100 : 0;
+    return {
+      label: s.name.length > 11 ? `${s.name.slice(0, 10)}…` : s.name,
+      fullName: s.name,
+      plannedH: (s.planned / smax) * 120,
+      actualH: (s.actual / smax) * 120,
+      deviation: Math.max(-100, Math.min(100, dev)),
+    };
+  });
+  // Category & program for bars
+  const hasCategory = rows.some((r) => String(r.new_projectcategoryname ?? r.new_projectcategory ?? '').trim() !== '');
+  const catTop = Array.from(categoryCount.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+  const catMax = Math.max(1, ...catTop.map(([, c]) => c));
+  const projectCategoryBars = catTop.map(([label, count], i) => {
+    const s = String(label).trim();
+    const short = s.length > 14 ? `${s.slice(0, 13)}…` : s;
+    return {
+      label: short,
+      name: s,
+      value: count,
+      color: PROJECT_CATEGORY_DONUT_COLORS[i % PROJECT_CATEGORY_DONUT_COLORS.length] ?? 'var(--primary-greenish)',
+    };
+  });
+  const hasProgram = rows.some((r) => {
+    const n = resolveProjectProgramName(r, programIdToName).trim();
+    return n !== '' && n !== 'Unassigned';
+  });
+  const projTop = Array.from(programCount.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+  const projMax = Math.max(1, ...projTop.map(([, c]) => c));
+  const programBars = projTop.map(([name, c], i) => {
+    const s = String(name).trim() || 'Unassigned';
+    const short = s.length > 10 ? `${s.slice(0, 9)}…` : s;
+    return { label: short, name: s, value: c, color: COUNTS_BAR_COLORS[i % COUNTS_BAR_COLORS.length] };
+  });
+  // Progress donut: To start green, Completed red, On Track blue, Delayed amber (stakeholder mock)
+  const progressData = [
+    { label: 'To start', value: statusCounts.toStart, color: '#10B981' },
+    { label: 'Completed', value: statusCounts.completed, color: '#EF4444' },
+    { label: 'On Track', value: statusCounts.onTrack, color: '#3B82F6' },
+    { label: 'Delayed', value: statusCounts.delayed, color: '#F59E0B' },
+  ];
+  const kpiColorByLabel: Record<string, string> = {
+    pinnacle: '#d4a759',
+    quality: '#b58a3a',
+    risk: '#e1c179',
+    efficiency: '#8b6a2d',
+  };
+  const parseKpiValue = (row: Record<string, unknown>): number | null => {
+    const candidates = [
+      row.new_code,
+      row.new_value,
+      row.new_score,
+      row.new_target,
+      row.new_amount,
+      row.new_weightage,
+      row.new_kpi,
+    ];
+    for (const v of candidates) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return Math.max(0, Math.min(100, n));
+    }
+    return null;
+  };
+  const kpiRows = (masterRows ?? []).filter((r) => {
+    const cat = String(r.new_categorytype ?? r.new_categoryname ?? '').toLowerCase();
+    const label = String(r.new_enjazmasterdata1 ?? r.new_name ?? '').toLowerCase();
+    return cat.includes('kpi') || label.includes('kpi') || label.includes('pinnacle') || label.includes('quality') || label.includes('risk') || label.includes('efficiency');
+  });
+  const kpiByLabel = new Map<string, number>();
+  for (const r of kpiRows) {
+    const labelRaw = String(r.new_enjazmasterdata1 ?? r.new_name ?? '').trim();
+    if (!labelRaw) continue;
+    const val = parseKpiValue(r);
+    if (val == null) continue;
+    const norm = labelRaw.toLowerCase();
+    if (norm.includes('pinnacle')) kpiByLabel.set('Pinnacle', val);
+    else if (norm.includes('quality')) kpiByLabel.set('Quality', val);
+    else if (norm.includes('risk')) kpiByLabel.set('Risk', val);
+    else if (norm.includes('efficiency')) kpiByLabel.set('Efficiency', val);
+  }
+  const kpiPinnacle = ['Pinnacle', 'Quality', 'Risk', 'Efficiency'].map((label) => {
+    const fallback =
+      label === 'Pinnacle' ? Math.min(100, Math.round(avgProgress * 10) / 10)
+      : label === 'Quality' ? Math.min(100, Math.round(completedPct * 10) / 10)
+      : label === 'Risk' ? Math.min(100, Math.round(delayedPct * 10) / 10)
+      : Math.min(100, Math.round(onTimePct * 10) / 10);
+    return {
+      label,
+      value: kpiByLabel.get(label) ?? fallback,
+      color: kpiColorByLabel[label.toLowerCase()] ?? '#b58a3a',
+    };
+  });
+  const budgetByMonth = monthAbbr.map((m, i) => ({
+    month: m,
+    actual: barActual[i] ?? 0,
+    planned: barPlanned[i] ?? 0,
+  }));
+  const budgetDeviation = monthAbbr.map((m, i) => {
+    const p = budgetMonthPlanned[i];
+    const a = budgetMonthActual[i];
+    const val = p > 0 ? ((a - p) / p) * 100 : a > 0 ? 30 : 0;
+    return { month: m, val: Math.max(-30, Math.min(30, val)) };
+  });
+
+  const skipReasons: string[] = [];
+  if (totalProjects > 0) {
+    if (!hasStartDate) {
+      skipReasons.push('Project timeline — needs a valid new_startdate on at least one project to plot by year and status');
+    }
+    if (!hasBudgetData) {
+      skipReasons.push('Budget (donut) — needs new_budget and sector text (e.g. new_sectorname) on projects');
+    }
+    if (!hasCategory) {
+      skipReasons.push('Projects category — needs new_projectcategoryname (or category choice) to group by category');
+    }
+    if (!hasProgram) {
+      skipReasons.push(
+        'Projects count — needs a program link on projects (lookup to Program) with Program.new_name, or new_programname on the project',
+      );
+    }
+    if (budgetingSectors.length === 0 && !hasAnyBudgetMonth) {
+      skipReasons.push(
+        `Budgeting (actual vs planned + deviation) — needs project rows with new_budget and/or new_actualamount, and sector (new_sectorname) to chart by area`,
+      );
+    }
+  }
+
+  return {
+    totalProjectCount: totalProjects,
+    summary3: [
+      { title: 'Completed Projects', value: String(statusCounts.completed), color: '#3B82F6' },
+      { title: 'On Track Projects', value: String(statusCounts.onTrack), color: '#10B981' },
+      { title: 'Delayed Project', value: String(statusCounts.delayed), color: '#EF4444' },
+    ],
+    projectTimeline: {
+      years: years.map(String),
+      delayed: delayedH,
+      onTrack: onTrackH,
+      completed: completedH,
+    },
+    projectTimelineNarrow,
+    budgetData: { segments: budgetSegments, totalValue: sumBudget, legend: budgetBySectorLegend },
+    kpiPinnacle,
+    projectCategory: projectCategoryBars,
+    projectCounts: programBars,
+    projectCategoryMax: catMax,
+    projectCountMax: projMax,
+    progressData,
+    categoryData: projectCategoryBars.map((c) => ({ label: c.label, name: c.name, value: c.value, color: c.color })),
+    budgetVsPlanned: budgetByMonth,
+    budgetDeviation,
+    budgetingSectors,
+    isEmpty: totalProjects === 0,
+    skipReasons,
+    has: {
+      timeline: hasStartDate,
+      budget: hasBudgetData,
+      category: hasCategory,
+      program: hasProgram,
+      budgeting: budgetingSectors.length > 0 || hasAnyBudgetMonth,
+    },
+  };
+}
+
+const PROJECT_CATEGORY_OPTIONS: Array<{ value: string; label: string }> = Object.entries(New_projectsnew_projectcategory).map(
+  ([value, label]) => ({ value, label: String(label).replace(/_/g, ' ') }),
+);
+
+const DELIVERABLE_STATUS_OPTIONS = ['Delivered', 'To Be Delivered', 'Delayed'] as const;
+
+/** `new_status` option set (matches Dataverse) */
+const DELIVERABLE_STATUS_LABEL_TO_CHOICE: Record<(typeof DELIVERABLE_STATUS_OPTIONS)[number], number> = {
+  Delivered: 100000000,
+  'To Be Delivered': 100000001,
+  Delayed: 100000002,
+};
+
+/** `new_thedeliverablesinclude` text: checked rows’ `new_enjazmasterdata1` only. */
+function buildDeliverableIncludeString(
+  rows: EnjazMasterDataRow[],
+  includeByRowId: Record<string, boolean>,
+): string {
+  const labels: string[] = [];
+  rows.forEach((row) => {
+    const id = String(row.new_enjazmasterdataid ?? '');
+    if (!id || !includeByRowId[id]) return;
+    const v = String(row.new_enjazmasterdata1 ?? '').trim();
+    if (v) labels.push(v);
+  });
+  return labels.join(', ');
+}
+
+type AddDeliverableFormPanelProps = {
+  onClose: () => void;
+  sectionClassName?: string;
+  onNotify?: (type: ToastType, message: string) => void;
+  /** Call after a successful save so list views can refetch. */
+  onSaved?: () => void;
+};
+
+/** New Deliverables — front fields: project names (my projects), PMs (Project dept), goal, category, master checkboxes. */
+function AddDeliverableFormPanel({
+  onClose,
+  sectionClassName = 'bg-white rounded-xl p-6 shadow-sm max-w-4xl mx-auto w-full',
+  onNotify,
+  onSaved,
+}: AddDeliverableFormPanelProps) {
+  const [projectName, setProjectName] = useState('');
+  const [projectManager, setProjectManager] = useState('');
+  const [projectGoal, setProjectGoal] = useState('');
+  const [projectCategory, setProjectCategory] = useState('');
+  const [deliverableStatus, setDeliverableStatus] = useState('');
+  const [notes, setNotes] = useState('');
+  const [includeByRowId, setIncludeByRowId] = useState<Record<string, boolean>>({});
+
+  const [projectNameOptions, setProjectNameOptions] = useState<string[]>([]);
+  const [pmOptions, setPmOptions] = useState<string[]>([]);
+  const [deliverableMasterRows, setDeliverableMasterRows] = useState<EnjazMasterDataRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [projectsRes, usersRes, deliverableMasterRes] = await Promise.all([
+          New_projectsService.getAll({ top: 500, orderBy: ['createdon desc'] }),
+          NewUsersService.getAll({ top: 500, orderBy: ['createdon desc'] }),
+          EnjazMasterDataService.getActiveDeliverableMasterRows(),
+        ]);
+        if (cancelled) return;
+
+        const sessionEmail = getSessionUserEmail()?.toLowerCase();
+        const projectRows = (projectsRes.success ? projectsRes.data : []) as unknown as Array<Record<string, unknown>>;
+        const mine = sessionEmail
+          ? projectRows.filter((row) => {
+              const em = getProjectRowCreatedByEmail(row).toLowerCase();
+              return em && em === sessionEmail;
+            })
+          : projectRows;
+        let names = distinctSortedStrings(
+          mine.map((row) => String(row.new_projectname ?? row.new_name ?? '').trim()).filter(Boolean),
+        );
+        if (names.length === 0 && projectRows.length > 0) {
+          names = distinctSortedStrings(
+            projectRows.map((row) => String(row.new_projectname ?? row.new_name ?? '').trim()).filter(Boolean),
+          );
+        }
+
+        const userRows = (usersRes.success ? usersRes.data : []) as Array<Record<string, unknown>>;
+        const pms = distinctSortedStrings(
+          userRows
+            .filter(isUserProjectDepartment)
+            .map((u) => String(u.new_newcolumn ?? u.new_userid ?? '').trim())
+            .filter(Boolean),
+        );
+
+        const deliverableRows = deliverableMasterRes.success ? (deliverableMasterRes.data ?? []) : [];
+        if (!deliverableMasterRes.success) {
+          const err = deliverableMasterRes as { error?: { message?: string } };
+          setLoadError(err.error?.message ?? 'Could not load new_enjazmasterdata (category Deliverables, status Active).');
+        }
+
+        setProjectNameOptions(names);
+        setPmOptions(pms);
+        setDeliverableMasterRows(deliverableRows);
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Failed to load form data');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleInclude = (id: string) => {
+    setIncludeByRowId((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const clip = (s: string, max: number) => (s.length <= max ? s : s.slice(0, Math.max(0, max - 1)) + '…');
+
+  const handleSave = async () => {
+    const nextErrors: Record<string, string> = {};
+    if (!projectName.trim()) nextErrors.projectName = 'Project Name is required';
+    if (!projectCategory) nextErrors.projectCategory = 'Project Category is required';
+    if (!deliverableStatus || !DELIVERABLE_STATUS_LABEL_TO_CHOICE[deliverableStatus as (typeof DELIVERABLE_STATUS_OPTIONS)[number]]) {
+      nextErrors.deliverableStatus = 'Deliverable Status is required';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      onNotify?.('error', 'Please fill all required fields.');
+      return;
+    }
+    setErrors({});
+    const statusValue = DELIVERABLE_STATUS_LABEL_TO_CHOICE[deliverableStatus as (typeof DELIVERABLE_STATUS_OPTIONS)[number]];
+    const categoryLabel =
+      PROJECT_CATEGORY_OPTIONS.find((o) => o.value === projectCategory)?.label?.replace(/_/g, ' ') ?? projectCategory;
+    const includeText = buildDeliverableIncludeString(deliverableMasterRows, includeByRowId);
+    const businessId = (globalThis.crypto?.randomUUID?.() ?? `DLV-${Date.now()}-${Math.random().toString(16).slice(2)}`).slice(0, 100);
+
+    setSaveBusy(true);
+    try {
+      const payload: Record<string, unknown> = {
+        new_deliverablesid: businessId,
+        new_projectname: clip(projectName.trim(), 850),
+        new_projectcategory: clip(String(categoryLabel), 100),
+        new_status: statusValue,
+        statecode: 0,
+      };
+      const pm = String(projectManager ?? '').trim();
+      if (pm) payload.new_projectmanager = clip(pm, 100);
+      const goal = projectGoal.trim();
+      if (goal) payload.new_projectgoal = goal;
+      if (includeText.trim()) payload.new_thedeliverablesinclude = includeText;
+      const note = notes.trim();
+      if (note) payload.new_notes = note;
+
+      const res = await New_deliverablesService.create(
+        payload as unknown as Parameters<typeof New_deliverablesService.create>[0],
+      );
+      if (!res.success) throw new Error(res.error?.message ?? 'Failed to save deliverable');
+      onNotify?.('success', 'Deliverable saved successfully.');
+      onSaved?.();
+      onClose();
+    } catch (e) {
+      onNotify?.('error', e instanceof Error ? e.message : 'Failed to save deliverable');
+    } finally {
+      setSaveBusy(false);
+    }
+  };
+
   return (
-    <img
-      src={ENJAZ_LOGO_SRC}
-      alt="Enjaz logo"
-      className={`${sizeClass} rounded-md object-cover`}
-      onError={() => setFailed(true)}
-    />
+    <section className={sectionClassName}>
+      <p className="text-sm font-semibold text-primary mb-5">
+        <button type="button" className="underline text-primary font-semibold" onClick={onClose}>
+          Deliverables
+        </button>
+        {' > '}Add New Deliverables
+      </p>
+      {loadError && <p className="text-sm text-rose-600 mb-3">{loadError}</p>}
+      {loading && <p className="text-sm text-gray-500 mb-3">Loading options…</p>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 max-w-3xl">
+        <label>
+          <span className="text-[11px] text-gray-500">Project Name *</span>
+          <select
+            className={`${enj.control} mt-1`}
+            value={projectName}
+            onChange={(e) => {
+              setProjectName(e.target.value);
+              setErrors((prev) => ({ ...prev, projectName: '' }));
+            }}
+            disabled={loading || saveBusy}
+          >
+            <option value="">Select project name</option>
+            {projectNameOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
+        </label>
+        <label>
+          <span className="text-[11px] text-gray-500">Project category *</span>
+          <select
+            className={`${enj.control} mt-1`}
+            value={projectCategory}
+            onChange={(e) => {
+              setProjectCategory(e.target.value);
+              setErrors((prev) => ({ ...prev, projectCategory: '' }));
+            }}
+            disabled={loading || saveBusy}
+          >
+            <option value="">Select project category</option>
+            {PROJECT_CATEGORY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {errors.projectCategory && <p className="mt-1 text-[11px] text-rose-600">{errors.projectCategory}</p>}
+        </label>
+        <label>
+          <span className="text-[11px] text-gray-500">Project Manager</span>
+          <select
+            className={`${enj.control} mt-1`}
+            value={projectManager}
+            onChange={(e) => setProjectManager(e.target.value)}
+            disabled={loading || saveBusy}
+          >
+            <option value="">Select project manager</option>
+            {pmOptions.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="text-[11px] text-gray-500">Project Goal</span>
+          <input
+            className={`${enj.control} mt-1`}
+            placeholder="Enter project goal"
+            value={projectGoal}
+            onChange={(e) => setProjectGoal(e.target.value)}
+            disabled={loading || saveBusy}
+          />
+        </label>
+        <label>
+          <span className="text-[11px] text-gray-500">Deliverable Status *</span>
+          <select
+            className={`${enj.control} mt-1`}
+            value={deliverableStatus}
+            onChange={(e) => {
+              setDeliverableStatus(e.target.value);
+              setErrors((prev) => ({ ...prev, deliverableStatus: '' }));
+            }}
+            disabled={loading || saveBusy}
+          >
+            <option value="">Select deliverable status</option>
+            {DELIVERABLE_STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          {errors.deliverableStatus && <p className="mt-1 text-[11px] text-rose-600">{errors.deliverableStatus}</p>}
+        </label>
+        <div className="hidden md:block" aria-hidden="true" />
+      </div>
+
+      <p className="text-[12px] font-semibold text-gray-700 mt-5 mb-3">Deliverables Include</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600 max-h-64 overflow-y-auto pr-1">
+        {deliverableMasterRows.length === 0 && !loading ? (
+          <p className="text-gray-500 text-xs md:col-span-2">No active deliverable rows in Enjaz Master Data (category Deliverables, status Active).</p>
+        ) : (
+          deliverableMasterRows.map((row) => {
+            const id = String(row.new_enjazmasterdataid ?? '');
+            const label = String(row.new_enjazmasterdata1 ?? '').trim();
+            if (!id || !label) return null;
+            return (
+              <label key={id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="accent-secondary rounded"
+                  checked={includeByRowId[id] ?? false}
+                  disabled={loading || saveBusy}
+                  onChange={() => toggleInclude(id)}
+                />
+                {label}
+              </label>
+            );
+          })
+        )}
+      </div>
+
+      <div className="mt-4">
+        <label className="text-[11px] text-gray-500">Notes</label>
+        <textarea
+          className="mt-1 w-full h-24 rounded-md border border-gray-200 px-3 py-2 text-sm resize-none"
+          placeholder="Notes…"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          disabled={loading || saveBusy}
+        />
+      </div>
+
+      <div className="mt-5 flex items-center justify-end gap-3">
+        <button
+          type="button"
+          className={enj.btnOutline}
+          onClick={onClose}
+          disabled={saveBusy}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className={enj.btnPrimary}
+          onClick={() => void handleSave()}
+          disabled={loading || saveBusy}
+        >
+          {saveBusy ? 'Saving…' : '+ Save'}
+        </button>
+      </div>
+    </section>
   );
 }
 
 // ─── SVG Chart: Assigned Tasks / Projects ───────────────────────────────────
-function AssignedTasksChart() {
-  const bars = [
-    { label: 'Flow',     value: 15, color: '#94a3b8' },
-    { label: 'Pinnacle', value: 38, color: '#fbbf24' },
-    { label: 'Primus',   value: 28, color: '#a3a36a' },
-    { label: 'PS.Sys',   value: 22, color: '#f87171' },
-    { label: 'Star',     value: 34, color: '#60a5fa' },
-    { label: '',         value: 10, color: '#c4b5fd' },
-  ];
-  const MAX = 50;
+type AssignedTasksBar = { label: string; value: number; color: string };
+
+function AssignedTasksChart({ bars, maxValue }: { bars: AssignedTasksBar[]; maxValue?: number }) {
   const H = 110;
   const W = 220;
   const PL = 28;
   const barW = 22;
   const gap = 10;
-
+  const m = maxValue ?? Math.max(1, ...bars.map((b) => b.value), 0);
+  const step = m <= 10 ? 2 : m <= 30 ? 5 : m <= 50 ? 10 : Math.ceil(m / 5) * 5 / 5;
+  const tickMax = Math.max(step * 5, m);
+  const ticks = [0, 1, 2, 3, 4, 5].map((i) => Math.round((tickMax * i) / 5));
+  if (bars.length === 0) {
+    return <p className="text-xs text-gray-400 py-4 text-center w-full">No project assignments</p>;
+  }
   return (
-    <svg viewBox={`0 0 ${W} ${H + 44}`} className="w-full h-44">
-      {[0, 10, 20, 30, 40, 50].map((v) => {
-        const y = H - (v / MAX) * H;
+    <svg viewBox={`0 0 ${W} ${H + 44}`} className={enj.chartSvg}>
+      {ticks.map((v) => {
+        const y = H - (v / tickMax) * H;
         return (
           <g key={v}>
             <line x1={PL} x2={W - 4} y1={y} y2={y} stroke="#f1f5f9" strokeWidth="1" />
@@ -124,11 +1023,13 @@ function AssignedTasksChart() {
       })}
       {bars.map((d, i) => {
         const x = PL + i * (barW + gap);
-        const h = (d.value / MAX) * H;
+        const h = (d.value / tickMax) * H;
         return (
-          <g key={i}>
+          <g key={d.label + i}>
             <rect x={x} y={H - h} width={barW} height={h} fill={d.color} rx="3" />
-            <text x={x + barW / 2} y={H + 10} textAnchor="middle" fontSize="6" fill="#6b7280">{d.label}</text>
+            <text x={x + barW / 2} y={H + 10} textAnchor="middle" fontSize="6" fill="#6b7280">
+              {d.label.length > 7 ? `${d.label.slice(0, 6)}…` : d.label}
+            </text>
           </g>
         );
       })}
@@ -138,26 +1039,23 @@ function AssignedTasksChart() {
 }
 
 // ─── SVG Chart: Tasks ────────────────────────────────────────────────────────
-function TasksChart() {
-  const bars = [
-    { label: ['TO DO'],       value: 23, color: '#60a5fa' },
-    { label: ['DONE'],        value: 16, color: '#34d399' },
-    { label: ['DELAYED'],     value: 6,  color: '#fb923c' },
-    { label: ['ON HOLD'],     value: 1,  color: '#f87171' },
-    { label: ['IN','PROGRESS'], value: 8, color: '#a3e635' },
-  ];
-  const MAX = 26;
+type TasksChartBar = { label: [string, string?]; value: number; color: string };
+
+function TasksChart({ bars }: { bars: TasksChartBar[] }) {
   const H = 110;
   const barW = 26;
   const gap = 8;
   const PL = 6;
-  const W = PL + bars.length * (barW + gap) + 4;
-
+  const max = Math.max(1, ...bars.map((b) => b.value));
+  const W = Math.max(PL + bars.length * (barW + gap) + 4, 120);
+  if (bars.length === 0) {
+    return <p className="text-xs text-gray-400 py-4 text-center w-full">No task data</p>;
+  }
   return (
-    <svg viewBox={`0 0 ${W} ${H + 36}`} className="w-full h-44">
+    <svg viewBox={`0 0 ${W} ${H + 36}`} className={enj.chartSvg}>
       {bars.map((d, i) => {
         const x = PL + i * (barW + gap);
-        const h = (d.value / MAX) * H;
+        const h = (d.value / max) * H;
         return (
           <g key={i}>
             <text x={x + barW / 2} y={H - h - 3} textAnchor="middle" fontSize="8" fontWeight="700" fill="#374151">{d.value}</text>
@@ -173,30 +1071,42 @@ function TasksChart() {
 }
 
 // ─── SVG Chart: Issues Donut ─────────────────────────────────────────────────
-function IssuesDonut() {
+function IssuesDonut({
+  open,
+  inProgress,
+  closed,
+  total,
+}: {
+  open: number;
+  inProgress: number;
+  closed: number;
+  total: number;
+}) {
+  const slices = [
+    { label: 'Open', value: Math.max(0, open), color: '#d3525a' as const },
+    { label: 'In Prog', value: Math.max(0, inProgress), color: '#3b3a80' as const },
+    { label: 'Resolved', value: Math.max(0, closed), color: '#1667de' as const },
+  ];
+  const has = slices.some((s) => s.value > 0);
   return (
     <div className="flex items-center gap-2">
       <DonutChart
         className="w-36 h-36 flex-shrink-0"
         ringWidth={38}
         showOuterLabels={false}
-        centerText="360"
+        centerText={String(total)}
         centerSubtext="issues"
-        slices={[
-          { label: 'Open', value: 80, color: '#d3525a' },
-          { label: 'Solved', value: 470, color: '#1667de' },
-          { label: 'Total', value: 620, color: '#3b3a80' },
-        ]}
+        slices={has ? slices : [{ label: 'No Data', value: 1, color: '#e5e7eb' }]}
       />
       <div className="space-y-2 text-xs min-w-[100px]">
         {[
-          { label: 'Open', val: 80, color: '#d3525a' },
-          { label: 'Solved', val: 470, color: '#1667de' },
-          { label: 'Total', val: 620, color: '#3b3a80' },
-        ].map(item => (
+          { label: 'Open', val: open, color: '#d3525a' },
+          { label: 'In Prog', val: inProgress, color: '#3b3a80' },
+          { label: 'Resolved', val: closed, color: '#1667de' },
+        ].map((item) => (
           <div key={item.label} className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: item.color }} />
-            <span className="text-gray-500 w-10">{item.label}</span>
+            <span className="text-gray-500 w-12">{item.label}</span>
             <span className="font-semibold text-gray-700">{item.val}</span>
           </div>
         ))}
@@ -227,77 +1137,28 @@ function Badge({ label }: { label: string }) {
 function ProgressBar({ pct }: { pct: number }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-        <div className="h-full bg-[#151d5d] rounded-full" style={{ width: `${pct}%` }} />
+      <div className="enj-table-progress-track w-24 max-w-full">
+        <div className="enj-table-progress-fill" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs text-gray-500 whitespace-nowrap">{pct}%</span>
+      <span className="text-xs whitespace-nowrap text-[#6B7280]">{pct}%</span>
     </div>
   );
 }
 
-function NotificationBell() {
-  const [open, setOpen] = useState(false);
-  const items = [
-    { user: 'John. S', text: 'Issue#5801 closed on Business analysis', date: '04/07/2023', time: '09.00 am', priority: 'LOW', color: 'bg-indigo-100 text-indigo-700' },
-    { user: 'Fady', text: 'Issue#5801 opened on Business analysis', date: '04/07/2023', time: '09.00 am', priority: 'MEDIUM', color: 'bg-amber-100 text-amber-700' },
-    { user: 'Samy Ali', text: 'Issue#4403 re-opened on Business analysis', date: '04/07/2023', time: '09.00 am', priority: 'MEDIUM', color: 'bg-amber-100 text-amber-700' },
-    { user: 'Reda.W S', text: 'Issue#7709 closed on Business analysis', date: '04/07/2023', time: '09.00 am', priority: 'HIGH', color: 'bg-rose-100 text-rose-700' },
-  ];
-
-  return (
-    <div className="relative flex items-center">
-      <button type="button" className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700" aria-label="Notifications" onClick={() => setOpen((v) => !v)}>
-        <Bell size={18} />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-8 z-50 w-[320px] rounded-xl border border-gray-200 bg-white shadow-xl">
-          <div className="p-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-800">Notification</h3>
-            <button className="text-xs text-gray-500">All Read</button>
-          </div>
-          <div className="px-3 pt-2 flex items-center gap-4 text-xs border-b border-gray-100">
-            <span className="text-amber-700 border-b-2 border-amber-700 pb-2">Issues</span>
-            <span className="text-gray-400 pb-2">Sent Tasks</span>
-            <span className="text-gray-400 pb-2">Pinned</span>
-          </div>
-          <div className="max-h-[350px] overflow-auto">
-            {items.map((item) => (
-              <div key={item.user + item.text} className="px-3 py-2 border-b border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-orange-200 text-[10px] flex items-center justify-center text-orange-800">
-                      {item.user.charAt(0)}
-                    </div>
-                    <p className="text-sm font-medium text-gray-700">{item.user}</p>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${item.color}`}>{item.priority}</span>
-                </div>
-                <p className="text-xs text-gray-600 mt-1">{item.text} Group Request access to CS Server</p>
-                <div className="mt-1 flex items-center gap-4 text-[11px] text-gray-400">
-                  <span>{item.date}</span>
-                  <span>{item.time}</span>
-                  <button className="text-indigo-500">Add Comment</button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="p-3 flex items-center justify-between text-sm">
-            <button className="text-gray-500">Clear All</button>
-            <button className="text-[#b28a44]">View All</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProfileDropdown({ onLogout }: { onLogout: () => void }) {
+function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLabel: string }) {
   const [open, setOpen] = useState(false);
   const [activityHistoryOpen, setActivityHistoryOpen] = useState(false);
   const [userProfileOpen, setUserProfileOpen] = useState(false);
+  const [displayName, setDisplayName] = useState('pms');
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const initials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '')
+    .join('') || 'U';
 
   const items = [
     { label: 'User Profile', icon: <UserCircle size={14} className="text-[#c7a56a]" /> },
@@ -328,6 +1189,22 @@ function ProfileDropdown({ onLogout }: { onLogout: () => void }) {
     };
   }, [open]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const profile = await fetchSessionUserProfileFromUsers({ fallbackToFirstRow: true });
+        if (cancelled || !profile) return;
+        if (profile.displayName) setDisplayName(profile.displayName);
+      } catch {
+        // keep fallback defaults
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
@@ -355,9 +1232,7 @@ function ProfileDropdown({ onLogout }: { onLogout: () => void }) {
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          <div className="w-8 h-8 rounded-full bg-orange-300 flex items-center justify-center">
-            <UserCircle size={16} className="text-white" />
-          </div>
+          <div className="w-8 h-8 rounded-full bg-[#b28a44] text-white text-[10px] font-semibold flex items-center justify-center">{initials}</div>
           <ChevronDown size={13} className="text-gray-400" />
         </button>
         {open && (
@@ -368,8 +1243,8 @@ function ProfileDropdown({ onLogout }: { onLogout: () => void }) {
             className="absolute right-0 top-10 z-50 w-52 rounded-xl border border-gray-200 bg-white shadow-xl outline-none"
           >
             <div className="px-3 py-3 border-b border-gray-100">
-              <p className="text-sm font-semibold text-[#2d356b]">pms</p>
-              <p className="text-[10px] text-gray-400">Admin</p>
+              <p className={enj.sectionTitle}>{displayName}</p>
+              <p className="text-[10px] text-gray-400">{roleLabel}</p>
             </div>
             <div className="py-1">
               {items.map((item, index) => (
@@ -394,7 +1269,7 @@ function ProfileDropdown({ onLogout }: { onLogout: () => void }) {
                     }
                   }}
                   className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 ${
-                    activeIndex === index ? 'bg-gray-50 text-[#2d356b]' : 'text-gray-500'
+                    activeIndex === index ? 'bg-gray-50 text-primary' : 'text-gray-500'
                   }`}
                 >
                   {item.icon}
@@ -425,12 +1300,201 @@ function ProfileDropdown({ onLogout }: { onLogout: () => void }) {
 }
 
 // ─── Team Dashboard ───────────────────────────────────────────────────────────
+function teamTaskAssigneeMatch(row: Record<string, unknown>, profile: SessionUserProfile | null): boolean {
+  if (!profile?.email && !profile?.displayName) return true;
+  const email = (profile?.email ?? '').toLowerCase();
+  const name = (profile?.displayName ?? '').toLowerCase();
+  const local = email.split('@')[0] ?? '';
+  const f = String(row.new_assigntoteammember ?? '').toLowerCase();
+  if (!f.trim()) return false;
+  if (email && f.includes(email)) return true;
+  if (local.length > 0 && f.includes(local)) return true;
+  if (name && f.includes(name)) return true;
+  return name.split(/\s+/).filter((p) => p.length > 1).some((p) => f.includes(p));
+}
+function teamIssueUserMatch(row: Record<string, unknown>, profile: SessionUserProfile | null): boolean {
+  if (!profile?.email && !profile?.displayName) return true;
+  const email = (profile?.email ?? '').toLowerCase();
+  const name = (profile?.displayName ?? '').toLowerCase();
+  const local = email.split('@')[0] ?? '';
+  const f = String(row.new_issueowner ?? row.new_assigntoteammember ?? '').toLowerCase();
+  if (!f.trim()) return true;
+  if (email && f.includes(email)) return true;
+  if (local.length > 0 && f.includes(local)) return true;
+  if (name && f.includes(name)) return true;
+  return name.split(/\s+/).filter((p) => p.length > 1).some((p) => f.includes(p));
+}
+function teamFormatShortDate(v: unknown) {
+  const s = String(v ?? '').trim();
+  if (!s) return '—';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+  return d.toLocaleDateString();
+}
+function teamIssueCardDueDate(row: Record<string, unknown>) {
+  const v = row.new_issuedate ?? row.modifiedon ?? row.createdon;
+  const s = String(v ?? '').trim();
+  if (!s) return '—';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function teamIssueCardPriorityMeta(row: Record<string, unknown>): { p: string; ring: string } {
+  const n = Number(row.new_issueseverity ?? NaN);
+  if (n === 100000003) return { p: 'P1', ring: 'bg-rose-600' };
+  if (n === 100000002) return { p: 'P2', ring: 'bg-amber-500' };
+  if (n === 100000001) return { p: 'P3', ring: 'bg-emerald-600' };
+  if (n === 100000000) return { p: 'P4', ring: 'bg-emerald-600' };
+  return { p: 'P4', ring: 'bg-emerald-600' };
+}
+function teamTaskIsDelayed(row: Record<string, unknown>) {
+  const st = String(row.new_taskstatusname ?? '').toLowerCase();
+  const stn = Number(row.new_taskstatus ?? NaN);
+  if (st.includes('complet') || stn === 100000002) return false;
+  const end = parseTimelineDate(row.new_enddate);
+  if (!end) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return end.getTime() < today.getTime();
+}
+function teamTaskIsBug(row: Record<string, unknown>) {
+  const t = String(row.new_tasktitle ?? '').toLowerCase();
+  const s = String(row.new_taskstatusname ?? '').toLowerCase();
+  return t.includes('bug') || s.includes('bug');
+}
+function teamTaskIsUserStory(row: Record<string, unknown>) {
+  return String(row.new_tasktitle ?? '').toLowerCase().includes('story') || String(row.new_tasktitle ?? '').toLowerCase().includes('user story');
+}
+function teamTaskStatusDisplay(row: Record<string, unknown>) {
+  const s = String(row.new_taskstatusname ?? '').toUpperCase();
+  if (s) return s.replace(/\s+/g, ' ').slice(0, 18);
+  const n = Number(row.new_taskstatus);
+  if (n === 100000000) return 'NOT STARTED';
+  if (n === 100000001) return 'IN PROGRESS';
+  if (n === 100000002) return 'DONE';
+  if (n === 100000003) return 'ON HOLD';
+  return 'IN PROGRESS';
+}
+function teamTaskProgressPct(row: Record<string, unknown>) {
+  const p = String(row.new_progresslevel ?? row.new_progress ?? '').trim();
+  const n = Number(p);
+  if (Number.isFinite(n)) return Math.max(0, Math.min(100, Math.round(n)));
+  return 0;
+}
+
+function localIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function meetingShortDate(value: unknown): string {
+  const d = parseTimelineDate(value);
+  return d ? d.toLocaleDateString() : '—';
+}
+
+function MeetingsBoardPanel({
+  meetings,
+  onNewMeeting,
+  onNotify,
+  loading,
+}: {
+  meetings: Array<Record<string, unknown>>;
+  onNewMeeting: () => void;
+  onNotify: (type: ToastType, message: string) => void;
+  loading?: boolean;
+}) {
+  const [showMom, setShowMom] = useState(false);
+  const [projectFilter, setProjectFilter] = useState('All');
+  const [selectedDateIso, setSelectedDateIso] = useState(() => localIsoDate(new Date()));
+  const projectOptions = useMemo(
+    () => Array.from(new Set(meetings.map((r) => String(r.new_projectname ?? '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [meetings],
+  );
+  const filteredMeetings = useMemo(() => {
+    let rows = projectFilter === 'All' ? meetings : meetings.filter((r) => String(r.new_projectname ?? '').trim() === projectFilter);
+    return rows.filter((r) => {
+      const d = parseTimelineDate(r.new_meetingdatetime ?? r.new_meetingdate);
+      return d ? localIsoDate(d) === selectedDateIso : false;
+    });
+  }, [meetings, projectFilter, selectedDateIso]);
+  const blocks = useMemo(() => {
+    const colors = ['#17c983', '#2563eb', '#f6be00', '#21c784', '#d35b66', '#474d7f'];
+    return filteredMeetings.slice(0, 10).map((row, i) => {
+      const start = String(row.new_starttime ?? '10:00:00');
+      const hr = parseInt(String(start).split(':')[0] ?? '10', 10) || 10;
+      const link = String(row.new_meetinglink ?? '').trim();
+      return {
+        id: String(row.new_meetingdetailid ?? i),
+        title: String(row.new_meetingtitle ?? 'Meeting'),
+        top: Math.min(340, Math.max(32, 40 + (hr - 8) * 28 + (i % 4) * 6)),
+        left: 2 + (i % 6) * 64 + (i % 3) * 18,
+        color: colors[i % colors.length]!,
+        joinUrl: /^https?:\/\//i.test(link) ? link : undefined,
+      };
+    });
+  }, [filteredMeetings]);
+  const categories = useMemo(() => {
+    const m = new Map<string, { hrs: number; n: number }>();
+    filteredMeetings.forEach((row) => {
+      const c = String(row.new_meetingcategory ?? 'Other').trim() || 'Other';
+      const h = Number(row.new_durationhours);
+      m.set(c, { hrs: (m.get(c)?.hrs ?? 0) + (Number.isFinite(h) ? h : 0), n: (m.get(c)?.n ?? 0) + 1 });
+    });
+    return Array.from(m.entries()).slice(0, 10).map(([name, v], i) => ({ name, hrs: v.hrs, n: v.n, bg: ['#c9f4e4', '#e9edff', '#f7eed8', '#eef0ff'][i % 4]!, text: ['#138f6f', '#4c64bf', '#b8872e', '#4d5bb7'][i % 4]! }));
+  }, [filteredMeetings]);
+
+  return (
+    <section className={enj.panelBg}>
+      {loading && <ScreenLoader overlay className="rounded-xl" />}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-8">
+          <h2 className={enj.pageTitle}>Meetings</h2>
+          <div className="flex items-center gap-3 text-xs">
+            <label className="text-gray-500 flex items-center gap-2"><span>Project Name</span><select className={`${enj.control} !w-auto max-w-[170px] text-sm text-gray-600`} value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="All">All</option>{projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
+            <label className="text-gray-500 flex items-center gap-2"><span>Date</span><input type="date" className={`${enj.control} !w-auto text-sm`} value={selectedDateIso} onChange={(e) => setSelectedDateIso(e.target.value)} /></label>
+            <button type="button" onClick={() => { setSelectedDateIso(localIsoDate(new Date())); setShowMom(false); }} className={`${enj.btn} ${enj.btnOutline} rounded-full px-3 text-sm`}>Today</button>
+            <button type="button" onClick={() => setShowMom((v) => !v)} className={`${enj.btn} ${enj.btnOutline} text-sm`}>MOM</button>
+          </div>
+        </div>
+        <button type="button" onClick={onNewMeeting} className={`${enj.btn} ${enj.btnPrimary} text-sm font-semibold`}>+ New Meeting</button>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
+        {showMom ? (
+          <section className="bg-white rounded-xl p-3">
+            <p className="text-sm font-semibold text-primary mb-2">Meetings {'>'} MOM</p>
+            <table className={`${enj.table} w-full text-[10px]`}><thead><tr><th>Meeting Title</th><th>Category</th><th>Project Name</th><th>Date</th><th className="text-right">Join</th></tr></thead><tbody>{filteredMeetings.length === 0 ? <tr><td colSpan={5} className="px-3 py-6 text-center text-xs text-gray-500">No meetings for selected project/date.</td></tr> : filteredMeetings.map((mrow) => { const join = String(mrow.new_meetinglink ?? '').trim(); const canOpen = /^https?:\/\//i.test(join); return <tr key={String(mrow.new_meetingdetailid ?? mrow.createdon)} className="border-b border-gray-100 text-[11px] text-gray-700"><td className="px-3 py-3 font-semibold">{canOpen ? <a href={join} target="_blank" rel="noopener noreferrer" className={enj.tableLink}>{String(mrow.new_meetingtitle ?? '—')}</a> : String(mrow.new_meetingtitle ?? '—')}</td><td className="px-3 py-3">{String(mrow.new_meetingcategory ?? '—')}</td><td className="px-3 py-3">{String(mrow.new_projectname ?? '—')}</td><td className="px-3 py-3 text-gray-500">{meetingShortDate(mrow.new_meetingdate)}</td><td className="px-3 py-3 text-right">{canOpen ? <a href={join} target="_blank" rel="noopener noreferrer" className={`${enj.tableLink} underline`}>Join</a> : <span className="text-gray-300">—</span>}</td></tr>; })}</tbody></table>
+          </section>
+        ) : (
+          <section className="bg-white rounded-xl p-3"><div className="grid grid-cols-[44px_1fr]"><div className="text-[10px] text-gray-300 space-y-8 pt-2">{['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map((time) => <p key={time}>{time}</p>)}</div><div className="relative h-[410px] rounded-lg border border-gray-100 bg-[repeating-linear-gradient(to_right,#f6f7fb_0,#f6f7fb_1px,transparent_1px,transparent_16.66%)]">{[15, 73, 139, 205, 271, 337].map((x) => <div key={x} className="absolute top-0 bottom-0 w-px bg-gray-100" style={{ left: x }} />)}{blocks.length === 0 ? <p className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No meetings for selected day</p> : blocks.map((item) => <button key={item.id} type="button" className="absolute h-8 max-w-[200px] cursor-pointer rounded-full px-3 text-left text-white text-[9px] font-semibold flex items-center truncate shadow-sm" style={{ top: item.top, left: item.left, backgroundColor: item.color }} onClick={() => { if (item.joinUrl) window.open(item.joinUrl, '_blank', 'noopener,noreferrer'); else onNotify('info', 'No Teams join link yet for this meeting.'); }}>{item.title}</button>)}</div></div></section>
+        )}
+        <section className="bg-white rounded-xl p-3"><p className="text-[9px] text-gray-400 uppercase">Current Day</p><h3 className="text-sm font-semibold text-primary mb-2">Scheduled Meetings</h3><div className="space-y-2">{categories.length === 0 ? <p className="text-xs text-gray-400 py-2">No scheduled meeting categories.</p> : categories.map((row) => <div key={row.name} className="rounded-full px-3 py-1.5 flex items-center justify-between" style={{ backgroundColor: row.bg }}><div><p className="text-[10px] font-semibold" style={{ color: row.text }}>{row.name}</p><p className="text-[9px] text-gray-400">{row.hrs > 0 ? `${row.hrs} HRS` : '—'}</p></div><span className="w-5 h-5 rounded-full bg-white/80 text-[10px] font-semibold flex items-center justify-center" style={{ color: row.text }}>{row.n}</span></div>)}</div></section>
+      </div>
+    </section>
+  );
+}
+
 function TeamDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeNav, setActiveNav] = useState('Dashboard');
   const [showCalendarMom, setShowCalendarMom] = useState(false);
   const [showAddCalendarMeetingForm, setShowAddCalendarMeetingForm] = useState(false);
   const [showTaskDetails, setShowTaskDetails] = useState(false);
+  const [editingTaskRow, setEditingTaskRow] = useState<Record<string, unknown> | null>(null);
+  const [teamTaskDeleteCandidate, setTeamTaskDeleteCandidate] = useState<Record<string, unknown> | null>(null);
+  const [deletingTeamTask, setDeletingTeamTask] = useState(false);
   const [showIssueDetails, setShowIssueDetails] = useState(false);
+  const [showTeamSubIssueForm, setShowTeamSubIssueForm] = useState(false);
+  /** If true, closing sub-issue form returns to read-only issue detail; if false, returns to the register. */
+  const [teamSubIssueFromDetail, setTeamSubIssueFromDetail] = useState(false);
+  const [viewingTaskRow, setViewingTaskRow] = useState<Record<string, unknown> | null>(null);
+  const [viewingIssueRow, setViewingIssueRow] = useState<Record<string, unknown> | null>(null);
+  const [teamSessionProfile, setTeamSessionProfile] = useState<SessionUserProfile | null>(null);
+  const [teamWorkspaceLoading, setTeamWorkspaceLoading] = useState(true);
+  const [teamAllTasks, setTeamAllTasks] = useState<Array<Record<string, unknown>>>([]);
+  const [teamAllIssues, setTeamAllIssues] = useState<Array<Record<string, unknown>>>([]);
+  const [teamAllProjects, setTeamAllProjects] = useState<Array<Record<string, unknown>>>([]);
+  const [teamAllMeetings, setTeamAllMeetings] = useState<Array<Record<string, unknown>>>([]);
+  const [teamAllSubIssues, setTeamAllSubIssues] = useState<Array<Record<string, unknown>>>([]);
+  const [teamAllMembers, setTeamAllMembers] = useState<Array<Record<string, unknown>>>([]);
+  const [workspaceRefreshKey, setWorkspaceRefreshKey] = useState(0);
 
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
@@ -438,100 +1502,458 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
     { name: 'Timeline',  icon: <Clock size={16} /> },
     { name: 'Tasks',     icon: <CheckSquare size={16} /> },
     { name: 'Issues',    icon: <AlertCircle size={16} /> },
-    { name: 'Calendar',  icon: <Calendar size={16} /> },
+    { name: 'Meetings',  icon: <Calendar size={16} /> },
   ];
+  const [teamTaskListRefresh, setTeamTaskListRefresh] = useState(0);
+  const [teamProjectToast, setTeamProjectToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [teamIssueToast, setTeamIssueToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [teamTimelineYear, setTeamTimelineYear] = useState(() => new Date().getFullYear());
+  const [teamCalendarProjectFilter, setTeamCalendarProjectFilter] = useState('All');
+  const [teamCalendarSelectedDateIso, setTeamCalendarSelectedDateIso] = useState(() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  });
 
-  const overviewCards = [
-    { label: 'Projects',       value: '5',  border: 'border-blue-500' },
-    { label: 'Delayed Tasks',  value: '14', border: 'border-yellow-400' },
-    { label: 'Bugs',           value: '18', border: 'border-red-400' },
-    { label: 'Issues',         value: '3',  border: 'border-[#b28a44]' },
-    { label: 'Assigned Tasks', value: '52', border: 'border-green-400' },
-    { label: 'User Stories',   value: '38', border: 'border-slate-400' },
-  ];
+  const myTasks = useMemo(
+    () => teamAllTasks.filter((r) => teamTaskAssigneeMatch(r, teamSessionProfile)),
+    [teamAllTasks, teamSessionProfile],
+  );
+  const myIssues = useMemo(
+    () => teamAllIssues.filter((r) => teamIssueUserMatch(r, teamSessionProfile)),
+    [teamAllIssues, teamSessionProfile],
+  );
+  /** Project names where the current user has at least one task or issue. */
+  const myProjectNameSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of myTasks) {
+      const n = String(t.new_projectname ?? '').trim();
+      if (n) s.add(n);
+    }
+    for (const r of myIssues) {
+      const n = String(r.new_projectname ?? '').trim();
+      if (n) s.add(n);
+    }
+    return s;
+  }, [myTasks, myIssues]);
+  const uniqueProjectCount = myProjectNameSet.size;
+  /** Board + charts: one row per participated project (registry match or minimal row from first task/issue). */
+  const myProjectsAug = useMemo(() => {
+    if (myProjectNameSet.size === 0) return [];
+    const byName = new Map<string, Record<string, unknown>>();
+    for (const p of teamAllProjects) {
+      const n = String(p.new_projectname ?? p.new_name ?? '').trim();
+      if (n && myProjectNameSet.has(n) && !byName.has(n)) byName.set(n, p);
+    }
+    const names = Array.from(myProjectNameSet).sort((a, b) => a.localeCompare(b));
+    return names.map((name) => {
+      if (byName.has(name)) return byName.get(name)!;
+      const t = myTasks.find((x) => String(x.new_projectname ?? '').trim() === name);
+      const i = myIssues.find((x) => String(x.new_projectname ?? '').trim() === name);
+      return {
+        new_projectname: name,
+        new_name: name,
+        new_startdate: t?.new_startdate ?? i?.new_issuedate,
+        new_strategicgoal: t?.new_strategicgoal ?? t?.new_tasktitle ?? i?.new_issuetitle,
+      } as Record<string, unknown>;
+    });
+  }, [teamAllProjects, myProjectNameSet, myTasks, myIssues]);
+  const teamProjectsExternal = useMemo(
+    () => ({ rows: myProjectsAug, loading: teamWorkspaceLoading }),
+    [myProjectsAug, teamWorkspaceLoading],
+  );
+  const teamTodayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const projectSponsorByName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of teamAllProjects) {
+      const n = String(p.new_projectname ?? p.new_name ?? '').trim();
+      if (n) m.set(n, String(p.new_projectsponsorname ?? p.new_projectsponsor ?? '—').trim() || '—');
+    }
+    return m;
+  }, [teamAllProjects]);
+  const myMeetings = useMemo(() => {
+    const em = (teamSessionProfile?.email ?? '').toLowerCase();
+    if (!em) return teamAllMeetings;
+    return teamAllMeetings.filter((row) => {
+      const inv = String(row.new_invitememberemails ?? '').toLowerCase();
+      if (inv && (inv.includes(em) || inv.includes((em.split('@')[0] ?? '')))) return true;
+      const p = String(row.new_projectname ?? '').trim();
+      return p.length > 0 && myProjectNameSet.has(p);
+    });
+  }, [teamAllMeetings, teamSessionProfile, myProjectNameSet]);
+  const teamNotifications = useMemo(
+    () =>
+      buildInboxNotifications('team', {
+        teamMembers: teamAllMembers,
+        projects: teamAllProjects,
+        tasks: myTasks,
+        myProjectNameSet,
+        sessionEmail: getSessionUserEmail() ?? undefined,
+      }),
+    [teamAllMembers, teamAllProjects, myTasks, myProjectNameSet],
+  );
 
-  const tasks = [
-    {
-      project: 'Pinnacle', task: 'Color change',
-      priority: 'HIGH', status: 'IN PROGRESS',
-      pm: 'Ahmed Ali', sponsor: 'HR', milestone: 'Design',
-      start: 'Feb 09, 2024', end: 'May 24, 2024', pct: 40,
-    },
-    {
-      project: 'Pinnacle', task: 'UI Test',
-      priority: 'HIGH', status: 'BUG',
-      pm: 'Ahmed Ali', sponsor: 'Sales', milestone: 'UAT',
-      start: 'Feb 09, 2024', end: 'May 24, 2024', pct: 40,
-    },
-    {
-      project: 'PS.System', task: 'UI Test',
-      priority: 'MEDIUM', status: 'DONE',
-      pm: 'Ahmed Ali', sponsor: 'Legal', milestone: 'Sprint 1',
-      start: 'Feb 09, 2024', end: 'May 24, 2024', pct: 100,
-    },
-  ];
-  const teamProjectColumns = [
-    {
-      name: 'Delayed',
-      cards: [
-        { badge: 'Operation Pro', badgeColor: 'bg-rose-100 text-rose-700', title: 'auditing information architecture', date: 'Aug 20, 2021' },
-        { badge: 'Code tech', badgeColor: 'bg-red-100 text-red-700', title: 'Update support documentation', date: 'Aug 18, 2023' },
-        { badge: 'Operation Pro', badgeColor: 'bg-rose-100 text-rose-700', title: 'Qualitative research planning', date: 'Aug 20, 2021' },
-      ],
-    },
-    {
-      name: 'On Track',
-      cards: [
-        { badge: 'Demo_UI', badgeColor: 'bg-emerald-100 text-emerald-700', title: 'Listing deliverables checklist', date: 'Sep 20, 2021' },
-        { badge: 'Operation Pro', badgeColor: 'bg-emerald-100 text-emerald-700', title: 'Qualitative research planning', date: 'Aug 20, 2021' },
-        { badge: 'UI Prose', badgeColor: 'bg-green-100 text-green-700', title: 'High fidelity UI Desktop', date: 'Aug 20, 2021' },
-      ],
-    },
-    {
-      name: 'Completed',
-      cards: [
-        { badge: 'Code tech', badgeColor: 'bg-blue-100 text-blue-700', title: 'Design System', date: 'Aug 19, 2021' },
-        { badge: 'UI Prose', badgeColor: 'bg-indigo-100 text-indigo-700', title: 'High fidelity UI Desktop', date: 'Aug 20, 2021' },
-        { badge: 'Code tech', badgeColor: 'bg-blue-100 text-blue-700', title: 'Listing deliverables checklist', date: 'Sep 20, 2021' },
-      ],
-    },
-  ];
-  const teamTaskColumns = [
-    { name: 'To do', color: '#22c55e' },
-    { name: 'In Progress', color: '#f59e0b' },
-    { name: 'Delayed', color: '#ef4444' },
-    { name: 'Done', color: '#2563eb' },
-  ];
+  const teamCalendarFilteredMeetings = useMemo(() => {
+    let rows = myMeetings;
+    if (teamCalendarProjectFilter !== 'All') {
+      const p = teamCalendarProjectFilter.trim();
+      rows = rows.filter((r) => String(r.new_projectname ?? '').trim() === p);
+    }
+    rows = rows.filter((r) => {
+      const d = parseTimelineDate(r.new_meetingdatetime ?? r.new_meetingdate);
+      if (!d) return false;
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}` === teamCalendarSelectedDateIso;
+    });
+    return rows;
+  }, [myMeetings, teamCalendarProjectFilter, teamCalendarSelectedDateIso]);
 
-  const thCls = 'text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide py-2 px-3 whitespace-nowrap';
-  const tdCls = 'py-3 px-3 text-sm text-gray-700 whitespace-nowrap';
+  const teamDashboardAssignedChart = useMemo((): { bars: { label: string; value: number; color: string }[]; max: number } => {
+    const byP = new Map<string, number>();
+    for (const t of myTasks) {
+      const p = String(t.new_projectname ?? 'Unassigned').trim() || 'Unassigned';
+      byP.set(p, (byP.get(p) ?? 0) + 1);
+    }
+    const palette = ['#94a3b8', '#fbbf24', '#a3a36a', '#f87171', '#60a5fa', '#c4b5fd'];
+    const top = Array.from(byP.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+    const bars = top.map(([label, value], i) => ({ label, value, color: palette[i % 6]! }));
+    return { bars, max: Math.max(1, ...top.map(([, v]) => v)) };
+  }, [myTasks]);
+  const teamDashboardTasksChart = useMemo((): { bars: { label: [string, string?]; value: number; color: string }[] } => {
+    const c = { not: 0, done: 0, delay: 0, hold: 0, prog: 0 };
+    for (const r of myTasks) {
+      const s = String(r.new_taskstatusname ?? '').toLowerCase();
+      const stn = Number(r.new_taskstatus ?? NaN);
+      if (stn === 100000002 || s.includes('complet')) c.done += 1;
+      else if (stn === 100000003 || s.includes('hold')) c.hold += 1;
+      else if (s.includes('delay') || teamTaskIsDelayed(r)) c.delay += 1;
+      else if (stn === 100000001 || s.includes('progress')) c.prog += 1;
+      else c.not += 1;
+    }
+    return {
+      bars: [
+        { label: ['TO', 'DO'], value: c.not, color: '#60a5fa' },
+        { label: ['DONE'], value: c.done, color: '#34d399' },
+        { label: ['DELAYED'], value: c.delay, color: '#fb923c' },
+        { label: ['ON', 'HOLD'], value: c.hold, color: '#f87171' },
+        { label: ['IN', 'PROGRESS'], value: c.prog, color: '#a3e635' },
+      ],
+    };
+  }, [myTasks]);
+  const teamIssueDistribution = useMemo(() => {
+    let openC = 0;
+    let inP = 0;
+    let closedC = 0;
+    for (const r of myIssues) {
+      const s = String(r.new_issuestatusname ?? '').toLowerCase();
+      const stn = Number(r.new_issuestatus ?? NaN);
+      if (stn === 100000001 || s.includes('progress')) inP += 1;
+      else if (stn === 100000002 || stn === 100000003 || s.includes('resolv') || s.includes('closed') || s.includes('solved')) closedC += 1;
+      else openC += 1;
+    }
+    return { open: openC, inProgress: inP, closed: closedC, total: myIssues.length };
+  }, [myIssues]);
+  const teamSubIssueCountByParent = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of teamAllSubIssues) {
+      const pid = String(s.new_issueid ?? '').trim();
+      if (!pid) continue;
+      m.set(pid, (m.get(pid) ?? 0) + 1);
+    }
+    return m;
+  }, [teamAllSubIssues]);
+  const teamIssuesRegister = useMemo(() => {
+    const byP = new Map<string, number>();
+    for (const r of myIssues) {
+      const p = String(r.new_projectname ?? 'Unassigned').trim() || 'Unassigned';
+      byP.set(p, (byP.get(p) ?? 0) + 1);
+    }
+    const top3 = Array.from(byP.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const maxV = Math.max(1, ...top3.map(([, n]) => n));
+    const colors = ['#b28a44', '#6ea3ef', '#44527f'] as const;
+    const sev = { high: 0, med: 0, low: 0, crit: 0 };
+    for (const r of myIssues) {
+      const sn = String(r.new_issueseverityname ?? '').toLowerCase();
+      const raw = Number(r.new_issueseverity ?? NaN);
+      if (sn.includes('critical') || raw === 100000003) sev.crit += 1;
+      else if (sn.includes('high') || raw === 100000002) sev.high += 1;
+      else if (sn.includes('medium') || raw === 100000001) sev.med += 1;
+      else sev.low += 1;
+    }
+    const st = { open: 0, closed: 0 };
+    for (const r of myIssues) {
+      const s = String(r.new_issuestatusname ?? '').toLowerCase();
+      const stn = Number(r.new_issuestatus ?? NaN);
+      if (stn === 100000002 || stn === 100000003 || s.includes('resolv') || s.includes('closed') || s.includes('solved')) st.closed += 1;
+      else st.open += 1;
+    }
+    return { projectBars: top3.map(([name, n], i) => ({ name: name.length > 10 ? `${name.slice(0, 9)}…` : name, n, h: (n / maxV) * 50, color: colors[i % 3]! })), sev, st };
+  }, [myIssues]);
+  const teamOpenIssues = useMemo(
+    () => myIssues.filter((r) => {
+      const s = String(r.new_issuestatusname ?? '').toLowerCase();
+      const stn = Number(r.new_issuestatus ?? NaN);
+      return !(stn === 100000002 || stn === 100000003 || s.includes('resolv') || s.includes('closed') || s.includes('solved'));
+    }),
+    [myIssues],
+  );
+  const teamClosedIssues = useMemo(
+    () => myIssues.filter((r) => {
+      const s = String(r.new_issuestatusname ?? '').toLowerCase();
+      const stn = Number(r.new_issuestatus ?? NaN);
+      return stn === 100000002 || stn === 100000003 || s.includes('resolv') || s.includes('closed') || s.includes('solved');
+    }),
+    [myIssues],
+  );
+  const teamCalendarCategoryRows = useMemo(() => {
+    const m = new Map<string, { hrs: number; n: number }>();
+    for (const row of teamCalendarFilteredMeetings) {
+      const c = String(row.new_meetingcategory ?? 'Other').trim() || 'Other';
+      const h = Number(row.new_durationhours);
+      m.set(c, { hrs: (m.get(c)?.hrs ?? 0) + (Number.isFinite(h) ? h : 0), n: (m.get(c)?.n ?? 0) + 1 });
+    }
+    const palette = [
+      ['#c9f4e4', '#138f6f'], ['#e9edff', '#4c64bf'], ['#f7eed8', '#b8872e'], ['#eef0ff', '#4d5bb7'], ['#fdf4dd', '#b4882a'],
+      ['#ffe6e8', '#cb4e59'], ['#e9e4ff', '#6958bb'], ['#e2f7ef', '#2f9879'], ['#ffe6e6', '#ca5454'], ['#f5eedf', '#9a7a35'],
+    ] as [string, string][];
+    return Array.from(m.entries())
+      .sort((a, b) => b[1].n - a[1].n)
+      .slice(0, 10)
+      .map(([name, v], i) => ({
+        name,
+        hrs: v.hrs,
+        n: v.n,
+        bg: palette[i % palette.length]![0]!,
+        text: palette[i % palette.length]![1]!,
+      }));
+  }, [teamCalendarFilteredMeetings]);
+  const teamCalendarGridBlocks = useMemo(() => {
+    const colors = ['#17c983', '#2563eb', '#f6be00', '#21c784', '#d35b66', '#474d7f', '#2f9879', '#b8872e'];
+    return teamCalendarFilteredMeetings.slice(0, 10).map((row, i) => {
+      const d = parseTimelineDate(row.new_meetingdate);
+      const start = String(row.new_starttime ?? '10:00:00');
+      const hr = parseInt(String(start).split(':')[0] ?? '10', 10) || 10;
+      const top = 40 + (hr - 8) * 28 + (i % 4) * 6;
+      const daySlot = d ? d.getDate() % 6 : i % 6;
+      const link = String(row.new_meetinglink ?? '').trim();
+      return {
+        id: String(row.new_meetingdetailid ?? i),
+        title: String(row.new_meetingtitle ?? 'Meeting'),
+        top: Math.min(340, Math.max(32, top)),
+        left: 2 + daySlot * 64 + (i % 3) * 18,
+        color: colors[i % colors.length]!,
+        joinUrl: link && /^https?:\/\//i.test(link) ? link : undefined,
+      };
+    });
+  }, [teamCalendarFilteredMeetings]);
+  const teamDashboardTasksTable = useMemo(
+    () => myTasks.map((row) => {
+      const pn = String(row.new_projectname ?? '—');
+      return {
+        key: String(row.new_taskid ?? row.createdon),
+        project: pn,
+        task: String(row.new_tasktitle ?? '—'),
+        priority: String(row.new_priorityname ?? 'MEDIUM').toUpperCase().slice(0, 12) || 'MEDIUM',
+        status: teamTaskStatusDisplay(row),
+        pm: String(row.new_projectmanager ?? '—'),
+        sponsor: projectSponsorByName.get(pn) ?? '—',
+        milestone: String(row.new_subtaskname ?? (Number(row.new_subtask) === 100000001 ? 'Yes' : '—')),
+        start: teamFormatShortDate(row.new_startdate),
+        end: teamFormatShortDate(row.new_enddate),
+        pct: teamTaskProgressPct(row),
+      };
+    }),
+    [myTasks, projectSponsorByName],
+  );
+  const overviewCards = useMemo(
+    () => {
+      const loading = teamWorkspaceLoading;
+      const n = (v: number) => (loading ? '—' : String(v)) as string;
+      return [
+        { label: 'Projects', value: n(uniqueProjectCount), border: 'border-blue-500' },
+        { label: 'Delayed Tasks', value: n(myTasks.filter(teamTaskIsDelayed).length), border: 'border-yellow-400' },
+        { label: 'Bugs', value: n(myTasks.filter(teamTaskIsBug).length), border: 'border-red-400' },
+        { label: 'Issues', value: n(myIssues.length), border: 'border-amber-500' },
+        { label: 'Assigned Tasks', value: n(myTasks.length), border: 'border-green-400' },
+        { label: 'User Stories', value: n(myTasks.filter(teamTaskIsUserStory).length), border: 'border-slate-400' },
+      ];
+    },
+    [teamWorkspaceLoading, uniqueProjectCount, myTasks, myIssues],
+  );
+
+  const teamTimelineProjects = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of myTasks) {
+      s.add(String(r.new_projectname ?? 'Unassigned').trim() || 'Unassigned');
+    }
+    for (const r of myIssues) {
+      s.add(String(r.new_projectname ?? 'Unassigned').trim() || 'Unassigned');
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [myTasks, myIssues]);
+  const [teamTimelineProjectFilter, setTeamTimelineProjectFilter] = useState('All');
+  /** Same week/quarter/month axis model as the Project (role) timeline (`businessYearWeekTimelineModel`). */
+  const teamTimelineRange = useMemo(() => businessYearWeekTimelineModel(teamTimelineYear), [teamTimelineYear]);
+  const teamTimelineAxisMinWidth = useMemo(() => {
+    const n = Math.max(1, teamTimelineRange.bottomLabels.length);
+    return Math.max(1200, n * 22);
+  }, [teamTimelineRange.bottomLabels.length]);
+
+  const teamTimelineTasks = useMemo(() => {
+    const colorForStatus = (name: string) => {
+      const v = name.toLowerCase();
+      if (v.includes('completed') || v.includes('done')) return '#16a34a';
+      if (v.includes('progress')) return '#2563eb';
+      if (v.includes('hold') || v.includes('delay')) return '#f59e0b';
+      return '#59628a';
+    };
+    const startMs = teamTimelineRange.start.getTime();
+    const endExclusive = teamTimelineRange.endExclusive.getTime();
+    const totalMs = Math.max(1, endExclusive - startMs);
+    return myTasks
+      .filter((r) => teamTimelineProjectFilter === 'All' || (String(r.new_projectname ?? 'Unassigned').trim() || 'Unassigned') === teamTimelineProjectFilter)
+      .map((r, idx) => {
+        const s = parseTimelineDate(r.new_startdate);
+        const e = parseTimelineDate(r.new_enddate);
+        if (!s || !e) return null;
+        const projectEndExcl = exclusiveEndAfterInclusiveDate(e);
+        if (projectEndExcl <= s.getTime()) return null;
+        const clipS = Math.max(startMs, s.getTime());
+        const clipE = Math.min(endExclusive, projectEndExcl);
+        if (clipE <= startMs || clipS >= endExclusive) return null;
+        const startPct = ((clipS - startMs) / totalMs) * 100;
+        const endPct = ((clipE - startMs) / totalMs) * 100;
+        const title = String(r.new_tasktitle ?? 'Task').trim() || 'Task';
+        const progress = Number(r.new_progresslevel ?? r.new_progress ?? NaN);
+        return {
+          id: String(r.new_taskid ?? idx),
+          project: String(r.new_projectname ?? 'Unassigned').trim() || 'Unassigned',
+          title,
+          start: s,
+          end: e,
+          progress: Number.isFinite(progress) ? `${Math.max(0, Math.min(100, progress))}%` : '0%',
+          color: colorForStatus(String(r.new_taskstatusname ?? '')),
+          left: startPct,
+          width: Math.max(2, endPct - startPct),
+          row: idx + 1,
+        };
+      })
+      .filter((t): t is NonNullable<typeof t> => Boolean(t));
+  }, [myTasks, teamTimelineProjectFilter, teamTimelineRange]);
+
+  useEffect(() => {
+    if (teamTimelineProjectFilter !== 'All' && !teamTimelineProjects.includes(teamTimelineProjectFilter)) {
+      setTeamTimelineProjectFilter('All');
+    }
+  }, [teamTimelineProjectFilter, teamTimelineProjects]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setTeamWorkspaceLoading(true);
+      try {
+        const sp = await fetchSessionUserProfileFromUsers({ fallbackToFirstRow: true });
+        if (!cancelled) setTeamSessionProfile(sp);
+        const [tRes, iRes, pRes, mRes, sRes, tmRes] = await Promise.all([
+          New_tasksService.getAll({ top: 2000, orderBy: ['modifiedon desc'] }),
+          New_issuesService.getAll({ top: 2000, orderBy: ['createdon desc'] }),
+          New_projectsService.getAll({ top: 1000, orderBy: ['createdon desc'] }),
+          New_meetingdetailsService.getAll({ top: 2000, orderBy: ['new_meetingdate desc'] }),
+          New_subissuesService.getAll({ top: 5000, orderBy: ['createdon desc'] }),
+          New_teammembersService.getAll({ top: 2000, orderBy: ['createdon desc'] }),
+        ]);
+        if (cancelled) return;
+        setTeamAllTasks(tRes.success ? ((tRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+        setTeamAllIssues(iRes.success ? ((iRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+        setTeamAllProjects(pRes.success ? ((pRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+        setTeamAllMeetings(mRes.success ? ((mRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+        setTeamAllSubIssues(sRes.success ? ((sRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+        setTeamAllMembers(tmRes.success ? ((tmRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+      } catch {
+        if (!cancelled) {
+          setTeamAllTasks([]);
+          setTeamAllIssues([]);
+          setTeamAllProjects([]);
+          setTeamAllMeetings([]);
+          setTeamAllSubIssues([]);
+          setTeamAllMembers([]);
+        }
+      } finally {
+        if (!cancelled) setTeamWorkspaceLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceRefreshKey, teamTaskListRefresh]);
+
+  const requestDeleteTeamTask = (row: Record<string, unknown>) => {
+    if (!String(row.new_taskid ?? '').trim()) return;
+    setTeamTaskDeleteCandidate(row);
+  };
+
+  const confirmDeleteTeamTask = async () => {
+    const row = teamTaskDeleteCandidate;
+    if (!row) return;
+    const id = String(row.new_taskid ?? '').trim();
+    if (!id) {
+      setTeamTaskDeleteCandidate(null);
+      return;
+    }
+    setDeletingTeamTask(true);
+    try {
+      await New_tasksService.delete(id);
+      setTeamTaskListRefresh((k) => k + 1);
+      setWorkspaceRefreshKey((k) => k + 1);
+      setTeamTaskDeleteCandidate(null);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Failed to delete task');
+    } finally {
+      setDeletingTeamTask(false);
+    }
+  };
+
+  const thCls =
+    'border-b border-[#E5E7EB] bg-[#F3F4F6] text-left text-[11px] font-semibold tracking-[0.03em] text-[#6B7280] py-3 px-3 whitespace-nowrap';
+  const tdCls = 'border-b border-[#E5E7EB] py-3 px-3 text-sm text-[#374151] whitespace-nowrap';
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
       {/* ── Sidebar ── */}
-      <aside className="w-52 bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
+      <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         {/* Logo */}
         <div className="px-5 py-5 border-b border-gray-100">
           <LogoMark />
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 py-4 px-3 space-y-0.5">
+        <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
           {navItems.map(({ name, icon }) => (
             <button
               key={name}
               onClick={() => {
                 setActiveNav(name);
-                if (name !== 'Calendar') {
+                if (name !== 'Meetings') {
                   setShowCalendarMom(false);
                   setShowAddCalendarMeetingForm(false);
                 }
-                if (name !== 'Tasks') setShowTaskDetails(false);
-                if (name !== 'Issues') setShowIssueDetails(false);
+                if (name !== 'Tasks') {
+                  setShowTaskDetails(false);
+                  setEditingTaskRow(null);
+                  setViewingTaskRow(null);
+                }
+                if (name !== 'Issues') {
+                  setShowIssueDetails(false);
+                  setShowTeamSubIssueForm(false);
+                  setViewingIssueRow(null);
+                }
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 activeNav === name
-                  ? 'bg-indigo-50 text-[#151d5d]'
+                  ? 'bg-indigo-50 text-primary'
                   : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
               }`}
             >
@@ -541,10 +1963,9 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
           ))}
         </nav>
 
-        {/* Bottom icons */}
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-4">
-          <button className="text-gray-400 hover:text-gray-600"><Settings size={16} /></button>
-          <button className="text-gray-400 hover:text-gray-600"><Moon size={16} /></button>
+        {/* Theme toggle */}
+        <div className="shrink-0 border-t border-gray-100 px-3 py-4">
+          <ThemeModeToggle />
         </div>
       </aside>
 
@@ -553,175 +1974,182 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
         {/* Top bar */}
         <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-4 h-10 w-[420px] max-w-[52vw]">
-              <input
-                className="bg-transparent text-sm text-gray-500 outline-none w-full placeholder-gray-400"
-                placeholder="Search anything..."
-              />
-              <Search size={18} className="text-gray-400" />
-            </div>
-            <NotificationBell />
-            <ProfileDropdown onLogout={onLogout} />
+            <NotificationBell items={teamNotifications} />
+            <ProfileDropdown onLogout={onLogout} roleLabel="Team" />
           </div>
         </header>
 
-        {/* Scrollable content */}
-        <main className="flex-1 overflow-auto px-6 pt-6 pb-0 min-w-0">
-          <div className="min-h-full flex flex-col gap-5">
+        <main
+          className={`flex-1 min-h-0 min-w-0 flex flex-col px-6 pt-6 pb-4 ${
+            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
+              ? 'overflow-hidden'
+              : 'overflow-y-auto'
+          }`}
+        >
+          <div
+            className={
+              activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
+                ? 'flex min-h-0 flex-1 flex-col gap-4 overflow-hidden'
+                : 'min-h-full flex flex-col gap-5'
+            }
+          >
           {activeNav === 'Projects' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4 min-w-0">
-              <h2 className="text-xl font-bold text-[#2f3150] mb-4">Projects participated in</h2>
-              <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-4 min-w-0">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 min-w-0">
-                  {teamProjectColumns.map((column) => (
-                    <div key={column.name} className="space-y-3 min-w-0">
-                      <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
-                        <p className="text-sm font-semibold text-[#2f3150]">{column.name}</p>
-                        <button className="text-[10px] text-[#b28a44]">View All</button>
-                      </div>
-                      {column.cards.map((card, idx) => (
-                        <div key={`${column.name}-${idx}`} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[8px] font-semibold ${card.badgeColor}`}>{card.badge}</span>
-                          <p className="text-[11px] text-[#2f3150] font-medium mt-2">{card.title}</p>
-                          <p className="text-[10px] text-gray-400">Create content for pieceland App</p>
-                          <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400">
-                            <span>{card.date}</span>
-                            <span>11 file</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-3">
-                  <div className="bg-white rounded-xl border border-gray-100 p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <DonutChart
-                        className="w-20 h-20"
-                        ringWidth={24}
-                        showOuterLabels={false}
-                        centerText="85%"
-                        slices={[
-                          { label: 'On Track', value: 85, color: '#1667de' },
-                          { label: 'Remaining', value: 15, color: '#e5e7eb' },
-                        ]}
-                      />
-                      <div>
-                        <p className="text-xs font-semibold text-[#2f3150]">On Track Projects</p>
-                        <p className="text-[10px] text-gray-400">103 hrs / this year</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2 text-[10px]">
-                      {[
-                        ['Media', '56 GB', '#b28a44'],
-                        ['Documents', '30 GB', '#22c55e'],
-                        ['Reports', '10 GB', '#f6be00'],
-                        ['Other File', '15 GB', '#2563eb'],
-                      ].map(([label, value, color]) => (
-                        <div key={String(label)}>
-                          <div className="flex items-center justify-between text-gray-500 mb-1">
-                            <span>{label}</span>
-                            <span>{value}</span>
-                          </div>
-                          <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: '70%', backgroundColor: String(color) }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="bg-white rounded-xl border border-gray-100 p-3">
-                    <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Insights</h3>
-                    <svg viewBox="0 0 200 130" className="w-full h-28 chart-svg">
-                      {[0, 10, 20, 30, 40, 50].map((v) => (
-                        <g key={v}>
-                          <line x1="24" x2="190" y1={104 - v * 1.6} y2={104 - v * 1.6} stroke="#eef2f7" />
-                          <text x="6" y={108 - v * 1.6} fontSize="7" fill="#9ca3af">{v}</text>
-                        </g>
-                      ))}
-                      {[
-                        ['Initiated', 16, '#21c784'],
-                        ['Pending', 38, '#f6be00'],
-                        ['Completed', 46, '#2563eb'],
-                      ].map(([name, value, color], i) => (
-                        <g key={String(name)}>
-                          <rect x={36 + i * 48} y={104 - Number(value) * 1.6} width="18" height={Number(value) * 1.6} rx="3" className="chart-bar" fill={String(color)} />
-                          <text x={45 + i * 48} y="120" textAnchor="middle" fontSize="7" fill="#9ca3af">{name}</text>
-                        </g>
-                      ))}
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </section>
+            <div className="relative min-h-0 flex min-h-0 flex-1 flex-col overflow-hidden min-w-0">
+              {teamProjectToast && (
+                <NotificationToast
+                  type={teamProjectToast.type}
+                  message={teamProjectToast.message}
+                  onClose={() => setTeamProjectToast(null)}
+                />
+              )}
+              <ProgramProjectsSection
+                todayIso={teamTodayIso}
+                onToast={setTeamProjectToast}
+                externalProjectRows={teamProjectsExternal}
+                onExternalDataInvalidate={() => { setWorkspaceRefreshKey((k) => k + 1); }}
+                hideNewProject
+                hideSprintAndMembers
+              />
+            </div>
           ) : activeNav === 'Timeline' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xl font-bold text-[#2f3150]">Timeline</h2>
-                <div className="flex items-center gap-3 text-xs">
-                  {[
-                    ['Type', 'All'],
-                    ['Project Name', 'All'],
-                  ].map(([label, value]) => (
-                    <label key={label} className="flex items-center gap-2 text-gray-500">
-                      <span>{label}</span>
-                      <select className="h-8 rounded-md border border-gray-200 bg-white px-2 text-[11px] text-gray-500">
-                        <option>{value}</option>
-                      </select>
-                    </label>
-                  ))}
-                  <button className="h-8 px-3 rounded-md border border-gray-200 bg-white text-[11px] text-gray-500">Critical Path</button>
-                  <button className="h-8 px-3 rounded-md border border-[#d8c9ad] bg-white text-[11px] text-[#b28a44]">Today</button>
-                  <button className="h-8 px-3 rounded-md border border-gray-200 bg-white text-[11px] text-gray-500">January 2024</button>
+            <section className={`relative ${enj.panelBg}`}>
+              <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
+                <h2 className={enj.pageTitle}>Timeline</h2>
+                <div className="flex items-center gap-2 text-xs flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeamTaskListRefresh((k) => k + 1);
+                      setWorkspaceRefreshKey((k) => k + 1);
+                    }}
+                    className={`${enj.btn} ${enj.btnOutline} !h-9 !w-9 !min-h-0 !px-0`}
+                    title="Refresh timeline"
+                    aria-label="Refresh timeline"
+                  >
+                    <RefreshCw size={14} className={teamWorkspaceLoading ? 'animate-spin' : ''} />
+                  </button>
+                  <select
+                    value={teamTimelineProjectFilter}
+                    onChange={(e) => setTeamTimelineProjectFilter(e.target.value)}
+                    className={`${enj.control} !w-auto min-w-[10rem] text-sm text-gray-600`}
+                  >
+                    <option value="All">All Projects</option>
+                    {teamTimelineProjects.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeamTimelineYear(new Date().getFullYear());
+                    }}
+                    className={`${enj.btn} ${enj.btnOutline} px-3 text-sm`}
+                  >
+                    Today
+                  </button>
+                  <div className="flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-600 shadow-sm">
+                    <button type="button" onClick={() => setTeamTimelineYear((y) => y - 1)}>{'<'}</button>
+                    <span className="min-w-[3rem] text-center font-semibold text-primary">{teamTimelineYear}</span>
+                    <button type="button" onClick={() => setTeamTimelineYear((y) => y + 1)}>{'>'}</button>
+                  </div>
                 </div>
               </div>
 
               <section className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                <div className="grid grid-cols-[220px_1fr]">
+                <div className="grid grid-cols-[280px_1fr]">
                   <aside className="border-r border-gray-100">
-                    <div className="h-9 px-3 flex items-center justify-between text-[11px] font-semibold text-[#2f3150] bg-gray-50 border-b border-gray-100">
-                      <span>Assigned Tasks</span>
-                      <ChevronDown size={11} />
+                    <div className="h-9 px-3 flex items-center text-[11px] font-semibold text-primary bg-gray-50 border-b border-gray-100">
+                      Assigned Tasks
                     </div>
-                    <div className="p-2 space-y-2 h-[470px] overflow-auto">
-                      {['Pinnacle Project', 'Financial Project', 'Growth Project'].map((group) => (
-                        <div key={group} className="border border-gray-100 rounded-md">
-                          <div className="px-2 py-1.5 text-[10px] font-semibold text-[#2f3150] bg-gray-50 flex items-center justify-between">
-                            <span>{group}</span>
-                            <ChevronDown size={10} />
-                          </div>
-                          <div className="px-2 py-1 space-y-1">
-                            {['CodeTech', 'Inno.Sales', 'Serv.in'].map((item, idx) => (
-                              <p key={item + idx} className="text-[9px] text-gray-400 pl-2">{item}</p>
-                            ))}
-                          </div>
+                    <div className="p-2 space-y-2 h-[min(36rem,72vh)] min-h-[16rem] overflow-auto">
+                      {teamTimelineTasks.map((task) => (
+                        <div key={`left-${task.id}`} className="border border-gray-100 rounded-md p-2">
+                          <p className="text-[11px] font-semibold text-primary truncate">{task.title}</p>
+                          <p className="text-[10px] text-gray-500 truncate mt-0.5">{task.project}</p>
+                          <p className="text-[10px] text-gray-400 mt-1">{formatTimelineDateLabel(task.start)} - {formatTimelineDateLabel(task.end)}</p>
                         </div>
                       ))}
+                      {!teamWorkspaceLoading && teamTimelineTasks.length === 0 && (
+                        <p className="text-[11px] text-gray-400 px-1 py-2">
+                          No tasks in selected time window. Change year or project to view bars.
+                        </p>
+                      )}
                     </div>
                   </aside>
 
-                  <div className="overflow-auto">
-                    <div className="min-w-[980px]">
-                      <div className="h-9 border-b border-gray-100 bg-gray-50 flex items-center">
-                        <div className="w-full text-center text-[9px] text-gray-400 font-semibold">JANUARY</div>
+                  <div className="h-[min(36rem,72vh)] min-h-[16rem] w-full min-w-0 overflow-x-auto overflow-y-auto overscroll-contain">
+                    <div className="w-full" style={{ minWidth: teamTimelineAxisMinWidth }}>
+                      <div className="sticky top-0 z-10 space-y-0.5 border-b border-gray-100 bg-white px-3 py-2 shadow-sm">
+                        <p className="text-center text-xs font-bold leading-tight text-primary">
+                          {teamTimelineRange.yearLabel}
+                        </p>
+                        <div
+                          className="grid w-full border-b border-slate-100 text-[8px] font-bold text-slate-700"
+                          style={{
+                            gridTemplateColumns: `repeat(${teamTimelineRange.bottomLabels.length}, minmax(0, 1fr))`,
+                          }}
+                        >
+                          {teamTimelineRange.quarterWeekBands.map((b, i) => (
+                            <div
+                              key={`team-qb-${b.text}-${i}`}
+                              className="min-w-0 border-l border-slate-100 py-0.5 text-center first:border-l-0"
+                              style={{ gridColumn: `span ${b.span}` }}
+                            >
+                              {b.text}
+                            </div>
+                          ))}
+                        </div>
+                        <div
+                          className="grid w-full border-b border-indigo-100/80 text-[8px] font-semibold text-indigo-900"
+                          style={{
+                            gridTemplateColumns: `repeat(${teamTimelineRange.bottomLabels.length}, minmax(0, 1fr))`,
+                          }}
+                        >
+                          {teamTimelineRange.monthWeekBands.map((b, i) => (
+                            <div
+                              key={`team-mb-${b.text}-${i}`}
+                              className="min-w-0 border-l border-indigo-100 py-0.5 text-center first:border-l-0"
+                              style={{ gridColumn: `span ${b.span}` }}
+                            >
+                              {b.text}
+                            </div>
+                          ))}
+                        </div>
+                        <div
+                          className="grid w-full text-gray-600"
+                          style={{
+                            gridTemplateColumns: `repeat(${teamTimelineRange.bottomLabels.length}, minmax(0, 1fr))`,
+                          }}
+                        >
+                          {teamTimelineRange.bottomLabels.map((w, i) => (
+                            <span
+                              key={`team-ax-${w}-${i}`}
+                              className="min-w-0 border-l border-gray-100 px-px py-0.5 text-center text-[7px] leading-tight tabular-nums first:border-l-0 sm:text-[8px]"
+                              title={String(w)}
+                            >
+                              {w}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                      <div className="h-8 border-b border-gray-100 flex">
-                        {Array.from({ length: 20 }).map((_, i) => (
-                          <div key={i} className="w-12 border-r border-gray-100 text-[9px] text-gray-400 flex items-center justify-center">D {String(i + 1).padStart(2, '0')}</div>
-                        ))}
-                      </div>
-                      <div className="relative h-[430px] bg-[repeating-linear-gradient(to_right,#f6f7fb_0,#f6f7fb_1px,transparent_1px,transparent_48px)]">
-                        {[
-                          { title: 'Task Name1', top: 40, left: 22, width: 88, color: '#94a3b8', pct: 60 },
-                          { title: 'Task Name 2', top: 84, left: 82, width: 92, color: '#f4b58d', pct: 45 },
-                          { title: 'Task Name 3', top: 122, left: 198, width: 92, color: '#7fb4e6', pct: 50 },
-                          { title: 'Task Name 4', top: 154, left: 292, width: 105, color: '#5aa3f1', pct: 40 },
-                          { title: 'Task Name 5', top: 190, left: 402, width: 110, color: '#6dd6a4', pct: 45 },
-                          { title: 'Task Name 6', top: 226, left: 520, width: 92, color: '#7fa2da', pct: 55 },
-                        ].map((task) => (
-                          <div key={task.title} className="absolute h-8 rounded-full px-3 text-[9px] font-semibold text-[#2f3150] flex items-center justify-between gap-2" style={{ top: task.top, left: task.left, width: task.width, backgroundColor: task.color }}>
-                            <span>{task.title}</span>
-                            <span className="text-[8px]">{task.pct}%</span>
+                      <div
+                        className="relative w-full chart-svg"
+                        style={{
+                          minHeight: Math.max(280, teamTimelineTasks.length * 48 + 72),
+                          background: `repeating-linear-gradient(to right, #f1f5f9 0, #f1f5f9 1px, transparent 1px, transparent ${
+                            100 / Math.max(1, teamTimelineRange.bottomLabels.length)
+                          }%)`,
+                        }}
+                      >
+                        {teamTimelineTasks.map((task) => (
+                          <div
+                            key={task.id}
+                            className="absolute h-6 rounded-full px-3 text-[9px] font-semibold text-white flex items-center justify-between gap-2 shadow-sm"
+                            title={`Project: ${task.project}\nTask: ${task.title}\nProgress: ${task.progress}`}
+                            style={{ top: task.row * 48, left: `${task.left}%`, width: `${task.width}%`, backgroundColor: task.color }}
+                          >
+                            <span className="truncate">{task.title}</span>
+                            <span className="bg-white/85 text-gray-700 px-1.5 rounded-full shrink-0 tabular-nums">
+                              {task.progress}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -729,10 +2157,27 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </div>
               </section>
+              {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
             </section>
           ) : activeNav === 'Tasks' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4 min-w-0">
-              {showTaskDetails ? (
+            <section className={`${enj.panelBg} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
+              {editingTaskRow ? (
+                <div className="min-h-0 max-h-[min(calc(100dvh-7rem),48rem)] w-full overflow-y-auto">
+                  <AddNewTaskFormPanel
+                    editingTask={editingTaskRow}
+                    onClose={() => setEditingTaskRow(null)}
+                    onNotify={(type, message) => {
+                      if (type === 'error') window.alert(message);
+                      else window.alert(message);
+                    }}
+                    onSaved={() => {
+                      setTeamTaskListRefresh((k) => k + 1);
+                      setWorkspaceRefreshKey((k) => k + 1);
+                      setEditingTaskRow(null);
+                    }}
+                  />
+                </div>
+              ) : showTaskDetails ? (
                 <section className="grid grid-cols-1 xl:grid-cols-[1fr_170px] gap-4">
                   <div className="bg-white rounded-xl p-4 shadow-sm">
                     <p className="text-[11px] text-gray-400 mb-3">
@@ -740,36 +2185,40 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                       {' > '}Task Detail
                     </p>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-                      {[
-                        ['Task Title', 'Demo, code and valid'],
-                        ['Project Name', 'Code.Tech'],
-                        ['Project Manager', 'Ahmed Ali'],
-                        ['Start Date', '03/09/2024'],
-                        ['End Date', '03/10/2024'],
-                        ['Sub Task', 'code'],
-                        ['Task Name', 'Task name'],
-                        ['Milestone', 'Milestone 4'],
-                        ['Assig To', 'Ahmed Sami, Hossam Farag, Mahmoud Bacher'],
-                      ].map(([label, value]) => (
+                      {(
+                        [
+                          ['Task Title', String(viewingTaskRow?.new_tasktitle ?? '—')],
+                          ['Project Name', String(viewingTaskRow?.new_projectname ?? '—')],
+                          ['Project Manager', String(viewingTaskRow?.new_projectmanager ?? '—')],
+                          ['Start Date', teamFormatShortDate(viewingTaskRow?.new_startdate)],
+                          ['End Date', teamFormatShortDate(viewingTaskRow?.new_enddate)],
+                          ['Sub Task', String((viewingTaskRow as { new_subtaskname?: string })?.new_subtaskname ?? (Number(viewingTaskRow?.new_subtask) === 100000001 ? 'Yes' : '—'))],
+                          ['Task Name', String(viewingTaskRow?.new_tasktitle ?? '—')],
+                          ['Milestone', String((viewingTaskRow as { new_predecessor?: string })?.new_predecessor ?? '—')],
+                          ['Assig To', String(viewingTaskRow?.new_assigntoteammember ?? '—')],
+                        ] as [string, string][]
+                      ).map(([label, value]) => (
                         <div key={label} className="col-span-1">
                           <p className="text-[10px] text-gray-400 mb-1">{label}</p>
-                          <div className="h-8 rounded border border-gray-200 bg-white px-2 text-[10px] text-gray-600 flex items-center">{value}</div>
+                          <div className="min-h-9 flex items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 shadow-sm">{value}</div>
                         </div>
                       ))}
                     </div>
                     <label className="block mb-3">
                       <span className="text-[10px] text-gray-400 mb-1 block">Task Status</span>
                       <div className="flex items-center gap-3">
-                        <select className="w-36 h-8 rounded border border-gray-200 px-2 text-[10px] text-gray-600">
-                          <option>Done</option>
-                        </select>
-                        <input className="w-24 h-8 rounded border border-gray-200 px-2 text-[10px] text-gray-600" defaultValue="2 hrs" />
-                        <button className="h-8 px-3 rounded border border-[#d8c9ad] text-[10px] text-[#b28a44]">+ Add subtask</button>
+                        <div className="flex w-36 min-h-9 items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 shadow-sm">
+                          {String(viewingTaskRow?.new_taskstatusname ?? teamTaskStatusDisplay(viewingTaskRow ?? {}))}
+                        </div>
+                        <div className="flex w-24 min-h-9 items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 shadow-sm">
+                          {String(viewingTaskRow?.new_cost != null && viewingTaskRow?.new_cost !== '' ? String(viewingTaskRow.new_cost) : '—')}
+                        </div>
+                        <span className="text-[9px] text-gray-400"> </span>
                       </div>
                     </label>
                     <label className="block mb-3">
                       <span className="text-[10px] text-gray-400 mb-1 block">Description</span>
-                      <textarea className="w-full h-14 rounded border border-gray-200 px-2 py-1 text-[10px] text-gray-600 resize-none" />
+                      <textarea readOnly className={`${enj.textarea} h-14 min-h-14 resize-none text-xs`} value={String(viewingTaskRow?.new_description ?? '')} />
                     </label>
                     <label className="block">
                       <span className="text-[10px] text-gray-400 mb-1 block">Attachment</span>
@@ -778,324 +2227,396 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                       </button>
                     </label>
                     <div className="mt-4 flex justify-end gap-3">
-                      <button className="h-8 px-6 rounded-md border border-[#b28a44] text-[#b28a44] text-xs" onClick={() => setShowTaskDetails(false)}>Cancel</button>
-                      <button className="h-8 px-6 rounded-md bg-[#b28a44] text-white text-xs">Save & Submit</button>
+                      <button type="button" className={`${enj.btn} ${enj.btnOutline} px-6 text-sm`} onClick={() => setShowTaskDetails(false)}>Cancel</button>
+                      <button type="button" className={`${enj.btn} ${enj.btnPrimary} px-6 text-sm`}>Save & Submit</button>
                     </div>
                   </div>
                   <aside className="bg-white rounded-xl p-3 border border-gray-100">
-                    <h3 className="text-xs font-semibold text-[#2f3150] mb-2">Task Logs</h3>
+                    <h3 className="text-xs font-semibold text-primary mb-2">Task Logs</h3>
                     <div className="space-y-2 text-[10px] text-gray-500">
-                      <div className="p-2 rounded bg-gray-50 border border-gray-100">Fri<br />09/09/2024</div>
-                      <div className="p-2 rounded bg-gray-50 border border-gray-100">Mon<br />10/09/2024</div>
+                      <div className="p-2 rounded bg-gray-50 border border-gray-100">
+                        Created
+                        <br />
+                        {teamFormatShortDate(viewingTaskRow?.createdon)}
+                      </div>
+                      <div className="p-2 rounded bg-gray-50 border border-gray-100">
+                        Modified
+                        <br />
+                        {teamFormatShortDate(viewingTaskRow?.modifiedon)}
+                      </div>
                     </div>
                   </aside>
                 </section>
               ) : (
-                <>
-                  <h2 className="text-xl font-bold text-[#2f3150] mb-4">Tasks List</h2>
-                  <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 min-w-0">
-                    {teamTaskColumns.map((column) => (
-                      <div key={column.name} className="space-y-3 min-w-0">
-                        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
-                          <p className="text-sm font-semibold text-[#2f3150]">{column.name}</p>
-                          <button className="text-[10px] text-[#b28a44]">View All</button>
-                        </div>
-                        {[0, 1, 2].map((idx) => (
-                          <div key={`${column.name}-${idx}`} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                            <div className="flex items-center justify-between">
-                              <button type="button" onClick={() => setShowTaskDetails(true)} className="text-sm font-semibold" style={{ color: column.color }}>Task Name</button>
-                              <span className="px-2 py-0.5 rounded border border-gray-200 text-[9px] text-gray-500">Project Name</span>
-                            </div>
-                            <p className="text-[11px] text-[#4b5574] mt-1">auditing information architecture</p>
-                            <p className="text-[10px] text-gray-400">Create content for pieceland App</p>
-                            <p className="text-[10px] mt-2" style={{ color: column.color }}>Sub.Task title</p>
-                            <div className="mt-1 flex items-center justify-between text-[10px] text-gray-400">
-                              <span className="flex items-center gap-1"><Calendar size={10} /> Due Date</span>
-                              <span className="flex items-center gap-1"><Clock size={10} /> {column.name === 'Delayed' ? '5 hrs' : '5 days'}</span>
-                            </div>
-                            <div className="mt-1 flex items-center justify-between text-[10px] text-gray-400">
-                              <span>Aug 20, 2021</span>
-                              <button className="w-5 h-5 rounded border border-[#d8c9ad] text-[#b28a44] text-[10px]">↗</button>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between">
-                              <div className="w-4 h-4 rounded-full bg-orange-200 text-[8px] text-orange-700 flex items-center justify-center">E</div>
-                              <p className="text-[9px] text-gray-400">11 file</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
+                <div className="relative min-w-0 flex w-full flex-col">
+                  {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
+                  <h2 className="text-xl font-bold text-primary mb-4 shrink-0">Tasks List</h2>
+                  <div className="w-full min-w-0 shrink-0">
+                    <TasksScreenBoard
+                      variant="team"
+                      tasks={myTasks}
+                      onTaskOpen={(row) => {
+                        setViewingTaskRow(row as Record<string, unknown>);
+                        setShowTaskDetails(true);
+                      }}
+                      onTaskEdit={(row) => {
+                        setShowTaskDetails(false);
+                        setEditingTaskRow(row as Record<string, unknown>);
+                      }}
+                      onTaskDelete={requestDeleteTeamTask}
+                      onTimeSheet={() => {
+                        window.alert('Time Sheet: connect this action to your timesheet or Power Automate flow.');
+                      }}
+                    />
                   </div>
-                </>
+                </div>
               )}
             </section>
           ) : activeNav === 'Issues' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
-              {showIssueDetails ? (
-                <section className="grid grid-cols-1 xl:grid-cols-[1fr_170px] gap-4">
-                  <div className="bg-white rounded-xl p-4 shadow-sm">
-                    <p className="text-[11px] text-gray-400 mb-3">
-                      <button className="underline text-gray-500" onClick={() => setShowIssueDetails(false)}>Issue</button>
-                      {' > '}Issue Detail
-                    </p>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-                      {[
-                        ['Task Title', 'Demo, code and valid'],
-                        ['Project Name', 'Code.Tech'],
-                        ['Project Manager', 'Ahmed Ali'],
-                        ['Start Date', '03/09/2024'],
-                        ['End Date', '03/10/2024'],
-                        ['Sub Task', 'code'],
-                        ['Task name', 'Task name'],
-                        ['Milestone', 'Milestone 4'],
-                        ['Assign To', 'Ahmed Sami, Hossam Farag, Mahmoud Bacher'],
-                      ].map(([label, value]) => (
-                        <div key={label} className="col-span-1">
-                          <p className="text-[10px] text-gray-400 mb-1">{label}</p>
-                          <div className="h-8 rounded border border-gray-200 bg-white px-2 text-[10px] text-gray-600 flex items-center">{value}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <label className="block mb-3">
-                      <span className="text-[10px] text-gray-400 mb-1 block">Issue Status</span>
-                      <div className="flex items-center gap-3">
-                        <select className="w-36 h-8 rounded border border-gray-200 px-2 text-[10px] text-gray-600">
-                          <option>Open</option>
-                          <option>Solved</option>
-                        </select>
-                        <input className="w-24 h-8 rounded border border-gray-200 px-2 text-[10px] text-gray-600" defaultValue="2 hrs" />
-                        <button className="h-8 px-3 rounded border border-[#d8c9ad] text-[10px] text-[#b28a44]">+ Add subtask</button>
-                      </div>
-                    </label>
-                    <label className="block mb-3">
-                      <span className="text-[10px] text-gray-400 mb-1 block">Description</span>
-                      <textarea className="w-full h-14 rounded border border-gray-200 px-2 py-1 text-[10px] text-gray-600 resize-none" />
-                    </label>
-                    <label className="block">
-                      <span className="text-[10px] text-gray-400 mb-1 block">Attachment</span>
-                      <button className="w-full h-16 rounded border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400">
-                        <span className="font-semibold text-gray-600">Choose a file</span> or drag it here
-                      </button>
-                    </label>
-                    <div className="mt-4 flex justify-end gap-3">
-                      <button className="h-8 px-6 rounded-md border border-[#b28a44] text-[#b28a44] text-xs" onClick={() => setShowIssueDetails(false)}>Cancel</button>
-                      <button className="h-8 px-6 rounded-md bg-[#b28a44] text-white text-xs">Save & Submit</button>
-                    </div>
-                  </div>
-                  <aside className="bg-white rounded-xl p-3 border border-gray-100">
-                    <h3 className="text-xs font-semibold text-[#2f3150] mb-2">Task Logs</h3>
-                    <div className="space-y-2 text-[10px] text-gray-500">
-                      <div className="p-2 rounded bg-gray-50 border border-gray-100">Fri<br />09/09/2024</div>
-                      <div className="p-2 rounded bg-gray-50 border border-gray-100">Mon<br />10/09/2024</div>
-                    </div>
-                  </aside>
-                </section>
+            <section className={`relative ${enj.panelBg}`}>
+              {teamIssueToast && (
+                <NotificationToast
+                  type={teamIssueToast.type}
+                  message={teamIssueToast.message}
+                  onClose={() => setTeamIssueToast(null)}
+                />
+              )}
+              {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
+              {showTeamSubIssueForm && viewingIssueRow ? (
+                <TeamSubIssueFormPanel
+                  parentIssue={viewingIssueRow}
+                  onBack={() => {
+                    setShowTeamSubIssueForm(false);
+                    if (teamSubIssueFromDetail) {
+                      setShowIssueDetails(true);
+                    } else {
+                      setViewingIssueRow(null);
+                    }
+                    setTeamSubIssueFromDetail(false);
+                  }}
+                  onRefresh={() => { setWorkspaceRefreshKey((k) => k + 1); }}
+                  onNotify={(type, message) => setTeamIssueToast({ type, message })}
+                  onSaved={() => {
+                    setWorkspaceRefreshKey((k) => k + 1);
+                    /* Keep modal open so the new sub issue appears in the list on the left. */
+                  }}
+                />
+              ) : showIssueDetails && viewingIssueRow ? (
+                <TeamIssueDetailPanel
+                  issue={viewingIssueRow}
+                  onBack={() => { setShowIssueDetails(false); setViewingIssueRow(null); }}
+                  onRefreshWorkspace={() => { setWorkspaceRefreshKey((k) => k + 1); }}
+                  onOpenSubIssue={() => { setTeamSubIssueFromDetail(true); setShowTeamSubIssueForm(true); }}
+                  onNotify={(type, message) => setTeamIssueToast({ type, message })}
+                  onIssueUpdated={(row) => {
+                    setViewingIssueRow(row);
+                    setWorkspaceRefreshKey((k) => k + 1);
+                  }}
+                />
               ) : (
                 <>
-              <h2 className="text-xl font-bold text-[#2f3150] mb-4">Issue Register</h2>
+              <h2 className="text-xl font-bold text-primary mb-4">Issue Register</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="bg-white rounded-xl p-3 shadow-sm">
-                  <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Projects vs Issues</h3>
-                  <svg viewBox="0 0 220 120" className="w-full h-28 chart-svg">
-                    {[0, 10, 20, 30, 40, 50].map((v) => (
-                      <g key={v}>
-                        <line x1="18" x2="210" y1={92 - v * 1.5} y2={92 - v * 1.5} stroke="#eef2f7" />
-                        <text x="4" y={95 - v * 1.5} fontSize="7" fill="#9ca3af">{v}</text>
-                      </g>
-                    ))}
-                    {[['D1', 24, '#b28a44'], ['D2', 47, '#6ea3ef'], ['D3', 31, '#44527f']].map(([m, v, c], i) => (
-                      <g key={String(m)}>
-                        <rect x={58 + i * 32} y={92 - Number(v) * 1.5} width="12" height={Number(v) * 1.5} rx="2" className="chart-bar" fill={String(c)} />
-                        <text x={64 + i * 32} y="108" fontSize="7" textAnchor="middle" fill="#9ca3af">{m}</text>
-                      </g>
-                    ))}
-                  </svg>
+                  <h3 className="text-sm font-semibold text-primary mb-2">Projects vs Issues</h3>
+                  {teamIssuesRegister.projectBars.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2">No issue data by project</p>
+                  ) : (
+                    <svg viewBox="0 0 220 120" className="w-full h-28 chart-svg">
+                      {[0, 10, 20, 30, 40, 50].map((v) => (
+                        <g key={v}>
+                          <line x1="18" x2="210" y1={92 - v * 1.5} y2={92 - v * 1.5} stroke="#eef2f7" />
+                          <text x="4" y={95 - v * 1.5} fontSize="7" fill="#9ca3af">{v}</text>
+                        </g>
+                      ))}
+                      {teamIssuesRegister.projectBars.map((b, i) => (
+                        <g key={b.name}>
+                          <rect x={58 + i * 32} y={92 - b.h * 1.5} width="12" height={b.h * 1.5} rx="2" className="chart-bar" fill={b.color} />
+                          <text x={64 + i * 32} y="108" fontSize="7" textAnchor="middle" fill="#9ca3af">{b.name}</text>
+                        </g>
+                      ))}
+                    </svg>
+                  )}
                 </div>
                 <div className="bg-white rounded-xl p-3 shadow-sm">
-                  <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Issue Severity</h3>
-                  <svg viewBox="0 0 220 120" className="w-full h-28 chart-svg">
-                    <circle cx="104" cy="62" r="40" fill="#f3f4f6" />
-                    <path d="M104 62 L104 22 A40 40 0 0 1 144 64 Z" fill="#ea6a6a" />
-                    <path d="M104 62 L144 64 A40 40 0 0 1 76 92 Z" fill="#efb4b8" />
-                    <path d="M104 62 L76 92 A40 40 0 0 1 88 24 Z" fill="#d69ea4" />
-                    <circle cx="104" cy="62" r="5" fill="#fff" />
-                    <text x="144" y="26" fontSize="8" fill="#ef6b6b">27</text>
-                    <text x="144" y="34" fontSize="7" fill="#ef6b6b">Medium</text>
-                    <text x="148" y="82" fontSize="8" fill="#ef6b6b">21</text>
-                    <text x="148" y="90" fontSize="7" fill="#ef6b6b">High</text>
-                    <text x="36" y="88" fontSize="8" fill="#d4a759">46</text>
-                    <text x="36" y="96" fontSize="7" fill="#d4a759">Low</text>
-                  </svg>
+                  <h3 className="text-sm font-semibold text-primary mb-2">Issue Severity</h3>
+                  <DonutChart
+                    className="w-full h-32 chart-svg"
+                    size={200}
+                    ringWidth={32}
+                    showOuterLabels
+                    centerText={String(myIssues.length)}
+                    centerSubtext="issues"
+                    slices={(() => {
+                      const { sev } = teamIssuesRegister;
+                      const raw = [
+                        { label: 'High', value: sev.high, color: '#ea6a6a' },
+                        { label: 'Med', value: sev.med, color: '#efb4b8' },
+                        { label: 'Low', value: sev.low, color: '#d4a759' },
+                        { label: 'Critical', value: sev.crit, color: '#a855f7' },
+                      ];
+                      return raw.some((x) => x.value > 0) ? raw : [{ label: 'No Data', value: 1, color: '#e5e7eb' }];
+                    })()}
+                  />
                 </div>
                 <div className="bg-white rounded-xl p-3 shadow-sm">
-                  <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Issue Status</h3>
-                  <svg viewBox="0 0 220 120" className="w-full h-28 chart-svg">
-                    <circle cx="106" cy="62" r="40" fill="#eef2f7" />
-                    <path d="M106 62 L106 22 A40 40 0 1 1 73 84 Z" fill="#dc4f56" />
-                    <path d="M106 62 L73 84 A40 40 0 0 1 121 25 Z" fill="#1f67e0" />
-                    <circle cx="106" cy="62" r="5" fill="#fff" />
-                    <text x="154" y="36" fontSize="8" fill="#1f67e0">20</text>
-                    <text x="154" y="44" fontSize="7" fill="#1f67e0">Resolved</text>
-                    <text x="40" y="92" fontSize="8" fill="#dc4f56">80</text>
-                    <text x="40" y="100" fontSize="7" fill="#dc4f56">Opened</text>
-                  </svg>
+                  <h3 className="text-sm font-semibold text-primary mb-2">Issue Status</h3>
+                  <DonutChart
+                    className="w-full h-32 chart-svg"
+                    size={200}
+                    ringWidth={32}
+                    showOuterLabels
+                    centerText={String(myIssues.length)}
+                    centerSubtext="issues"
+                    slices={(() => {
+                      const { st } = teamIssuesRegister;
+                      if (st.open === 0 && st.closed === 0) {
+                        return [{ label: 'No Data', value: 1, color: '#e5e7eb' }];
+                      }
+                      if (st.open > 0 && st.closed === 0) {
+                        return [
+                          { label: 'Open', value: st.open, color: '#dc4f56' },
+                          { label: 'Closed', value: 0.0001, color: '#1f67e0' },
+                        ];
+                      }
+                      if (st.closed > 0 && st.open === 0) {
+                        return [
+                          { label: 'Open', value: 0.0001, color: '#dc4f56' },
+                          { label: 'Closed', value: st.closed, color: '#1f67e0' },
+                        ];
+                      }
+                      return [
+                        { label: 'Open', value: st.open, color: '#dc4f56' },
+                        { label: 'Closed', value: st.closed, color: '#1f67e0' },
+                      ];
+                    })()}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {[
-                  ['Open', '#ef4444'],
-                  ['Solve', '#2563eb'],
-                ].map(([title, accent]) => (
+                {(
+                  [
+                    ['Open', '#ef4444', teamOpenIssues],
+                    ['Solved', '#2563eb', teamClosedIssues],
+                  ] as [string, string, Array<Record<string, unknown>>][]
+                ).map(([title, _accent, list]) => (
                   <div key={String(title)} className="space-y-3">
                     <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-[#2f3150]">{title}</p>
-                      <button className="text-[10px] text-[#b28a44]">View all</button>
+                      <p className={enj.sectionTitle}>{title}</p>
+                      <span className="text-[10px] text-gray-500">{list.length} items</span>
                     </div>
-                    {[0, 1, 2].map((idx) => (
-                      <div key={`${title}-${idx}`} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <button type="button" onClick={() => setShowIssueDetails(true)} className="text-sm font-semibold" style={{ color: String(accent) }}>Issue Name</button>
-                          <span className="px-2 py-0.5 rounded border border-gray-200 text-[9px] text-gray-500">Project Name</span>
+                    {list.length === 0 ? (
+                      <p className="text-sm text-gray-500 bg-white rounded-xl border border-gray-100 p-4">No {title === 'Open' ? 'open' : 'closed'} issues.</p>
+                    ) : list.slice(0, 8).map((row) => {
+                      const t = String(row.new_issuetitle ?? 'Issue');
+                      const issueId = String(row.new_issueid ?? '');
+                      const subN = teamSubIssueCountByParent.get(issueId) ?? 0;
+                      const sevName = String(row.new_issueseverityname ?? '—').trim() || '—';
+                      const descPreview = (String(row.new_description ?? '').trim() || '—');
+                      const pri = teamIssueCardPriorityMeta(row);
+                      const projectTag = String(row.new_projectname ?? '—').trim() || '—';
+                      return (
+                        <div
+                          key={String(row.new_issueid ?? t)}
+                          className="bg-white rounded-xl border border-gray-200/90 shadow-sm p-4 sm:p-5"
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => { setViewingIssueRow(row); setShowIssueDetails(true); }}
+                                className="text-sm font-semibold text-[#2563eb] text-left underline underline-offset-2 decoration-[#2563eb]/80 hover:text-[#1d4ed8] block truncate w-full"
+                              >
+                                {t}
+                              </button>
+                              <p className="text-[11px] text-gray-500 mt-1.5">
+                                Issue Severity : {sevName}
+                              </p>
+                            </div>
+                            <span
+                              className="shrink-0 max-w-[9rem] truncate rounded-md bg-amber-100/90 px-2.5 py-1.5 text-center text-[10px] font-medium text-gray-800 border border-amber-200/60"
+                              title={projectTag}
+                            >
+                              {projectTag}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                            <div className="flex items-center gap-1.5 min-w-0 text-[11px] font-medium text-primary">
+                              <ListTree className="h-3.5 w-3.5 text-[#2563eb] shrink-0" strokeWidth={2} />
+                              <span>Sub Issue Count: {subN}</span>
+                            </div>
+                            <div className="min-w-0 max-w-full sm:max-w-[55%] text-right sm:pl-2">
+                              <p className="text-[11px] font-bold text-[#1e3a5f]">Description</p>
+                              <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 break-words">{descPreview}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-end justify-between gap-2 pt-1">
+                            <div>
+                              <p className="text-[11px] text-gray-500">
+                                Due Date : {teamIssueCardDueDate(row)}
+                              </p>
+                              <div className="mt-1.5 flex items-center gap-2.5">
+                                <span
+                                  className={`inline-flex h-6 min-w-[1.5rem] px-1 rounded-full text-[9px] font-bold text-white items-center justify-center ${pri.ring}`}
+                                  title="Priority from severity"
+                                >
+                                  {pri.p}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingIssueRow(row);
+                                    setShowIssueDetails(true);
+                                    setShowTeamSubIssueForm(false);
+                                    setTeamSubIssueFromDetail(false);
+                                  }}
+                                  className="p-1 rounded-md text-gray-400 hover:text-secondary hover:bg-amber-50/80"
+                                  title="Issue details"
+                                >
+                                  <Pencil className="h-4 w-4" strokeWidth={2} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-[11px] text-[#4b5574] mt-1">Listing deliverables checklist</p>
-                        <p className="text-[10px] text-gray-400">Create content for pieceland App. Create content for pieceland App.</p>
-                        <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400">
-                          <span className="flex items-center gap-1"><AlertCircle size={10} /> {title === 'Open' ? '3 Tasks left' : '24 hrs'}</span>
-                          <span>{title === 'Open' ? '07 min' : '2 hrs'}</span>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between">
-                          <div className="w-4 h-4 rounded-full bg-orange-200 text-[8px] text-orange-700 flex items-center justify-center">E</div>
-                          <p className="text-[9px] text-gray-400">11 file</p>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ))}
               </div>
                 </>
               )}
             </section>
-          ) : activeNav === 'Calendar' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
+          ) : activeNav === 'Meetings' ? (
+            <section className={enj.panelBg}>
               {showAddCalendarMeetingForm ? (
-                <section className="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto">
-                  <p className="text-[11px] text-gray-400 mb-4">
-                    <button className="underline text-gray-500" onClick={() => setShowAddCalendarMeetingForm(false)}>Calendar</button>
-                    {' > '}Add New Meeting
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-3">
-                    {[
-                      ['Meeting Title *', 'Enter Meeting Title', false],
-                      ['Department', 'Select', true],
-                      ['Meeting Category *', 'Select Category', true],
-                      ['Project Name', 'Select Category', true],
-                      ['Vendor Name', 'Select Vendor Name', true],
-                      ['Project Manager', 'Auto Fich', false],
-                      ['Invite member', 'Select member', true],
-                    ].map(([label, placeholder, selectField]) => (
-                      <label key={String(label)} className="block">
-                        <span className="text-[11px] text-gray-500 mb-1 block">{String(label)}</span>
-                        {selectField ? (
-                          <select className="w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-xs text-gray-500">
-                            <option>{String(placeholder)}</option>
-                          </select>
-                        ) : (
-                          <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder={String(placeholder)} />
-                        )}
-                      </label>
-                    ))}
-                    <label className="block">
-                      <span className="text-[11px] text-gray-500 mb-1 block">Meeting Date *</span>
-                      <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder="Select Date" />
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] text-gray-500 mb-1 block">Start Time*</span>
-                      <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder="--:--" />
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] text-gray-500 mb-1 block">End Time*</span>
-                      <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder="--:--" />
-                    </label>
-                  </div>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Meeting Location</span>
-                    <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder="Enter Meeting Location" />
-                  </label>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Meeting Agenda</span>
-                    <textarea className="w-full h-20 rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none" placeholder="Agenda..." />
-                  </label>
-                  <div className="mt-4 flex justify-end gap-3">
-                    <button type="button" onClick={() => setShowAddCalendarMeetingForm(false)} className="h-8 px-6 rounded-md border border-[#b28a44] text-[#b28a44] text-xs">Cancel</button>
-                    <button className="h-8 px-6 rounded-md bg-[#b28a44] text-white text-xs">Add to Calendar</button>
-                  </div>
-                </section>
+                <AddMeetingFormPanel
+                  parentLabel="Meetings"
+                  onCancel={() => setShowAddCalendarMeetingForm(false)}
+                  onCreated={() => setWorkspaceRefreshKey((k) => k + 1)}
+                  onNotify={(type, message) => setTeamProjectToast({ type, message })}
+                />
               ) : (
                 <>
+                <div className="relative">
+                  {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-8">
-                      <h2 className="text-xl font-bold text-[#2f3150]">Calendar</h2>
+                      <h2 className={enj.pageTitle}>Calendar</h2>
                       <div className="flex items-center gap-3 text-xs">
                         <label className="text-gray-500 flex items-center gap-2">
                           <span>Project Name</span>
-                          <select className="h-8 rounded-md border border-gray-200 bg-white px-2 text-[11px] text-gray-500">
-                            <option>All</option>
+                          <select
+                            className={`${enj.control} !w-auto max-w-[160px] text-sm text-gray-600`}
+                            value={teamCalendarProjectFilter}
+                            onChange={(e) => setTeamCalendarProjectFilter(e.target.value)}
+                          >
+                            <option value="All">All</option>
+                            {Array.from(myProjectNameSet)
+                              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+                              .map((p) => (
+                                <option key={p} value={p}>
+                                  {p}
+                                </option>
+                              ))}
                           </select>
+                        </label>
+                        <label className="text-gray-500 flex items-center gap-2">
+                          <span className="shrink-0">Date</span>
+                          <input
+                            type="date"
+                            className={`${enj.control} !w-auto text-sm`}
+                            value={teamCalendarSelectedDateIso}
+                            onChange={(e) => setTeamCalendarSelectedDateIso(e.target.value)}
+                          />
                         </label>
                         <button
                           type="button"
-                          onClick={() => setShowCalendarMom(false)}
-                          className="h-7 px-3 rounded-full border border-[#d8c9ad] text-[10px] text-[#b28a44] bg-white"
+                          onClick={() => {
+                            const t = new Date();
+                            setTeamCalendarSelectedDateIso(
+                              `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`,
+                            );
+                            setShowCalendarMom(false);
+                          }}
+                          className={`${enj.btn} ${enj.btnOutline} rounded-full px-3 text-sm`}
                         >
                           Today
                         </button>
-                        <button className="h-7 px-3 rounded-full border border-gray-200 text-[10px] text-gray-500 bg-white">June, 20,2022</button>
                         <button
                           type="button"
                           onClick={() => setShowCalendarMom(true)}
-                          className="h-8 px-4 rounded-md border border-[#d8c9ad] text-[11px] text-[#b28a44] bg-white"
+                          className={`${enj.btn} ${enj.btnOutline} text-sm`}
                         >
                           MOM
                         </button>
                       </div>
                     </div>
-                    <button type="button" onClick={() => setShowAddCalendarMeetingForm(true)} className="h-9 px-4 rounded-md bg-[#b28a44] text-white text-xs font-semibold">+ New Meeting</button>
+                    <button type="button" onClick={() => setShowAddCalendarMeetingForm(true)} className={`${enj.btn} ${enj.btnPrimary} text-sm font-semibold`}>+ New Meeting</button>
                   </div>
 
                   <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
                     {showCalendarMom ? (
                       <section className="bg-white rounded-xl p-3">
-                        <p className="text-[11px] text-gray-400 mb-2">Calendar {'>'} MOM</p>
-                        <table className="w-full">
-                          <thead className="bg-gray-50 border-b border-gray-100">
-                            <tr className="text-[10px] text-gray-400 text-left">
-                              <th className="px-3 py-2">Meeting Title</th>
-                              <th className="px-3 py-2">Category</th>
-                              <th className="px-3 py-2">Project Name</th>
-                              <th className="px-3 py-2">Date</th>
-                              <th className="px-3 py-2" />
+                        <p className="text-sm font-semibold text-primary mb-2">Calendar {'>'} MOM</p>
+                        <table className={`${enj.table} w-full text-[10px]`}>
+                          <thead>
+                            <tr>
+                              <th>Meeting Title</th>
+                              <th>Category</th>
+                              <th>Project Name</th>
+                              <th>Date</th>
+                              <th className="text-right">Join</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {[
-                              ['Title 1', 'Follow-up', 'FP Project', 'Feb 09, 2024'],
-                              ['Title 1', 'Review', 'FP Project', 'Feb 09, 2024'],
-                              ['Title 1', 'Interview', 'FP Project', 'Feb 09, 2024'],
-                              ['Title 1', 'Brainstorm', 'FP Project', 'Feb 09, 2024'],
-                              ['Title 1', 'Follow-up', 'FP Project', 'Feb 09, 2024'],
-                              ['Title 1', 'Review', 'FP Project', 'Feb 09, 2024'],
-                              ['Title 1', 'Interview', 'FP Project', 'Feb 09, 2024'],
-                            ].map((row, idx) => (
-                              <tr key={idx} className="border-b border-gray-100 text-[11px] text-gray-700">
-                                <td className="px-3 py-3 text-indigo-700 font-semibold">{row[0]}</td>
-                                <td className="px-3 py-3">{row[1]}</td>
-                                <td className="px-3 py-3">{row[2]}</td>
-                                <td className="px-3 py-3 text-gray-500">{row[3]}</td>
-                                <td className="px-3 py-3 text-gray-400">:</td>
+                            {teamCalendarFilteredMeetings.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="px-3 py-6 text-center text-xs text-gray-500">
+                                  No meetings for the selected project and date.
+                                </td>
                               </tr>
-                            ))}
+                            ) : teamCalendarFilteredMeetings.map((mrow) => {
+                              const join = String(mrow.new_meetinglink ?? '').trim();
+                              const canOpen = /^https?:\/\//i.test(join);
+                              return (
+                                <tr key={String(mrow.new_meetingdetailid ?? mrow.createdon)} className="border-b border-gray-100 text-[11px] text-gray-700">
+                                  <td className="px-3 py-3 font-semibold">
+                                    {canOpen ? (
+                                      <a
+                                        href={join}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={enj.tableLink}
+                                      >
+                                        {String(mrow.new_meetingtitle ?? '—')}
+                                      </a>
+                                    ) : (
+                                      <span className="text-[#374151]">{String(mrow.new_meetingtitle ?? '—')}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-3">{String(mrow.new_meetingcategory ?? '—')}</td>
+                                  <td className="px-3 py-3">{String(mrow.new_projectname ?? '—')}</td>
+                                  <td className="px-3 py-3 font-medium text-[#111827]">{teamFormatShortDate(mrow.new_meetingdate)}</td>
+                                  <td className="px-3 py-3 text-right text-[10px]">
+                                    {canOpen ? (
+                                      <a
+                                        href={join}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`${enj.tableLink} font-medium`}
+                                      >
+                                        Join
+                                      </a>
+                                    ) : (
+                                      <span className="text-gray-300">—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </section>
@@ -1111,19 +2632,28 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                             {[15, 73, 139, 205, 271, 337].map((x) => (
                               <div key={x} className="absolute top-0 bottom-0 w-px bg-gray-100" style={{ left: x }} />
                             ))}
-                            {[
-                              { title: 'Meeting Title 1', top: 56, left: 54, color: '#17c983' },
-                              { title: 'Meeting Title 2', top: 220, left: 2, color: '#2563eb' },
-                              { title: 'Meeting Title 3', top: 140, left: 180, color: '#f6be00' },
-                              { title: 'Meeting Title 4', top: 258, left: 275, color: '#2563eb' },
-                              { title: 'Meeting Title 5', top: 96, left: 398, color: '#21c784' },
-                              { title: 'Meeting Title 6', top: 140, left: 340, color: '#d35b66' },
-                              { title: 'Meeting Title 8', top: 304, left: 331, color: '#f6be00' },
-                              { title: 'New', top: 312, left: 78, color: '#474d7f' },
-                            ].map((item) => (
-                              <div key={item.title + item.top} className="absolute h-8 rounded-full px-4 text-white text-[9px] font-semibold flex items-center" style={{ top: item.top, left: item.left, backgroundColor: item.color }}>
+                            {teamCalendarGridBlocks.length === 0 ? (
+                              <p className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No meetings for the selected day</p>
+                            ) : teamCalendarGridBlocks.map((item) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className="absolute h-8 max-w-[200px] cursor-pointer rounded-full px-3 text-left text-white text-[9px] font-semibold flex items-center truncate shadow-sm transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-white/80"
+                                style={{ top: item.top, left: item.left, backgroundColor: item.color }}
+                                title={item.joinUrl ? `${item.title} — open join link` : item.title}
+                                onClick={() => {
+                                  if (item.joinUrl) {
+                                    window.open(item.joinUrl, '_blank', 'noopener,noreferrer');
+                                  } else {
+                                    setTeamProjectToast({
+                                      type: 'info',
+                                      message: 'No Teams join link on this meeting yet. After the flow runs, open again.',
+                                    });
+                                  }
+                                }}
+                              >
                                 {item.title}
-                              </div>
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -1132,36 +2662,29 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
 
                     <section className="bg-white rounded-xl p-3">
                   <p className="text-[9px] text-gray-400 uppercase">Current Month</p>
-                  <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Scheduled Meetings</h3>
+                  <h3 className="text-sm font-semibold text-primary mb-2">Scheduled Meetings</h3>
                   <div className="space-y-2">
-                    {[
-                      ['Standup', '20 HRS', '11', '#c9f4e4', '#138f6f'],
-                      ['Requirements Gathering', '12 HRS', '12', '#e9edff', '#4c64bf'],
-                      ['Technical Discussion', '22 HRS', '10', '#f7eed8', '#b8872e'],
-                      ['Brain Storm Session', '24 HRS', '12', '#eef0ff', '#4d5bb7'],
-                      ['Training Sessions', '10 HRS', '5', '#fdf4dd', '#b4882a'],
-                      ['Quality Assurance', '22 HRS', '2', '#ffe6e8', '#cb4e59'],
-                      ['Documents Review', '20 HRS', '3', '#e9e4ff', '#6958bb'],
-                      ['Technical Discussion', '12 HRS', '4', '#e2f7ef', '#2f9879'],
-                      ['Interview', '22 HRS', '8', '#ffe6e6', '#ca5454'],
-                      ['Others', '22 HRS', '6', '#f5eedf', '#9a7a35'],
-                    ].map(([name, hrs, count, bg, text]) => (
-                      <div key={String(name) + String(count)} className="rounded-full px-3 py-1.5 flex items-center justify-between" style={{ backgroundColor: String(bg) }}>
+                    {teamCalendarCategoryRows.length === 0 ? (
+                      <p className="text-xs text-gray-400 py-2">No scheduled meeting categories this period.</p>
+                    ) : teamCalendarCategoryRows.map((row) => (
+                      <div key={row.name} className="rounded-full px-3 py-1.5 flex items-center justify-between" style={{ backgroundColor: row.bg }}>
                         <div>
-                          <p className="text-[10px] font-semibold" style={{ color: String(text) }}>{name}</p>
-                          <p className="text-[9px] text-gray-400">{hrs}</p>
+                          <p className="text-[10px] font-semibold" style={{ color: row.text }}>{row.name}</p>
+                          <p className="text-[9px] text-gray-400">{row.hrs > 0 ? `${row.hrs} HRS` : '—'}</p>
                         </div>
-                        <span className="w-5 h-5 rounded-full bg-white/80 text-[10px] font-semibold flex items-center justify-center" style={{ color: String(text) }}>{count}</span>
+                        <span className="w-5 h-5 rounded-full bg-white/80 text-[10px] font-semibold flex items-center justify-center" style={{ color: row.text }}>{row.n}</span>
                       </div>
                     ))}
                   </div>
                 </section>
                   </div>
+                </div>
                 </>
               )}
             </section>
           ) : (
-            <>
+            <div className="relative min-h-0">
+              {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
           {/* ── Overview ── */}
           <section className="bg-white rounded-xl p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Overview</h2>
@@ -1172,7 +2695,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                   className={`rounded-xl border-2 ${card.border} bg-white px-4 py-4`}
                 >
                   <p className="text-[11px] text-gray-400 mb-3 leading-tight">{card.label}</p>
-                  <p className="text-2xl font-extrabold text-[#2f3150]">{card.value}</p>
+                  <p className="text-2xl font-extrabold text-primary">{card.value}</p>
                 </div>
               ))}
             </div>
@@ -1197,15 +2720,20 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="grid grid-cols-3 gap-6">
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-2">Assigned Tasks/Projects</p>
-                <AssignedTasksChart />
+                <AssignedTasksChart bars={teamDashboardAssignedChart.bars} maxValue={teamDashboardAssignedChart.max} />
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-2">Tasks</p>
-                <TasksChart />
+                <TasksChart bars={teamDashboardTasksChart.bars} />
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-500 mb-2">Issues</p>
-                <IssuesDonut />
+                <IssuesDonut
+                  open={teamIssueDistribution.open}
+                  inProgress={teamIssueDistribution.inProgress}
+                  closed={teamIssueDistribution.closed}
+                  total={teamIssueDistribution.total}
+                />
               </div>
             </div>
           </section>
@@ -1214,14 +2742,13 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
           <section className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h2 className="text-lg font-bold text-gray-900">Tasks</h2>
-              <button className="text-xs font-semibold text-indigo-600 hover:underline">View All</button>
+              <button type="button" className="text-xs font-semibold text-indigo-600 hover:underline">View All</button>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px]">
-                {/* Header */}
+              <table className={`${enj.table} w-full min-w-[900px] text-sm`}>
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
+                  <tr>
                     <th className={thCls}>Project<br />Name</th>
                     <th className={thCls}>Task Name</th>
                     <th className={thCls}>Priority</th>
@@ -1235,11 +2762,18 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                 </thead>
 
                 <tbody>
-                  {tasks.map((row, i) => (
-                    <>
-                      {/* Repeat mini-header before 3rd row to match image */}
+                  {teamWorkspaceLoading && teamDashboardTasksTable.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-5 py-8 text-center text-sm text-gray-500">Loading tasks…</td>
+                    </tr>
+                  ) : teamDashboardTasksTable.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-5 py-8 text-center text-sm text-gray-500">No tasks assigned to your profile.</td>
+                    </tr>
+                  ) : teamDashboardTasksTable.map((row, i) => (
+                    <Fragment key={row.key}>
                       {i === 2 && (
-                        <tr key="sub-header" className="bg-gray-50 border-t border-b border-gray-100">
+                        <tr className="bg-gray-50 border-t border-b border-gray-100">
                           <td className={`${thCls} text-gray-400`}>Project<br />Name</td>
                           <td className={`${thCls} text-gray-400`}>Task Name</td>
                           <td className={`${thCls} text-gray-400`}>Priority</td>
@@ -1251,7 +2785,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                           <td className={`${thCls} text-gray-400`}>Progress%</td>
                         </tr>
                       )}
-                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                      <tr className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                         <td className={`${tdCls} text-gray-500`}>{row.project}</td>
                         <td className={`${tdCls} font-medium`}>{row.task}</td>
                         <td className={tdCls}><Badge label={row.priority} /></td>
@@ -1267,16 +2801,241 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                         </td>
                         <td className={tdCls}><ProgressBar pct={row.pct} /></td>
                       </tr>
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
             </div>
           </section>
-            </>
+            </div>
           )}
           </div>
         </main>
+      </div>
+      {teamTaskDeleteCandidate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h3 className={enj.sectionTitle}>Delete task?</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Are you sure you want to delete
+              {' '}
+              <span className="font-semibold text-gray-800">
+                {String(teamTaskDeleteCandidate.new_tasktitle ?? 'this task').trim() || 'this task'}
+              </span>
+              ?
+            </p>
+            <p className="mt-1 text-xs text-rose-600">This action cannot be undone.</p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="h-9 px-4 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                onClick={() => setTeamTaskDeleteCandidate(null)}
+                disabled={deletingTeamTask}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="h-9 px-4 rounded-md bg-rose-600 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                onClick={() => void confirmDeleteTeamTask()}
+                disabled={deletingTeamTask}
+              >
+                {deletingTeamTask ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BusinessDashboardStyleDonut({
+  title,
+  slices,
+  centerValue,
+  centerSub,
+  showCenterValue = true,
+  layout = 'default',
+  donutVariant = 'standard',
+  stacked = false,
+  cx: cxProp,
+  cy: cyProp,
+  viewW: viewWProp,
+  viewH: viewHProp,
+  outerR: outerRProp,
+  innerR: innerRProp,
+  labelR: labelRProp,
+  maxNameLen = 11,
+  embedded = false,
+}: {
+  title: string;
+  slices: Array<{
+    label: string;
+    value: number;
+    color: string;
+    displayName?: string;
+    labelLine?: string;
+  }>;
+  centerValue?: string | number;
+  centerSub?: string;
+  /** If false, only the white “pinhole” is shown (e.g. Budget). */
+  showCenterValue?: boolean;
+  /** `hero` = larger chart + container (Projects by progress, Budget). */
+  layout?: 'default' | 'hero';
+  /**
+   * `thinRing` = narrow annulus; `pinhole` = small center (budget pie);
+   * `standard` = default band width.
+   */
+  donutVariant?: 'standard' | 'thinRing' | 'pinhole';
+  /** Tighter vertical size when stacked in the right column under another donut. */
+  stacked?: boolean;
+  cx?: number;
+  cy?: number;
+  viewW?: number;
+  viewH?: number;
+  outerR?: number;
+  innerR?: number;
+  labelR?: number;
+  maxNameLen?: number;
+  /** No outer card — use inside a shared panel (e.g. Business pipeline split layout). */
+  embedded?: boolean;
+}) {
+  const isHero = layout === 'hero';
+  const cx = cxProp ?? (isHero ? 120 : 90);
+  const cy = cyProp ?? (isHero ? 120 : 90);
+  const viewW = viewWProp ?? (isHero ? 240 : 180);
+  const viewH = viewHProp ?? (isHero ? 240 : 180);
+  let outerR: number;
+  let innerR: number;
+  let labelR: number;
+  if (isHero && donutVariant === 'thinRing') {
+    outerR = outerRProp ?? (stacked ? 66 : 54);
+    innerR = innerRProp ?? Math.max(outerR - 10, 42);
+    labelR = labelRProp ?? (stacked ? 88 : 80);
+  } else if (isHero && donutVariant === 'pinhole') {
+    outerR = outerRProp ?? (stacked ? 68 : 58);
+    innerR = innerRProp ?? (stacked ? 13 : 11);
+    labelR = labelRProp ?? (stacked ? 94 : 92);
+  } else {
+    outerR = outerRProp ?? (isHero ? 50 : 36);
+    innerR = innerRProp ?? (isHero ? 28 : 20);
+    labelR = labelRProp ?? (isHero ? 82 : 58);
+  }
+  const g = useMemo(
+    () =>
+      buildBusinessStyleDonutGeometry(slices, {
+        cx,
+        cy,
+        outerR,
+        innerR,
+        gapDeg: 2.6,
+        labelR,
+        maxNameLen,
+        calloutGap: 5,
+      }),
+    [slices, cx, cy, outerR, innerR, labelR, maxNameLen],
+  );
+  const shellClass = embedded
+    ? 'min-h-0 w-full'
+    : `bg-white shadow-sm chart-card border border-gray-100/90 ${
+        isHero
+          ? stacked
+            ? 'min-h-0 rounded-xl p-4'
+            : 'min-h-[15rem] rounded-xl p-4'
+          : 'min-h-0 rounded-lg p-2.5'
+      }`;
+  return (
+    <div className={shellClass}>
+      <h3
+        className={
+          embedded
+            ? 'mb-2 text-left text-sm font-bold text-gray-900'
+            : `font-bold text-gray-900 ${isHero ? 'mb-1 text-sm' : 'mb-0.5 text-xs'}`
+        }
+      >
+        {title}
+      </h3>
+      <div
+        className={`flex w-full items-center justify-center ${
+          embedded
+            ? 'min-h-[10.5rem] py-0 sm:min-h-[11.5rem]'
+            : isHero
+              ? stacked
+                ? 'min-h-0 py-0.5'
+                : 'min-h-[12rem] py-1'
+              : 'min-h-[7.5rem] max-h-[9.5rem] py-0.5'
+        }`}
+      >
+        <svg
+          viewBox={`0 0 ${viewW} ${viewH}`}
+          className={`w-full chart-svg ${
+            isHero
+              ? stacked
+                ? 'h-44 min-h-[10.5rem] max-w-[min(100%,22rem)] sm:h-[11rem]'
+                : 'h-[12rem] max-h-[14rem] min-h-[11rem] max-w-[min(100%,24rem)] sm:h-[13rem]'
+              : 'h-[7.5rem] max-w-[11.5rem]'
+          }`}
+          style={{ overflow: 'visible' }}
+        >
+          {g.pathEls.map((p) => (
+            <path key={p.key} d={p.d} fill={p.color} />
+          ))}
+          <circle cx={g.cx} cy={g.cy} r={g.innerR - 0.5} fill="white" />
+          {g.calloutEls.map((c) => (
+            <line
+              key={c.key}
+              x1={c.x1}
+              y1={c.y1}
+              x2={c.x2}
+              y2={c.y2}
+              stroke="#cbd5e1"
+              strokeWidth="0.9"
+            />
+          ))}
+          {showCenterValue && (centerValue !== undefined && centerValue !== null && String(centerValue).trim() !== '') && (
+            <text
+              x={g.cx}
+              y={centerSub ? g.cy - 2 : g.cy}
+              textAnchor="middle"
+              fill="#0f172a"
+              fontSize={isHero ? 18 : 15}
+              fontWeight="700"
+              dominantBaseline="middle"
+            >
+              {centerValue}
+            </text>
+          )}
+          {centerSub && showCenterValue && (
+            <text
+              x={g.cx}
+              y={g.cy + 9}
+              textAnchor="middle"
+              fill="#94a3b8"
+              fontSize="7"
+              dominantBaseline="middle"
+            >
+              {centerSub}
+            </text>
+          )}
+          {g.labelEls.map((t) => (
+            <text
+              key={t.key}
+              x={t.x}
+              y={t.y}
+              textAnchor={t.anchor}
+              fontSize={isHero ? 9 : 7}
+              fill="#64748b"
+              fontWeight="500"
+              dominantBaseline="middle"
+              className="select-none"
+              style={{ fontFamily: 'inherit' }}
+            >
+              <title>{t.line}</title>
+              {t.line}
+            </text>
+          ))}
+        </svg>
       </div>
     </div>
   );
@@ -1285,164 +3044,247 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
 // ─── Business dashboard (stakeholder / portfolio view) ─────────────────────────
 function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeNav, setActiveNav] = useState('Dashboard');
-  const [timelineFilter, setTimelineFilter] = useState<'Weekly' | 'Monthly' | 'Yearly'>('Yearly');
-  const [timelineMonth, setTimelineMonth] = useState(() => yyyymmFromDate(new Date()));
-  const monthInputRef = useRef<HTMLInputElement>(null);
-  const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const [businessReportToast, setBusinessReportToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [timelineYear, setTimelineYear] = useState(() => new Date().getFullYear());
   const programPickerRef = useRef<HTMLDivElement>(null);
   const [programMenuOpen, setProgramMenuOpen] = useState(false);
-  const [selectedProgramGroup, setSelectedProgramGroup] = useState('Knowledge & Educational Excellence');
-  const [timelineScrollRatio, setTimelineScrollRatio] = useState(0);
-  const [timelineCanScrollH, setTimelineCanScrollH] = useState(false);
-  const years = ['2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024'];
-  const completed = [14, 18, 25, 41, 29, 33, 19, 18, 17, 22, 28, 24];
-  const delayed = [20, 28, 23, 46, 34, 29, 34, 25, 38, 43, 37, 22];
-  const onTrack = [16, 24, 22, 40, 31, 31, 30, 23, 39, 43, 36, 20];
-  const progressData = [
-    { label: 'Completed', value: 48, color: '#1d4ed8' },
-    { label: 'On Track', value: 34, color: '#10b981' },
-    { label: 'Delayed', value: 21, color: '#ef4444' },
-    { label: 'On Hold', value: 22, color: '#f59e0b' },
-  ];
-  const budgetData = [
-    { label: 'Financial', value: 352, color: '#3b82f6' },
-    { label: 'Knowledge', value: 90.5, color: '#8b5cf6' },
-    { label: 'External', value: 130, color: '#f59e0b' },
-    { label: 'HR', value: 14.6, color: '#22c55e' },
-    { label: 'Admin', value: 496, color: '#9ca3af' },
-    { label: 'Digital', value: 135, color: '#a16207' },
-  ];
+  const [selectedProgramGroup, setSelectedProgramGroup] = useState('All Programs');
+  const [timelineProjects, setTimelineProjects] = useState<Array<Record<string, unknown>>>([]);
+  const [dashboardMasterRows, setDashboardMasterRows] = useState<Array<Record<string, unknown>>>([]);
+  const [programIdToName, setProgramIdToName] = useState<Map<string, string>>(() => new Map());
+  const [portfolioPrograms, setPortfolioPrograms] = useState<Array<Record<string, unknown>>>([]);
+  const [expandedPortfolioProgramKey, setExpandedPortfolioProgramKey] = useState<string | null>(null);
+  const [portfolioPage, setPortfolioPage] = useState(1);
+  const [dataRefresh, setDataRefresh] = useState(0);
+  const [newPipelines, setNewPipelines] = useState<New_pipelines[]>([]);
+  const [newClients, setNewClients] = useState<New_clients[]>([]);
+  const [timelinePeriod, setTimelinePeriod] = useState<'weekly' | 'monthly' | 'yearly'>('yearly');
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const businessDash = useMemo(
+    () => businessDashboardModel(timelineProjects, programIdToName, dashboardMasterRows),
+    [timelineProjects, programIdToName, dashboardMasterRows],
+  );
+  const programProgressById = useMemo(() => {
+    const acc = new Map<string, { sum: number; n: number }>();
+    for (const r of timelineProjects) {
+      const idRaw = r._new_program_value ?? r.new_programid;
+      if (idRaw === undefined || idRaw === null || String(idRaw).trim() === '') continue;
+      const id = normalizeDataverseId(String(idRaw));
+      const p = Number(r.new_progress);
+      if (!Number.isFinite(p)) continue;
+      const cur = acc.get(id) ?? { sum: 0, n: 0 };
+      cur.sum += p;
+      cur.n += 1;
+      acc.set(id, cur);
+    }
+    const out = new Map<string, number>();
+    acc.forEach((v, k) => {
+      if (v.n > 0) out.set(k, Math.round((v.sum / v.n) * 10) / 10);
+    });
+    return out;
+  }, [timelineProjects]);
+  const categoryDonutCenter = useMemo(
+    () => businessDash.categoryData.reduce((s, c) => s + c.value, 0),
+    [businessDash.categoryData],
+  );
+  const progressDonutSlices = useMemo(
+    () => businessDash.progressData.map((p) => ({ label: p.label, value: p.value, color: p.color, displayName: p.label })),
+    [businessDash.progressData],
+  );
+  const categoryDonutSlices = useMemo(
+    () =>
+      businessDash.categoryData.map((c) => ({
+        label: c.label,
+        value: c.value,
+        color: c.color,
+        displayName: c.name ?? c.label,
+      })),
+    [businessDash.categoryData],
+  );
+  const budgetDonutSlices = useMemo(
+    () =>
+      businessDash.budgetData.segments.map((s) => {
+        const nm = s.name.length > 14 ? `${s.name.slice(0, 13)}…` : s.name;
+        return {
+          label: s.name,
+          value: s.value,
+          color: s.color,
+          displayName: s.name,
+          labelLine: `${formatAEDShort(s.value)} ${nm}`,
+        };
+      }),
+    [businessDash.budgetData.segments],
+  );
+  const budgetMonthBarMax = useMemo(
+    () => Math.max(1, ...businessDash.budgetVsPlanned.map((b) => Math.max(b.actual, b.planned))),
+    [businessDash.budgetVsPlanned],
+  );
+  const budgetDevMax = useMemo(
+    () => Math.max(1, ...businessDash.budgetDeviation.map((b) => Math.abs(b.val))),
+    [businessDash.budgetDeviation],
+  );
+  const sectorDevMax = useMemo(
+    () =>
+      businessDash.budgetingSectors.length > 0
+        ? Math.max(5, ...businessDash.budgetingSectors.map((s) => Math.abs(s.deviation)))
+        : 1,
+    [businessDash.budgetingSectors],
+  );
+  const latestPortfolio = useMemo(() => portfolioPrograms.slice(0, 5), [portfolioPrograms]);
+  const portfolioPageSize = 10;
+  const portfolioTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(portfolioPrograms.length / portfolioPageSize)),
+    [portfolioPrograms.length],
+  );
+  const pagedPortfolioPrograms = useMemo(() => {
+    const start = (portfolioPage - 1) * portfolioPageSize;
+    return portfolioPrograms.slice(start, start + portfolioPageSize);
+  }, [portfolioPrograms, portfolioPage]);
+  const readProgramString = (row: Record<string, unknown>, keys: string[]) => {
+    for (const k of keys) {
+      const v = row[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    }
+    return '—';
+  };
+  const businessPipelineTableRows = useMemo((): BusinessPipelineTableRow[] => {
+    return newPipelines.map((r, i) => newPipelineToTableRow(r, i));
+  }, [newPipelines]);
+  const portfolioProjectsByProgramKey = useMemo(() => {
+    const out = new Map<string, Array<Record<string, unknown>>>();
+    for (const project of timelineProjects) {
+      const keys: string[] = [];
+      const rawId = project._new_program_value ?? project.new_programid;
+      if (rawId !== undefined && rawId !== null && String(rawId).trim() !== '') {
+        keys.push(`id:${normalizeDataverseId(String(rawId))}`);
+      }
+      const resolvedProgramName = resolveProjectProgramName(project, programIdToName).trim();
+      if (resolvedProgramName) {
+        keys.push(`name:${resolvedProgramName.toLowerCase()}`);
+      }
+      for (const key of keys) {
+        const bucket = out.get(key);
+        if (bucket) bucket.push(project);
+        else out.set(key, [project]);
+      }
+    }
+    return out;
+  }, [timelineProjects, programIdToName]);
+  const businessClientOptions = useMemo(
+    () =>
+      newClients
+        .map((c) => ({
+          id: String(c.new_clientid),
+          name: String(c.new_clientname ?? '').trim(),
+        }))
+        .filter((c) => c.id && c.name),
+    [newClients],
+  );
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
-    { name: 'Business pipeline', icon: <Briefcase size={16} /> },
-    { name: 'Timeline', icon: <Calendar size={16} /> },
+    { name: 'Portfolio', icon: <FolderOpen size={16} /> },
+    { name: 'Pipeline', icon: <Briefcase size={16} /> },
     { name: 'Reports', icon: <TrendingUp size={16} /> },
+    { name: 'Timeline', icon: <Calendar size={16} /> },
     { name: 'Feedback', icon: <MessageSquare size={16} /> },
   ];
-  const summaryCards = [
-    { title: 'Completed Projects', value: 32, color: '#2563eb', delta: '10+ more from last week', trend: [5, 8, 7, 10, 11, 9, 12] },
-    { title: 'On Track Projects', value: 10, color: '#10b981', delta: '10+ more from last week', trend: [4, 5, 5, 6, 8, 7, 9] },
-    { title: 'Delayed Project', value: 8, color: '#ef4444', delta: '08+ more from last week', trend: [3, 4, 4, 5, 4, 6, 5] },
-  ];
-  const kpiData = [
-    { label: 'Pinnacle', value: 44, color: '#d4a759' },
-    { label: 'Quality', value: 68, color: '#b58a3a' },
-    { label: 'Risk', value: 35, color: '#e1c179' },
-    { label: 'Efficiency', value: 52, color: '#8b6a2d' },
-  ];
-  const categoryData = [
-    { label: 'Security', value: 59, color: '#2563eb' },
-    { label: 'Application', value: 43, color: '#f59e0b' },
-    { label: 'Support', value: 36, color: '#4f46e5' },
-    { label: 'Infrastructure', value: 23, color: '#60a5fa' },
-  ];
-  const projectCounts = [
-    { label: 'Network', value: 12, color: '#4f46e5' },
-    { label: 'Infra', value: 42, color: '#d4a759' },
-    { label: 'Support', value: 20, color: '#8b5e34' },
-    { label: 'Security', value: 48, color: '#60a5fa' },
-    { label: 'Integr.', value: 30, color: '#dc2626' },
-  ];
-  const budgetVsPlanned = [
-    { month: 'JAN', actual: 140, planned: 190 }, { month: 'FEB', actual: 560, planned: 520 },
-    { month: 'MAR', actual: 420, planned: 470 }, { month: 'APR', actual: 630, planned: 610 },
-    { month: 'MAY', actual: 350, planned: 390 }, { month: 'JUN', actual: 420, planned: 410 },
-    { month: 'JUL', actual: 480, planned: 450 }, { month: 'AUG', actual: 520, planned: 500 },
-    { month: 'SEP', actual: 310, planned: 370 }, { month: 'OCT', actual: 640, planned: 590 },
-    { month: 'NOV', actual: 220, planned: 290 }, { month: 'DEC', actual: 500, planned: 460 },
-  ];
-  const budgetDeviation = [
-    { month: 'JAN', val: -20 }, { month: 'FEB', val: 16 }, { month: 'MAR', val: 22 }, { month: 'APR', val: 30 },
-    { month: 'MAY', val: -24 }, { month: 'JUN', val: 16 }, { month: 'JUL', val: -14 }, { month: 'AUG', val: 26 },
-    { month: 'SEP', val: -30 }, { month: 'OCT', val: 14 }, { month: 'NOV', val: 20 }, { month: 'DEC', val: 28 },
-  ];
-  const reportFilterLabels = ['Sector', 'Program', 'Project', 'KPI', 'Type', 'Budget', 'Program Manager', 'Project Manager', 'Duration', 'Status'];
-  const reportStats = [
-    { label: 'Sectors', value: 104, color: '#34d399' },
-    { label: 'Delayed Projects', value: 87, color: '#f87171' },
-    { label: 'Programs', value: 63, color: '#60a5fa' },
-    { label: 'Projects', value: 108, color: '#fbbf24' },
-    { label: 'On Hold', value: 46, color: '#fb7185' },
-    { label: 'Completed Programs', value: 71, color: '#3b82f6' },
-  ];
-  const reportRows = [
-    { project: 'DP Factor', priority: 'High', type: 'New', budget: '$42', owner: 'Ahmed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 88, status: 'COMPLETED', statusColor: 'bg-blue-100 text-blue-700' },
-    { project: 'Code.Tech', priority: 'Medium', type: 'Enhanc.', budget: '$25', owner: 'Omar Sami', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 52, status: 'SLIGHTLY DELAYED', statusColor: 'bg-amber-100 text-amber-700' },
-    { project: 'Ex.Process', priority: 'Medium', type: 'Change Request', budget: '$30', owner: 'Waleed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 76, status: 'ON TRACK', statusColor: 'bg-emerald-100 text-emerald-700' },
-    { project: 'Scaling', priority: 'Low', type: 'Change Request', budget: '$30', owner: 'Amr Fahmy', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 21, status: 'DELAYED', statusColor: 'bg-rose-100 text-rose-700' },
-    { project: 'DP Factor', priority: 'High', type: 'New', budget: '$42', owner: 'Ahmed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 90, status: 'COMPLETED', statusColor: 'bg-blue-100 text-blue-700' },
-  ];
-  const pipelineBars = [
-    { label: '2023 Q2', value: 6, color: '#7c3aed' },
-    { label: '2023 Q3', value: 32, color: '#4cc9f0' },
-    { label: '2023 Q4', value: 12, color: '#16a34a' },
-    { label: '2024 Q1', value: 39, color: '#2563eb' },
-    { label: '2024 Q1', value: 21, color: '#74c69d' },
-    { label: '2024 Q2', value: 27, color: '#fb923c' },
-    { label: '2024 Q2', value: 20, color: '#ef4444' },
-    { label: '2024 Q3', value: 30, color: '#22c55e' },
-    { label: '2024 Q3', value: 32, color: '#e9c46a' },
-    { label: '2024 Q4', value: 14, color: '#6b7280' },
-  ];
-  const pipelineLegend = [
-    { label: 'Strategic', color: '#16a34a' }, { label: 'Construction', color: '#6366f1' },
-    { label: 'Support', color: '#2563eb' }, { label: 'Outsource', color: '#e9c46a' },
-    { label: 'Implementation', color: '#7c3aed' }, { label: 'Infrastructure', color: '#22c55e' },
-    { label: 'Time & Material', color: '#10b981' }, { label: 'Security', color: '#f59e0b' },
-    { label: 'Managed Services', color: '#0ea5e9' }, { label: 'Application', color: '#ef4444' },
-  ];
-  const pipelineRows = [
-    { name: 'Pinnacle', benefit: 'Productivity', budget: '$42', pm: 'Ahmed Ali', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'RFP' },
-    { name: 'Right Path', benefit: 'Efficiency', budget: '$25', pm: 'Omar Sami', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'awarding' },
-    { name: 'Road Map', benefit: 'Productivity', budget: '$30', pm: 'Waleed Ali', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'business case approval' },
-    { name: 'Coreline', benefit: 'Improvement', budget: '$30', pm: 'Amr Fahmy', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'budget approval' },
-    { name: 'Growth', benefit: 'Plan Realisation', budget: '$42', pm: 'Ahmed Ali', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'acquiring resources' },
-    { name: 'TopWay', benefit: 'Identify Benefits', budget: '$30', pm: 'Omar Sami', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'allocate resources' },
-    { name: 'Green Pro', benefit: 'Identify Benefits', budget: '$30', pm: 'Waleed Ali', start: 'Feb 09, 2024', end: 'May 24, 2024', stage: 'contract signing' },
-  ];
-  const timelinePrograms = [
-    { group: 'Pinnacle Program', items: ['Code.Tech', 'Inno.Sales', 'Serv.In'] },
-    { group: 'Financial Program', items: ['Code.Tech', 'Inno.Sales', 'Serv.In'] },
-    { group: 'Growth Program', items: ['Code.Tech', 'Inno.Sales', 'Serv.In', 'Inno.Sales', 'Serv.In'] },
-    { group: 'Road.map Program', items: ['Code.Tech', 'Inno.Sales', 'Serv.In'] },
-    { group: 'RightPath Program', items: [] },
-    { group: 'Production Program', items: [] },
-  ];
-  const timelineTracks = [
-    { label: 'Profile', start: 10, width: 14, row: 1, color: '#59628a', progress: '44%' },
-    { label: 'Logo', start: 3, width: 20, row: 2, color: '#19c37d', progress: '38%' },
-    { label: 'Testimonial', start: 18, width: 18, row: 3, color: '#59628a', progress: '63%' },
-    { label: 'Menu', start: 18, width: 12, row: 4, color: '#f4b400', progress: '87%' },
-    { label: 'Settings', start: 70, width: 16, row: 5, color: '#1766e5', progress: '90%' },
-    { label: 'Portfolio', start: 14, width: 34, row: 6, color: '#1766e5', progress: '63%' },
-    { label: 'Menu', start: 15, width: 10, row: 7, color: '#19c37d', progress: '54%' },
-    { label: 'Profile', start: 3, width: 18, row: 9, color: '#59628a', progress: '46%' },
-    { label: 'Services', start: 36, width: 22, row: 10, color: '#f4b400', progress: '54%' },
-    { label: 'Website', start: 60, width: 20, row: 2, color: '#f4b400', progress: '54%' },
-    { label: 'Homepage', start: 74, width: 18, row: 6, color: '#19c37d', progress: '71%' },
-  ];
-
-  const sparklinePath = (values: number[], width: number, height: number) => {
-    const max = Math.max(...values);
-    const min = Math.min(...values);
-    return values
-      .map((v, i) => {
-        const x = (i / (values.length - 1)) * width;
-        const y = height - ((v - min) / (max - min || 1)) * height;
-        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-      })
-      .join(' ');
+  const readTimelineProgramName = useCallback(
+    (row: Record<string, unknown>) => resolveProjectProgramName(row, programIdToName),
+    [programIdToName],
+  );
+  const readTimelineProjectName = (row: Record<string, unknown>) =>
+    String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
+  const readTimelineStart = (row: Record<string, unknown>) => {
+    return parseTimelineDate(row.new_startdate);
   };
+  const readTimelineEnd = (row: Record<string, unknown>) => {
+    return parseTimelineDate(row.new_enddate);
+  };
+  const readTimelineProgress = (row: Record<string, unknown>) => {
+    const n = Number(row.new_progress ?? NaN);
+    return Number.isFinite(n) ? `${Math.max(0, Math.min(100, n))}%` : '0%';
+  };
+  const timelineFilterOptions = useMemo(() => {
+    const programs = Array.from(new Set(timelineProjects.map(readTimelineProgramName))).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+    return ['All Programs', ...programs];
+  }, [timelineProjects, readTimelineProgramName]);
+  useEffect(() => {
+    if (!timelineFilterOptions.includes(selectedProgramGroup)) setSelectedProgramGroup('All Programs');
+  }, [timelineFilterOptions, selectedProgramGroup]);
 
-  const portfolioFilterOptions = [
-    'Knowledge & Educational Excellence',
-    'Strategic portfolio',
-    'Operational programs',
-  ];
-  const timelineMonthLabels = sixMonthNamesStarting(timelineMonth);
-  const timelineWeekLabels = weekLabelsFromMonthStart(timelineMonth, 24);
-  const timelineMaxRow = Math.max(...timelineTracks.map((t) => t.row), 1);
-  const timelineBodyMinHeight = Math.max(560, timelineMaxRow * 48 + 72);
+  const timelineRange = useMemo(() => businessYearWeekTimelineModel(timelineYear), [timelineYear]);
+
+  const timelineRows = useMemo(() => {
+    const rangeStart = timelineRange.start.getTime();
+    const rangeEndExcl = timelineRange.endExclusive.getTime();
+    const rs = timelineProjects
+      .filter((p) => selectedProgramGroup === 'All Programs' || readTimelineProgramName(p) === selectedProgramGroup)
+      .map((p) => {
+        const start = readTimelineStart(p);
+        const end = readTimelineEnd(p);
+        return {
+          source: p,
+          program: readTimelineProgramName(p),
+          project: readTimelineProjectName(p),
+          start,
+          end,
+          progress: readTimelineProgress(p),
+        };
+      })
+      .filter((p) => p.start && p.end)
+      .map((p) => {
+        const projectStartMs = p.start!.getTime();
+        const projectEndExcl = exclusiveEndAfterInclusiveDate(p.end!);
+        const visStartMs = Math.max(rangeStart, projectStartMs);
+        const visEndExcl = Math.min(rangeEndExcl, projectEndExcl);
+        if (visEndExcl <= rangeStart || visStartMs >= rangeEndExcl) return null;
+        const viewStart = localDateOnlyFromTimeMs(visStartMs);
+        const viewEnd = localDateOnlyFromTimeMs(visEndExcl - 1);
+        const hasScheduleMismatch =
+          !sameLocalCalendarDay(viewStart, p.start!) || !sameLocalCalendarDay(viewEnd, p.end!);
+        return { ...p, viewStart, viewEnd, hasScheduleMismatch };
+      })
+      .filter((p): p is NonNullable<typeof p> => Boolean(p))
+      .sort((a, b) => a.start!.getTime() - b.start!.getTime());
+    return rs;
+  }, [timelineProjects, selectedProgramGroup, timelineRange, readTimelineProgramName]);
+
+  const timelineBars = useMemo(() => {
+    const rangeStart = timelineRange.start.getTime();
+    const rangeEndExcl = timelineRange.endExclusive.getTime();
+    const totalMs = Math.max(1, rangeEndExcl - rangeStart);
+    const colors = ['#59628a', '#19c37d', '#1766e5', '#f4b400', '#d35b66', '#7c3aed'];
+    return timelineRows
+      .map((row, idx) => {
+        const projectStartMs = row.start!.getTime();
+        const projectEndExcl = exclusiveEndAfterInclusiveDate(row.end!);
+        if (projectEndExcl <= projectStartMs) return null;
+        const s = Math.max(rangeStart, projectStartMs);
+        const e = Math.min(rangeEndExcl, projectEndExcl);
+        if (e <= rangeStart || s >= rangeEndExcl) return null;
+        const startPct = ((s - rangeStart) / totalMs) * 100;
+        const endPct = ((e - rangeStart) / totalMs) * 100;
+        return {
+          label: row.project,
+          startPct,
+          widthPct: Math.max(2, endPct - startPct),
+          row: idx + 1,
+          color: colors[idx % colors.length],
+          progress: row.progress,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => Boolean(x));
+  }, [timelineRows, timelineRange]);
+
+  const timelineMaxRow = Math.max(timelineRows.length, 1);
+  const timelineBodyMinHeight = Math.max(280, timelineMaxRow * 48 + 72);
+
+  const timelineAxisMinWidth = useMemo(() => {
+    const n = Math.max(1, timelineRange.bottomLabels.length);
+    return Math.max(1200, n * 22);
+  }, [timelineRange.bottomLabels.length]);
 
   useEffect(() => {
     const onDocDown = (e: MouseEvent) => {
@@ -1455,123 +3297,178 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   }, [programMenuOpen]);
 
   useEffect(() => {
-    const el = timelineScrollRef.current;
-    if (!el || activeNav !== 'Timeline') return;
-    const sync = () => {
-      const max = el.scrollWidth - el.clientWidth;
-      setTimelineCanScrollH(max > 2);
-      setTimelineScrollRatio(max <= 0 ? 0 : el.scrollLeft / max);
-    };
-    sync();
-    el.addEventListener('scroll', sync, { passive: true });
-    const ro = new ResizeObserver(sync);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener('scroll', sync);
-      ro.disconnect();
-    };
-  }, [activeNav, timelineMonth]);
+    if (activeNav !== 'Portfolio') return;
+    if (portfolioPage > portfolioTotalPages) setPortfolioPage(portfolioTotalPages);
+    if (portfolioPage < 1) setPortfolioPage(1);
+  }, [activeNav, portfolioPage, portfolioTotalPages]);
 
-  const openMonthPicker = () => {
-    const el = monthInputRef.current;
-    if (!el) return;
-    const inp = el as HTMLInputElement & { showPicker?: () => void | Promise<void> };
-    const ret = inp.showPicker?.();
-    if (ret != null && typeof (ret as Promise<void>).then === 'function') {
-      void (ret as Promise<void>).catch(() => {
-        inp.click();
-      });
-    } else if (ret == null) {
-      inp.click();
-    }
-  };
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setTimelineLoading(true);
+      try {
+        const [projRes, progRes, pipeRes, clientRes, masterRes] = await Promise.all([
+          New_projectsService.getAll({ top: 1000, orderBy: ['new_startdate asc', 'createdon desc'] }),
+          New_programsService.getAll({ top: 500, orderBy: ['new_name asc'] }),
+          New_pipelinesService.getAll({ top: 500, orderBy: ['createdon desc'] }),
+          New_clientsService.getAll({ top: 500, orderBy: ['new_clientname asc'] }),
+          EnjazMasterDataService.getAll({ top: 2000, orderBy: ['new_enjazmasterdata1 asc'] }),
+        ]);
+        if (!projRes.success) throw new Error(projRes.error?.message ?? 'Failed to load timeline projects');
+        if (!cancelled) {
+          const rows = (projRes.data ?? []) as unknown as Array<Record<string, unknown>>;
+          setTimelineProjects(rows);
+          setNewPipelines(
+            pipeRes.success && Array.isArray(pipeRes.data) ? (pipeRes.data as New_pipelines[]) : [],
+          );
+          setNewClients(
+            clientRes.success && Array.isArray(clientRes.data) ? (clientRes.data as New_clients[]) : [],
+          );
+          const pRows = (progRes.success ? progRes.data : []) as unknown as Array<Record<string, unknown>>;
+          setProgramIdToName(buildProgramIdToNameMap(pRows));
+          setPortfolioPrograms(pRows);
+          setDashboardMasterRows(
+            masterRes.success ? ((masterRes.data ?? []) as unknown as Array<Record<string, unknown>>) : [],
+          );
+          const datedRows = rows
+            .map((r) => parseTimelineDate(r.new_startdate))
+            .filter((d): d is Date => Boolean(d))
+            .sort((a, b) => b.getTime() - a.getTime());
+          if (datedRows.length > 0) {
+            const latest = datedRows[0];
+            setTimelineYear(latest.getFullYear());
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setTimelineProjects([]);
+          setNewPipelines([]);
+          setNewClients([]);
+          setProgramIdToName(new Map());
+          setPortfolioPrograms([]);
+          setDashboardMasterRows([]);
+        }
+      } finally {
+        if (!cancelled) setTimelineLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dataRefresh]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
-      <aside className="w-52 bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
+    <div className="flex h-screen overflow-hidden bg-[#f4f7fe] text-gray-800 enjaz-business-ui">
+      <aside className="z-[60] w-[86px] shrink-0 border-r border-gray-100 bg-[#f3f4f8] flex min-h-0 flex-col overflow-hidden">
         <div className="px-5 py-5 border-b border-gray-100">
           <LogoMark />
         </div>
-        <nav className="flex-1 py-4 px-3 space-y-0.5">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-hidden px-2 py-4">
           {navItems.map(({ name, icon }) => (
             <button
               key={name}
               type="button"
-              onClick={() => setActiveNav(name)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeNav === name ? 'bg-indigo-50 text-[#151d5d]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+              onClick={() => {
+                setActiveNav(name);
+              }}
+              className={`group relative mx-auto flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                activeNav === name ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:bg-white hover:text-gray-700'
               }`}
+              aria-label={name}
+              title={name}
             >
-              <span className={`w-0.5 h-5 rounded-full ${activeNav === name ? 'bg-[#b28a44]' : 'bg-transparent'}`} />
               {icon}
-              {name}
             </button>
           ))}
         </nav>
+        <div className="shrink-0 border-t border-gray-100 px-1 py-3">
+          <div className="mx-auto w-fit scale-90">
+            <ThemeModeToggle />
+          </div>
+        </div>
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-4 h-10 w-[420px] max-w-[52vw]">
-              <input className="bg-transparent text-sm text-gray-500 outline-none w-full" placeholder="Search anything..." />
-              <Search size={18} className="text-gray-400" />
-            </div>
-            <NotificationBell />
-            <ProfileDropdown onLogout={onLogout} />
+            <NotificationBell items={[]} />
+            <ProfileDropdown onLogout={onLogout} roleLabel="Business" />
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-5 space-y-4">
+        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          {businessReportToast && (
+            <NotificationToast
+              type={businessReportToast.type}
+              message={businessReportToast.message}
+              onClose={() => setBusinessReportToast(null)}
+            />
+          )}
+          <div className={`enjaz-business-ui-main enj-app-main enj-stack min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]`}>
           {activeNav === 'Timeline' ? (
             <>
-              <section className="bg-white rounded-xl p-4 shadow-sm chart-card">
+              <section className="relative bg-white rounded-xl p-4 shadow-sm chart-card">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <h2 className="text-2xl font-semibold text-[#2d356b]">Timeline</h2>
+                  <h2 className={enj.pageTitle}>Timeline</h2>
                   <div className="flex items-center gap-2">
-                    <input
-                      ref={monthInputRef}
-                      type="month"
-                      value={timelineMonth}
-                      onChange={(e) => setTimelineMonth(e.target.value)}
-                      className="sr-only"
-                      tabIndex={-1}
-                      aria-hidden
-                    />
                     <button
                       type="button"
-                      onClick={() => setTimelineMonth(yyyymmFromDate(new Date()))}
-                      className="h-8 px-4 rounded-full border border-amber-300 text-[11px] text-amber-700 hover:bg-amber-50 transition-colors"
+                      onClick={() => setDataRefresh((k) => k + 1)}
+                      className={`${enj.btn} ${enj.btnOutline} !h-9 !w-9 !min-h-0 !px-0 rounded-full text-amber-800 border-amber-300 hover:bg-amber-50`}
+                      title="Refresh timeline"
+                      aria-label="Refresh timeline"
                     >
-                      Today
+                      <RefreshCw size={14} className={timelineLoading ? 'animate-spin' : ''} />
                     </button>
                     <button
                       type="button"
-                      onClick={openMonthPicker}
-                      className="h-8 px-4 rounded-full border border-gray-200 text-[11px] text-gray-600 hover:bg-gray-50 transition-colors"
+                      onClick={() => {
+                        const now = new Date();
+                        setTimelineYear(now.getFullYear());
+                      }}
+                      className={`${enj.btn} ${enj.btnOutline} rounded-full text-sm text-amber-800 border-amber-300 hover:bg-amber-50`}
                     >
-                      {formatTimelineMonthHeading(timelineMonth)}
+                      This year
                     </button>
+                    <div className="flex h-9 items-center gap-1 rounded-full border border-gray-200 bg-white px-2 shadow-sm">
+                      <button
+                        type="button"
+                        onClick={() => setTimelineYear((y) => y - 1)}
+                        className={`${enj.btn} ${enj.btnGhost} !h-7 !w-7 !min-h-0 !max-h-none !px-0 rounded-full text-gray-500 shadow-none`}
+                        aria-label="Previous year"
+                      >
+                        {'<'}
+                      </button>
+                      <span className="min-w-[3.2rem] text-center text-sm font-semibold text-primary">{timelineYear}</span>
+                      <button
+                        type="button"
+                        onClick={() => setTimelineYear((y) => y + 1)}
+                        className={`${enj.btn} ${enj.btnGhost} !h-7 !w-7 !min-h-0 !max-h-none !px-0 rounded-full text-gray-500 shadow-none`}
+                        aria-label="Next year"
+                      >
+                        {'>'}
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-3 min-h-0">
+                <div className="grid min-h-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-[300px_1fr]">
                   <div className="bg-[#f6f8fb] rounded-lg p-3 flex flex-col min-h-0">
                     <div className="relative mb-2 shrink-0" ref={programPickerRef}>
                       <button
                         type="button"
                         onClick={() => setProgramMenuOpen((o) => !o)}
-                        className="w-full h-7 px-2 rounded-md border border-gray-200 text-[10px] text-left text-gray-600 flex items-center justify-between gap-2 bg-white"
+                        className={`${enj.btn} ${enj.btnDefault} w-full max-w-full justify-between px-2 text-left text-sm font-normal shadow-sm`}
                       >
                         <span className="truncate">{selectedProgramGroup}</span>
                         <ChevronDown size={10} className={`shrink-0 text-gray-400 transition-transform ${programMenuOpen ? 'rotate-180' : ''}`} />
                       </button>
                       {programMenuOpen && (
                         <ul className="absolute left-0 right-0 top-full z-20 mt-1 py-1 rounded-md border border-gray-200 bg-white shadow-lg max-h-40 overflow-auto">
-                          {portfolioFilterOptions.map((opt) => (
+                      {timelineFilterOptions.map((opt) => (
                             <li key={opt}>
                               <button
                                 type="button"
-                                className={`w-full text-left px-2 py-1.5 text-[10px] hover:bg-gray-50 ${opt === selectedProgramGroup ? 'text-[#151d5d] font-semibold bg-indigo-50/50' : 'text-gray-600'}`}
+                                className={`w-full text-left px-2 py-1.5 text-[10px] hover:bg-gray-50 ${opt === selectedProgramGroup ? 'text-primary font-semibold bg-indigo-50/50' : 'text-gray-600'}`}
                                 onClick={() => {
                                   setSelectedProgramGroup(opt);
                                   setProgramMenuOpen(false);
@@ -1585,71 +3482,103 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                       )}
                     </div>
                     <div className="space-y-2 flex-1 min-h-0 max-h-[560px] overflow-y-auto overflow-x-hidden pr-1 overscroll-contain">
-                      {timelinePrograms.map((program) => (
-                        <div key={program.group} className="bg-white border border-gray-100 rounded-md p-2">
-                          <div className="flex items-center justify-between text-[11px] font-semibold text-[#3a4275]">
-                            <span>{program.group}</span>
-                            <ChevronDown size={10} className="text-gray-400" />
-                          </div>
-                          {program.items.length > 0 && (
-                            <ul className="mt-2 space-y-1">
-                              {program.items.map((item, index) => (
-                                <li key={`${program.group}-${item}-${index}`} className="text-[10px] text-gray-400 flex items-center gap-2">
-                                  <span className="w-2 h-2 border border-gray-300 rounded-sm shrink-0" />
-                                  {item}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                      {timelineRows.map((row) => (
+                        <div
+                          key={`${row.project}-${row.start!.getTime()}-${row.end!.getTime()}`}
+                          className="bg-white border border-gray-100 rounded-md p-2"
+                        >
+                          <p className="text-[11px] font-semibold text-[#3a4275] truncate">{row.project}</p>
+                          <p className="mt-1 text-[10px] text-gray-500 truncate">{row.program}</p>
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            {formatTimelineDateLabel(row.viewStart)} - {formatTimelineDateLabel(row.viewEnd)}
+                            {row.hasScheduleMismatch && (
+                              <span className="mt-0.5 block text-[9px] text-gray-400/95" title="Full scheduled range from data">
+                                Full: {formatTimelineDateLabel(row.start)} - {formatTimelineDateLabel(row.end)}
+                              </span>
+                            )}
+                          </p>
                         </div>
                       ))}
-                    </div>
-                    <div className="mt-3 space-y-2 shrink-0">
-                      {['Human Resources', 'Financial Resources', 'Digital Transformation', 'Administrative Affairs', 'Administrative Affairs'].map((item, i) => (
-                        <button
-                          key={`${item}-${i}`}
-                          type="button"
-                          className="w-full h-7 px-2 rounded-md border border-gray-200 text-[10px] text-left text-gray-600 flex items-center justify-between hover:bg-white/80"
-                        >
-                          <span className="truncate">{item}</span>
-                          <ChevronDown size={10} className="shrink-0" />
-                        </button>
-                      ))}
+                      {!timelineLoading && timelineRows.length === 0 && (
+                        <p className="text-[11px] text-gray-400 px-1 py-2">No projects found for selected program.</p>
+                      )}
                     </div>
                   </div>
-                  <div className="bg-white border border-gray-100 rounded-lg overflow-hidden flex flex-col min-h-0 min-w-0">
+                  <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-gray-100 bg-white">
                     <div
-                      ref={timelineScrollRef}
-                      className="overflow-x-auto overflow-y-auto max-h-[560px] overscroll-contain scroll-smooth"
+                      className="h-[min(36rem,72vh)] min-h-[16rem] w-full min-w-0 overflow-x-auto overflow-y-auto overscroll-contain scroll-smooth rounded-b-lg"
                     >
-                      <div className="min-w-[1040px]">
-                        <div className="sticky top-0 z-10 bg-white px-3 py-2 border-b border-gray-100 shadow-sm">
-                          <div className="text-[9px] uppercase text-gray-400 flex justify-between gap-4 min-w-[880px] px-0.5">
-                            {timelineMonthLabels.map((m) => (
-                              <span key={m} className="flex-1 text-center min-w-0 truncate">
-                                {m}
-                              </span>
+                      <div className="w-full" style={{ minWidth: timelineAxisMinWidth }}>
+                        <div className="sticky top-0 z-10 space-y-0.5 border-b border-gray-100 bg-white px-3 py-2 shadow-sm">
+                          <p className="text-center text-xs font-bold leading-tight text-primary">
+                            {timelineRange.yearLabel}
+                          </p>
+                          <div
+                            className="grid w-full border-b border-slate-100 text-[8px] font-bold text-slate-700"
+                            style={{
+                              gridTemplateColumns: `repeat(${timelineRange.bottomLabels.length}, minmax(0, 1fr))`,
+                            }}
+                          >
+                            {timelineRange.quarterWeekBands.map((b, i) => (
+                              <div
+                                key={`qb-${b.text}-${i}`}
+                                className="min-w-0 border-l border-slate-100 py-0.5 text-center first:border-l-0"
+                                style={{ gridColumn: `span ${b.span}` }}
+                              >
+                                {b.text}
+                              </div>
                             ))}
                           </div>
-                          <div className="mt-1 text-[10px] text-gray-500 flex items-center gap-4 min-w-max pr-2">
-                            {timelineWeekLabels.map((w, i) => (
-                              <span key={`${w}-${i}`} className="w-6 shrink-0 text-center whitespace-nowrap">
+                          <div
+                            className="grid w-full border-b border-indigo-100/80 text-[8px] font-semibold text-indigo-900"
+                            style={{
+                              gridTemplateColumns: `repeat(${timelineRange.bottomLabels.length}, minmax(0, 1fr))`,
+                            }}
+                          >
+                            {timelineRange.monthWeekBands.map((b, i) => (
+                              <div
+                                key={`mb-${b.text}-${i}`}
+                                className="min-w-0 border-l border-indigo-100 py-0.5 text-center first:border-l-0"
+                                style={{ gridColumn: `span ${b.span}` }}
+                              >
+                                {b.text}
+                              </div>
+                            ))}
+                          </div>
+                          <div
+                            className="grid w-full text-gray-600"
+                            style={{
+                              gridTemplateColumns: `repeat(${timelineRange.bottomLabels.length}, minmax(0, 1fr))`,
+                            }}
+                          >
+                            {timelineRange.bottomLabels.map((w, i) => (
+                              <span
+                                key={`ax-${w}-${i}`}
+                                className="min-w-0 border-l border-gray-100 px-px py-0.5 text-center text-[7px] leading-tight tabular-nums first:border-l-0 sm:text-[8px]"
+                                title={String(w)}
+                              >
                                 {w}
                               </span>
                             ))}
                           </div>
                         </div>
                         <div
-                          className="relative bg-[repeating-linear-gradient(to_right,_#f1f5f9_0,_#f1f5f9_1px,_transparent_1px,_transparent_34px)] chart-svg"
-                          style={{ minHeight: timelineBodyMinHeight }}
+                          className="relative w-full chart-svg"
+                          style={{
+                            minHeight: timelineBodyMinHeight,
+                            background: `repeating-linear-gradient(to right, #f1f5f9 0, #f1f5f9 1px, transparent 1px, transparent ${
+                              100 / Math.max(1, timelineRange.bottomLabels.length)
+                            }%)`,
+                          }}
                         >
-                          {timelineTracks.map((track, idx) => (
+                          {timelineBars.map((track, idx) => (
                             <div
                               key={`${track.label}-${idx}`}
                               className="absolute h-6 rounded-full text-white text-[9px] px-3 flex items-center justify-between shadow-sm transition-all duration-300 hover:scale-[1.02]"
+                              title={`Project: ${track.label}\nProgress: ${track.progress}`}
                               style={{
-                                left: `${track.start}%`,
-                                width: `${track.width}%`,
+                                left: `${track.startPct}%`,
+                                width: `${track.widthPct}%`,
                                 top: `${track.row * 48}px`,
                                 backgroundColor: track.color,
                               }}
@@ -1658,512 +3587,823 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                               <span className="bg-white/85 text-gray-500 px-1.5 rounded-full shrink-0">{track.progress}</span>
                             </div>
                           ))}
+                          {!timelineLoading && timelineBars.length === 0 && (
+                            <p className="absolute left-4 top-4 text-xs text-gray-400">No projects available in selected timeline range.</p>
+                          )}
                         </div>
                       </div>
                     </div>
-                    <div className="h-6 bg-gray-100 border-t border-gray-100 flex items-center px-2 gap-2">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={0.25}
-                        value={timelineScrollRatio * 100}
-                        disabled={!timelineCanScrollH}
-                        onChange={(e) => {
-                          const el = timelineScrollRef.current;
-                          if (!el) return;
-                          const max = el.scrollWidth - el.clientWidth;
-                          el.scrollLeft = (Number(e.target.value) / 100) * max;
-                        }}
-                        className="w-full h-1.5 accent-gray-500 disabled:opacity-30 cursor-ew-resize disabled:cursor-not-allowed"
-                        aria-label="Scroll timeline horizontally"
-                      />
-                    </div>
                   </div>
                 </div>
+                {timelineLoading && <ScreenLoader overlay className="rounded-xl" />}
               </section>
             </>
-          ) : activeNav === 'Business pipeline' ? (
-            <>
-              <section className="bg-white rounded-xl p-4 shadow-sm chart-card">
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">Business Pipeline</h2>
-                <div className="border border-gray-100 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Projects</p>
-                    <div className="flex items-center gap-2">
-                      <button className="h-7 px-2 rounded-md border border-gray-200 text-[10px] text-gray-500">Year 2024</button>
-                      <button className="h-7 px-2 rounded-md border border-gray-200 text-[10px] text-gray-500">All Categories</button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-center">
-                    <div className="lg:col-span-3">
-                      <svg viewBox="0 0 700 210" className="w-full h-52 chart-svg">
-                        {[0, 10, 20, 30, 40].map((v) => (
-                          <g key={v}>
-                            <line x1="26" x2="680" y1={180 - v * 3.6} y2={180 - v * 3.6} stroke="#edf2f7" />
-                            <text x="14" y={184 - v * 3.6} fontSize="9" fill="#94a3b8">{v}</text>
-                          </g>
-                        ))}
-                        {pipelineBars.map((bar, index) => (
-                          <g key={`${bar.label}-${index}`}>
-                            <rect className="chart-bar" x={48 + index * 62} y={180 - bar.value * 3.6} width="18" height={bar.value * 3.6} rx="4" fill={bar.color} />
-                            <text x={57 + index * 62} y="198" fontSize="8" textAnchor="middle" fill="#94a3b8">{bar.label}</text>
-                          </g>
-                        ))}
-                        <text x="690" y="198" fontSize="8" fill="#94a3b8">TIMELINE</text>
-                      </svg>
-                    </div>
-                    <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-[10px]">
-                      {pipelineLegend.map((item) => (
-                        <div key={item.label} className="flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                          <span className="text-gray-500">{item.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
+          ) : activeNav === 'Portfolio' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h1 className={enj.pageTitle}>Portfolio</h1>
+              </div>
+              {portfolioPrograms.length > 0 && (
+                <section className="space-y-3">
+                  <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
+                    <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+                      <thead>
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">Program</th>
+                          <th className="px-3 py-2 font-semibold">KPI</th>
+                          <th className="px-3 py-2 font-semibold">Benefits</th>
+                          <th className="px-3 py-2 font-semibold">Budget</th>
+                          <th className="px-3 py-2 font-semibold">Program Manager</th>
+                          <th className="px-3 py-2 font-semibold">ROI</th>
+                          <th className="px-3 py-2 font-semibold">Start Date</th>
+                          <th className="px-3 py-2 font-semibold">Progress</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedPortfolioPrograms.map((row) => {
+                          const pid = String(row.new_programid ?? '');
+                          const normalizedPid = normalizeDataverseId(pid);
+                          const programName = readProgramString(row, ['new_name']);
+                          const programKey = normalizedPid ? `id:${normalizedPid}` : `name:${programName.toLowerCase()}`;
+                          const fallbackNameKey = `name:${programName.toLowerCase()}`;
+                          const programProjects = (
+                            portfolioProjectsByProgramKey.get(programKey)
+                            ?? portfolioProjectsByProgramKey.get(fallbackNameKey)
+                            ?? []
+                          )
+                            .slice()
+                            .sort((a, b) => {
+                              const aStart = parseTimelineDate(a.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                              const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                              return aStart - bStart;
+                            });
+                          const pPct = programProgressById.get(normalizeDataverseId(pid)) ?? 0;
+                          const start = parseTimelineDate(row.new_startdate);
+                          const isExpanded = expandedPortfolioProgramKey === programKey;
+                          const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
+                            for (const k of keys) {
+                              const v = project[k];
+                              if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+                            }
+                            return fallback;
+                          };
 
-              <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-y border-gray-100">
-                    <tr className="text-[10px] text-gray-400 uppercase text-left">
-                      <th className="px-4 py-2">Program Name</th>
-                      <th className="px-4 py-2">Benefits</th>
-                      <th className="px-4 py-2">Budget</th>
-                      <th className="px-4 py-2">Duration</th>
-                      <th className="px-4 py-2">Current Stage</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pipelineRows.map((row) => (
-                      <tr key={row.name} className="border-b border-gray-100 text-xs text-gray-700">
-                        <td className="px-4 py-2 text-indigo-700 underline">{row.name}</td>
-                        <td className="px-4 py-2">{row.benefit}</td>
-                        <td className={`px-4 py-2 font-semibold ${row.budget === '$25' ? 'text-emerald-500' : row.budget === '$42' ? 'text-rose-500' : 'text-indigo-700'}`}>{row.budget}</td>
-                        <td className="px-4 py-2">
-                          <div className="leading-4">
-                            <p className="text-[10px] text-gray-400">Start date</p>
-                            <p>{row.start}</p>
-                            <p className="text-[10px] text-gray-400 mt-1">End date</p>
-                            <p>{row.end}</p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2">{row.stage}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            </>
+                          return (
+                            <Fragment key={pid || programName}>
+                              <tr className="border-t border-[#d7def0] bg-white">
+                                <td className="px-3 py-2 font-normal">
+                                  <button
+                                    type="button"
+                                    className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
+                                    onClick={() => setExpandedPortfolioProgramKey((prev) => (prev === programKey ? null : programKey))}
+                                    aria-expanded={isExpanded}
+                                  >
+                                    <ChevronDown size={14} className={`transition-transform text-[#6B7280] ${isExpanded ? 'rotate-180' : ''}`} />
+                                    <span className="max-w-[18rem] truncate">{programName}</span>
+                                  </button>
+                                </td>
+                                <td className="px-3 py-2">{readProgramString(row, ['new_kpi', 'crcf8_kpi'])}</td>
+                                <td className="px-3 py-2">{readProgramString(row, ['new_benefits', 'crcf8_benefit'])}</td>
+                                <td className="px-3 py-2"><TableBudgetDisplay value={readProgramString(row, ['new_budget', 'crcf8_budget'])} /></td>
+                                <td className="px-3 py-2">{readProgramString(row, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                                <td className="px-3 py-2">{readProgramString(row, ['new_roi', 'crcf8_roi'])}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
+                                    <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 w-40">
+                                  <div className="flex items-center gap-2">
+                                    <div className="enj-table-progress-track flex-1">
+                                      <div
+                                        className="enj-table-progress-fill"
+                                        style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }}
+                                      />
+                                    </div>
+                                    <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-gray-600">
+                                      {Math.round(pPct)}%
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+
+                              {isExpanded && (
+                                <>
+                                  {programProjects.length === 0 ? (
+                                    <tr className="border-t border-gray-100 bg-white">
+                                      <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">
+                                        No projects found for this program.
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    <tr className="border-t border-gray-100 bg-[#f9fafc]">
+                                      <td colSpan={8} className="px-3 py-2.5">
+                                        <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
+                                          <table className={`${enj.table} min-w-[1140px] text-left text-xs`}>
+                                            <thead>
+                                              <tr>
+                                                <th className="px-3 py-2 font-semibold">Project</th>
+                                                <th className="px-3 py-2 font-semibold">Priority</th>
+                                                <th className="px-3 py-2 font-semibold">Sponsor</th>
+                                                <th className="px-3 py-2 font-semibold">Type</th>
+                                                <th className="px-3 py-2 font-semibold">Budget</th>
+                                                <th className="px-3 py-2 font-semibold">Starg.obj</th>
+                                                <th className="px-3 py-2 font-semibold">Project Manager</th>
+                                                <th className="px-3 py-2 font-semibold">Timeline</th>
+                                                <th className="px-3 py-2 font-semibold">Progress</th>
+                                                <th className="px-3 py-2 font-semibold">Status</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {programProjects.map((project, i) => {
+                                                const projectName =
+                                                  String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
+                                                const priority = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                                const sponsor = readProjectField(project, ['new_sponsorname', 'new_sponsor']);
+                                                const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
+                                                const budget = readProjectField(project, ['new_budget']);
+                                                const strategicObj = readProjectField(
+                                                  project,
+                                                  ['new_strategicobjective', 'new_strategicobjectivename', 'new_strategicplan'],
+                                                );
+                                                const manager = readProjectField(project, ['new_projectmanager', 'owneridname', 'new_ownername']);
+                                                const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
+                                                const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                                const progressRaw = Number(project.new_progress ?? NaN);
+                                                const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
+                                                const statusText = String(project.new_projectstatusname ?? '').trim();
+                                                const statusBucket = businessProjectStatusBucket(project);
+                                                const statusLabel =
+                                                  statusText
+                                                  || (statusBucket === 'completed'
+                                                    ? 'Completed'
+                                                    : statusBucket === 'delayed'
+                                                      ? 'Delayed'
+                                                      : statusBucket === 'onTrack'
+                                                        ? 'On Track'
+                                                        : 'To Start');
+                                                const statusKey = statusLabel.toLowerCase();
+                                                return (
+                                                  <tr key={`${programKey}-${projectName}-${i}`} className="border-t border-gray-100 bg-white">
+                                                    <td className="px-3 py-2 font-medium text-[#374151]">{projectName}</td>
+                                                    <td className="px-3 py-2">{priority}</td>
+                                                    <td className="px-3 py-2">{sponsor}</td>
+                                                    <td className="px-3 py-2">{projectType}</td>
+                                                    <td className="px-3 py-2"><TableBudgetDisplay value={budget} /></td>
+                                                    <td className="px-3 py-2">{strategicObj}</td>
+                                                    <td className="px-3 py-2">{manager}</td>
+                                                    <td className="px-3 py-2 text-[10px]">
+                                                      <div className="space-y-0.5">
+                                                        <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
+                                                        <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
+                                                      </div>
+                                                    </td>
+                                                    <td className="px-3 py-2 w-32">
+                                                      <div className="flex items-center gap-2">
+                                                        <div className="enj-table-progress-track flex-1">
+                                                          <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
+                                                        </div>
+                                                        <span className="w-7 text-right text-[10px] tabular-nums text-gray-600">
+                                                          {Math.round(progress)}%
+                                                        </span>
+                                                      </div>
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                      <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
+                                                        {statusLabel}
+                                                      </span>
+                                                    </td>
+                                                  </tr>
+                                                );
+                                              })}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="border-t border-gray-100 px-3 py-2">
+                    <PagerBar
+                      page={portfolioPage}
+                      pageSize={portfolioPageSize}
+                      total={portfolioPrograms.length}
+                      onPrev={() => setPortfolioPage((p) => Math.max(1, p - 1))}
+                      onNext={() => setPortfolioPage((p) => Math.min(portfolioTotalPages, p + 1))}
+                    />
+                  </div>
+                </section>
+              )}
+            </div>
+          ) : activeNav === 'Pipeline' ? (
+            <BusinessPipelineScreen
+              tableRows={businessPipelineTableRows}
+              clientOptions={businessClientOptions}
+              loading={timelineLoading}
+              onNotify={(type, message) => setBusinessReportToast({ type, message })}
+              onPipelineCreated={() => setDataRefresh((k) => k + 1)}
+            />
           ) : activeNav === 'Reports' ? (
-            <>
-              <section className="bg-white rounded-xl p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">Reports</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-10 gap-2">
-                  {reportFilterLabels.map((label) => (
-                    <div key={label} className="min-w-0">
-                      <p className="text-[10px] text-gray-400 mb-1">{label}</p>
-                      <button className="w-full h-7 rounded-md border border-gray-200 bg-gray-50 text-[10px] text-gray-500 flex items-center justify-between px-2">
-                        <span>All</span>
-                        <ChevronDown size={10} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                {reportStats.map((card) => (
-                  <div key={card.label} className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 chart-card">
-                    <p className="text-[10px] text-gray-400">{card.label}</p>
-                    <p className="text-3xl font-bold text-gray-800 mt-1">{card.value}</p>
-                    <div className="h-0.5 rounded-full mt-3" style={{ backgroundColor: card.color }} />
-                  </div>
-                ))}
-              </section>
-
-              <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
-                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Project Category</h3>
-                  <DonutChart
-                    className="w-full h-40 chart-svg"
-                    slices={[
-                      { label: 'Application', value: 43, color: '#1667de' },
-                      { label: 'Security', value: 59, color: '#d3525a' },
-                      { label: 'Support', value: 36, color: '#3b3a80' },
-                      { label: 'Infrastructure', value: 23, color: '#f6be00' },
-                    ]}
-                    ringWidth={42}
-                  />
-                </div>
-                <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
-                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Projects Count</h3>
-                  <svg viewBox="0 0 220 170" className="w-full h-40 chart-svg">
-                    {[20, 40, 60, 80].map((v) => (
-                      <line key={v} x1="26" x2="214" y1={140 - v} y2={140 - v} stroke="#f1f5f9" />
-                    ))}
-                    <text x="6" y="141" fontSize="8" fill="#9ca3af">0</text>
-                    <text x="2" y="121" fontSize="8" fill="#9ca3af">20</text>
-                    <text x="2" y="101" fontSize="8" fill="#9ca3af">40</text>
-                    <text x="2" y="81" fontSize="8" fill="#9ca3af">60</text>
-                    <text x="2" y="61" fontSize="8" fill="#9ca3af">80</text>
-                    {projectCounts.map((bar, index) => (
-                      <g key={bar.label}>
-                        <rect className="chart-bar" x={35 + index * 36} y={140 - bar.value * 1.6} width="12" height={bar.value * 1.6} rx="3" fill={bar.color} />
-                        <text x={40 + index * 36} y="154" fontSize="8" textAnchor="middle" fill="#9ca3af" transform={`rotate(-65 40 ${154})`}>
-                          {bar.label}
-                        </text>
-                      </g>
-                    ))}
-                  </svg>
-                </div>
-                <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
-                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Budget</h3>
-                  <div className="flex items-center justify-between gap-2">
-                    <DonutChart
-                      className="w-[62%] h-40 chart-svg"
-                      showOuterLabels={false}
-                      ringWidth={44}
-                      slices={[
-                        { label: 'Financial', value: 352, color: '#1667de' },
-                        { label: 'Knowledge', value: 90, color: '#f6be00' },
-                        { label: 'External', value: 130, color: '#3b3a80' },
-                        { label: 'HR', value: 15, color: '#d3525a' },
-                        { label: 'Admin', value: 496, color: '#64748b' },
-                      ]}
-                    />
-                    <div className="w-[38%] text-[8px] text-gray-500 space-y-1">
-                      <p>AED890,600 <span className="block">Knowledge & External</span></p>
-                      <p>AED14,600 <span className="block">HR</span></p>
-                      <p>AED436,000 <span className="block">Administrative Affairs</span></p>
-                      <p>AED325,000 <span className="block">Financial Resources</span></p>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
-                  <h3 className="text-xs font-semibold text-gray-700 mb-2">Projects by progress</h3>
-                  <div className="flex items-center justify-between gap-2">
-                    <DonutChart
-                      className="w-[68%] h-40 chart-svg"
-                      showOuterLabels={false}
-                      ringWidth={44}
-                      slices={[
-                        { label: 'Completed', value: 46, color: '#1667de' },
-                        { label: 'On Hold', value: 27, color: '#f6be00' },
-                        { label: 'Delayed', value: 21, color: '#d3525a' },
-                      ]}
-                    />
-                    <div className="w-[32%] text-[8px] text-gray-500 space-y-1">
-                      <p className="text-blue-600"><span className="font-semibold">46</span> Completed</p>
-                      <p className="text-amber-500"><span className="font-semibold">27</span> On Hold</p>
-                      <p className="text-rose-500"><span className="font-semibold">21</span> Delayed</p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-y border-gray-100">
-                    <tr className="text-[10px] text-gray-400 uppercase text-left">
-                      <th className="px-3 py-2">Project Name</th>
-                      <th className="px-3 py-2">Priority</th>
-                      <th className="px-3 py-2">Type</th>
-                      <th className="px-3 py-2">Budget</th>
-                      <th className="px-3 py-2">Strag. Obj</th>
-                      <th className="px-3 py-2">PM</th>
-                      <th className="px-3 py-2">Dates</th>
-                      <th className="px-3 py-2">Progress Level</th>
-                      <th className="px-3 py-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reportRows.map((row, idx) => (
-                      <tr key={`${row.project}-${idx}`} className="border-b border-gray-100 text-xs text-gray-700">
-                        <td className="px-3 py-2 text-indigo-700 underline">{row.project}</td>
-                        <td className="px-3 py-2">{row.priority}</td>
-                        <td className="px-3 py-2">{row.type}</td>
-                        <td className="px-3 py-2 font-semibold text-rose-500">{row.budget}</td>
-                        <td className="px-3 py-2">{row.pm}</td>
-                        <td className="px-3 py-2">{row.owner}</td>
-                        <td className="px-3 py-2">
-                          <div className="leading-4">
-                            <p className="text-[10px] text-gray-400">Start date</p>
-                            <p>{row.start}</p>
-                            <p className="text-[10px] text-gray-400 mt-1">End date</p>
-                            <p>{row.end}</p>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${row.progress}%` }} />
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className={`px-2 py-1 rounded-full text-[9px] font-semibold ${row.statusColor}`}>{row.status}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div className="px-3 py-2 text-[10px] text-gray-400 text-right">1-10 of 15</div>
-              </section>
-            </>
+            <ProgramReportsPanel
+              isActive={activeNav === 'Reports'}
+              onNotify={(type, message) => setBusinessReportToast({ type, message })}
+              showTableEdit={false}
+            />
           ) : activeNav === 'Feedback' ? (
             <BusinessFeedbackList />
           ) : (
-            <>
-          <section className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
-            {summaryCards.map((card) => (
-              <div key={card.title} className="bg-white rounded-xl p-4 shadow-sm lg:col-span-1 chart-card min-h-[170px]">
-                <p className="text-xs text-gray-500">{card.title}</p>
-                <p className="text-2xl font-bold mt-1">{card.value}</p>
-                <svg viewBox="0 0 140 40" className="w-full h-12 mt-2 chart-svg">
-                  <path d={sparklinePath(card.trend, 140, 34)} fill="none" stroke={card.color} strokeWidth="2.5" />
-                </svg>
-                <p className="text-[11px] text-gray-400">{card.delta}</p>
-              </div>
-            ))}
-
-            <div className="bg-white rounded-xl p-4 shadow-sm lg:col-span-2 chart-card min-h-[220px]">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">Projects by progress</h3>
-              <div className="flex items-center gap-4">
-                <svg viewBox="0 0 160 160" className="w-36 h-36 chart-svg">
-                  {(() => {
-                    const total = progressData.reduce((sum, item) => sum + item.value, 0);
-                    let angle = -90;
-                    return progressData.map((slice) => {
-                      const sweep = (slice.value / total) * 360;
-                      const start = (Math.PI / 180) * angle;
-                      const end = (Math.PI / 180) * (angle + sweep);
-                      const largeArc = sweep > 180 ? 1 : 0;
-                      const x1 = 80 + Math.cos(start) * 52;
-                      const y1 = 80 + Math.sin(start) * 52;
-                      const x2 = 80 + Math.cos(end) * 52;
-                      const y2 = 80 + Math.sin(end) * 52;
-                      angle += sweep;
-                      return (
-                        <path
-                          key={slice.label}
-                          d={`M ${x1} ${y1} A 52 52 0 ${largeArc} 1 ${x2} ${y2}`}
-                          stroke={slice.color}
-                          strokeWidth="20"
-                          fill="none"
-                          strokeLinecap="round"
-                        />
-                      );
-                    });
-                  })()}
-                </svg>
-                <div className="space-y-2 text-xs">
-                  {progressData.map((item) => (
-                    <div key={item.label} className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-gray-500 w-20">{item.label}</span>
-                      <span className="font-semibold text-gray-800">{item.value}</span>
-                    </div>
-                  ))}
+            <div className="relative min-h-[200px]">
+              {timelineLoading ? (
+                <div className="flex justify-center py-20">
+                  <ScreenLoader />
                 </div>
-              </div>
+              ) : businessDash.isEmpty ? (
+                <p className="text-sm text-gray-500 py-8">
+                  No project rows returned. When projects exist in Dataverse, this dashboard shows live portfolio metrics.
+                </p>
+              ) : (
+            <div className="enjaz-business-dashboard space-y-4">
+                <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
+                  <h1 className="text-lg font-bold text-gray-900">Business Dashboard</h1>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDataRefresh((k) => k + 1);
+                    }}
+                    disabled={timelineLoading}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <RefreshCw size={14} className={timelineLoading ? 'animate-spin' : ''} />
+                    Refresh
+                  </button>
+                </div>
+          {businessDash.skipReasons.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-950 mb-4">
+              <p className="font-semibold text-amber-900">Charts not shown (missing data)</p>
+              <ul className="list-disc pl-4 mt-1.5 space-y-1 text-amber-900/90">
+                {businessDash.skipReasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
             </div>
-          </section>
-
-          <section className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-stretch">
-            <div className="bg-white rounded-xl p-4 shadow-sm lg:col-span-3 chart-card">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-bold text-gray-900">Project Timeline</h2>
-                <div className="flex items-center gap-2 text-xs">
-                  {(['Weekly', 'Monthly', 'Yearly'] as const).map((filter) => (
-                    <button
-                      key={filter}
-                      type="button"
-                      onClick={() => setTimelineFilter(filter)}
-                      className={timelineFilter === filter ? 'text-amber-700 font-semibold' : 'text-gray-400'}
+          )}
+          <section className="grid grid-cols-1 gap-3 xl:grid-cols-12 xl:items-start">
+            <div className="space-y-3 xl:col-span-7">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {businessDash.summary3.map((card) => {
+                  const { Icon, iconWrap, iconClass } = businessSummaryCardTone(card.title);
+                  return (
+                    <div
+                      key={card.title}
+                      className="self-start bg-white rounded-xl p-0 shadow-sm chart-card min-h-0 flex flex-col border border-gray-100/90"
                     >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <svg viewBox="0 0 640 220" className="w-full h-64 chart-svg">
-                {[10, 20, 30, 40, 50].map((v) => (
-                  <line key={v} x1="42" x2="620" y1={210 - v * 3.5} y2={210 - v * 3.5} stroke="#f1f5f9" />
-                ))}
-                {years.map((year, i) => (
-                  <text key={year} x={48 + i * 52} y="212" fontSize="9" fill="#94a3b8">{year}</text>
-                ))}
-                <polyline
-                  fill="none"
-                  stroke="#2563eb"
-                  strokeWidth="2.2"
-                  points={completed.map((v, i) => `${48 + i * 52},${210 - v * 3.5}`).join(' ')}
-                />
-                <polyline
-                  fill="none"
-                  stroke="#b0823a"
-                  strokeWidth="2.2"
-                  points={delayed.map((v, i) => `${48 + i * 52},${210 - v * 3.5}`).join(' ')}
-                />
-                <polyline
-                  fill="none"
-                  stroke="#374151"
-                  strokeWidth="1.6"
-                  strokeDasharray="5 4"
-                  points={onTrack.map((v, i) => `${48 + i * 52},${210 - v * 3.5}`).join(' ')}
-                />
-              </svg>
-            </div>
-
-            <div className="lg:col-span-2 h-full flex">
-              <section className="bg-white rounded-xl p-4 shadow-sm h-full w-full chart-card">
-                <h3 className="text-sm font-bold text-gray-900 mb-2">Budget</h3>
-                <div className="flex items-center gap-4">
-                  <svg viewBox="0 0 160 160" className="w-36 h-36 chart-svg">
-                    {(() => {
-                      const total = budgetData.reduce((sum, item) => sum + item.value, 0);
-                      let angle = -90;
-                      return budgetData.map((slice) => {
-                        const sweep = (slice.value / total) * 360;
-                        const start = (Math.PI / 180) * angle;
-                        const end = (Math.PI / 180) * (angle + sweep);
-                        const largeArc = sweep > 180 ? 1 : 0;
-                        const x1 = 80 + Math.cos(start) * 56;
-                        const y1 = 80 + Math.sin(start) * 56;
-                        const x2 = 80 + Math.cos(end) * 56;
-                        const y2 = 80 + Math.sin(end) * 56;
-                        angle += sweep;
-                        return (
-                          <path
-                            key={slice.label}
-                            d={`M 80 80 L ${x1} ${y1} A 56 56 0 ${largeArc} 1 ${x2} ${y2} Z`}
-                            fill={slice.color}
-                          />
-                        );
-                      });
-                    })()}
-                    <circle cx="80" cy="80" r="18" fill="#fff" />
-                  </svg>
-                  <div className="space-y-1.5 text-[10px]">
-                    {budgetData.slice(0, 5).map((item) => (
-                      <div key={item.label} className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="text-gray-500 w-16">{item.label}</span>
-                        <span className="text-gray-700">AED{item.value}k</span>
+                      <div className="flex items-center justify-between gap-1.5 px-3 pt-2.5 pb-2 sm:px-4 sm:pt-3">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <div
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${iconWrap}`}
+                          >
+                            <Icon className={iconClass} size={16} strokeWidth={2.2} />
+                          </div>
+                          <p className="min-w-0 text-[11px] font-semibold leading-snug text-gray-800">{card.title}</p>
+                        </div>
+                        <p className="shrink-0 text-[34px] font-bold leading-none tabular-nums text-gray-900">{card.value}</p>
                       </div>
+                      <div className="h-px bg-gray-100" />
+                      <div className="flex items-center justify-between gap-1.5 px-3 py-2 sm:px-4 sm:pb-2.5">
+                        <svg viewBox="0 0 140 32" className="h-7 w-[5.5rem] shrink-0 text-left chart-svg" aria-hidden>
+                          <path
+                            d={BUSINESS_SUMMARY_STATIC_WAVE_D}
+                            fill="none"
+                            stroke={card.color}
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        <p className="min-w-0 max-w-[8.2rem] text-right text-[9px] font-medium leading-tight text-blue-800 sm:text-[10px]">
+                          No change from last week
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {businessDash.has.timeline && (
+              <div
+                className="bg-white rounded-xl p-4 shadow-sm chart-card border border-gray-100/90 min-h-[24rem]"
+              >
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-sm font-bold text-gray-900">Project TimeLine</h2>
+                  <div className="flex items-center gap-0.5 text-[10px] text-gray-500">
+                    {(['weekly', 'monthly', 'yearly'] as const).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setTimelinePeriod(p)}
+                        className={`px-1.5 py-0.5 capitalize ${
+                          timelinePeriod === p ? 'border-b-2 border-amber-500 font-semibold text-primary' : 'hover:text-gray-700'
+                        }`}
+                      >
+                        {p}
+                      </button>
                     ))}
                   </div>
                 </div>
-              </section>
-            </div>
-          </section>
-
-          <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[300px] chart-card">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">KPI</h3>
-              <div className="h-52 flex items-end justify-around gap-2">
-                {kpiData.map((bar) => (
-                  <div key={bar.label} className="flex flex-col items-center gap-2">
-                    <div className="w-9 rounded-t-md chart-bar" style={{ height: `${bar.value * 1.3}px`, backgroundColor: bar.color }} />
-                    <span className="text-[10px] text-gray-500">{bar.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[300px] chart-card">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">Projects Category</h3>
-              <div className="flex items-center gap-4 h-52">
-                <svg viewBox="0 0 160 160" className="w-36 h-36 flex-shrink-0 chart-svg">
-                  {(() => {
-                    const total = categoryData.reduce((sum, item) => sum + item.value, 0);
-                    let angle = -90;
-                    return categoryData.map((slice) => {
-                      const sweep = (slice.value / total) * 360;
-                      const start = (Math.PI / 180) * angle;
-                      const end = (Math.PI / 180) * (angle + sweep);
-                      const largeArc = sweep > 180 ? 1 : 0;
-                      const x1 = 80 + Math.cos(start) * 52;
-                      const y1 = 80 + Math.sin(start) * 52;
-                      const x2 = 80 + Math.cos(end) * 52;
-                      const y2 = 80 + Math.sin(end) * 52;
-                      angle += sweep;
-                      return (
-                        <path
-                          key={slice.label}
-                          d={`M ${x1} ${y1} A 52 52 0 ${largeArc} 1 ${x2} ${y2}`}
-                          stroke={slice.color}
-                          strokeWidth="22"
-                          fill="none"
-                          strokeLinecap="round"
-                        />
-                      );
-                    });
-                  })()}
-                </svg>
-                <div className="space-y-2 text-xs">
-                  {categoryData.map((item) => (
-                    <div key={item.label} className="flex items-center gap-2">
-                      <span className="font-semibold text-gray-800">{item.value}</span>
-                      <span className="text-gray-500">{item.label}</span>
-                    </div>
-                  ))}
+                <div className="mb-1.5 flex flex-wrap items-center gap-4 text-[10px] text-gray-700">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 shrink-0 rounded-sm bg-[#10B981]" aria-hidden />
+                    <span>Completed</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 shrink-0 rounded-sm bg-[#EF4444]" aria-hidden />
+                    <span>Delayed</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 shrink-0 rounded-sm bg-[#3B82F6]" aria-hidden />
+                    <span>On Track</span>
+                  </span>
                 </div>
+                {(() => {
+                  const tl = businessDash.projectTimelineNarrow;
+                  const nY = Math.max(1, tl.years.length);
+                  const viewW = 400;
+                  const plotH = 186;
+                  const yBottom = 166;
+                  const yTop = 30;
+                  const yearY = 178;
+                  const xLeft = 44;
+                  const xRight = 360;
+                  const xAt = (i: number) =>
+                    nY <= 1 ? (xLeft + xRight) / 2 : xLeft + (i * (xRight - xLeft)) / Math.max(1, nY - 1);
+                  const yFor = (v: number) => yBottom - (v / 50) * (yBottom - yTop);
+                  const stroke = { completed: '#10B981', delayed: '#EF4444', onTrack: '#3B82F6' } as const;
+                  return (
+                <svg viewBox={`0 0 ${viewW} ${plotH}`} className="h-56 w-full max-w-full chart-svg" preserveAspectRatio="xMidYMid meet">
+                  {[0, 1, 2, 3, 4, 5, 6].map((k) => {
+                    const y = yBottom - (k / 6) * (yBottom - yTop);
+                    return (
+                      <line key={k} x1={xLeft} y1={y} x2={xRight} y2={y} stroke="#f1f5f9" strokeWidth="1" />
+                    );
+                  })}
+                  {tl.years.map((year, i) => (
+                    <text key={year} x={xAt(i)} y={yearY} textAnchor="middle" fontSize="8" fill="#94a3b8">
+                      {year}
+                    </text>
+                  ))}
+                  {[0, 1, 2, 3, 4, 5, 6].map((k) => {
+                    const yG = yBottom - (k / 6) * (yBottom - yTop);
+                    return (
+                      <text
+                        key={`yl-${k}`}
+                        x="8"
+                        y={yG}
+                        fontSize="7"
+                        fill="#9ca3af"
+                        textAnchor="start"
+                        dominantBaseline="middle"
+                      >
+                        {k}
+                      </text>
+                    );
+                  })}
+                  <polyline
+                    fill="none"
+                    stroke={stroke.completed}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    points={tl.completed.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
+                  />
+                  {tl.completed.map((v, i) => (
+                    <circle key={`c-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.completed} stroke="#fff" strokeWidth="1.2" />
+                  ))}
+                  <polyline
+                    fill="none"
+                    stroke={stroke.delayed}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    points={tl.delayed.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
+                  />
+                  {tl.delayed.map((v, i) => (
+                    <circle key={`d-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.delayed} stroke="#fff" strokeWidth="1.2" />
+                  ))}
+                  <polyline
+                    fill="none"
+                    stroke={stroke.onTrack}
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    points={tl.onTrack.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
+                  />
+                  {tl.onTrack.map((v, i) => (
+                    <circle key={`o-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.onTrack} stroke="#fff" strokeWidth="1.2" />
+                  ))}
+                </svg>
+                  );
+                })()}
               </div>
+              )}
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[300px] chart-card">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">Projects Count</h3>
-              <div className="h-52 flex items-end justify-around gap-2">
-                {projectCounts.map((bar) => (
-                  <div key={bar.label} className="flex flex-col items-center gap-2">
-                    <div className="w-9 rounded-t-md chart-bar" style={{ height: `${bar.value * 2.2}px`, backgroundColor: bar.color }} />
-                    <span className="text-[10px] text-gray-500">{bar.label}</span>
+            <div className="space-y-3 xl:col-span-5 min-h-0">
+              <BusinessDashboardStyleDonut
+                title="Projects by progress"
+                layout="hero"
+                donutVariant="thinRing"
+                stacked
+                slices={progressDonutSlices}
+                centerValue={businessDash.totalProjectCount}
+                maxNameLen={11}
+              />
+              {businessDash.has.budget && (
+              <BusinessDashboardStyleDonut
+                title="Budget"
+                layout="hero"
+                donutVariant="pinhole"
+                stacked
+                slices={budgetDonutSlices}
+                showCenterValue={false}
+                maxNameLen={24}
+              />
+              )}
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[220px] border border-gray-100/90 chart-card">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">KPI</h3>
+              <div className="h-40 flex items-end justify-around gap-1.5">
+                {businessDash.kpiPinnacle.map((bar) => (
+                  <div key={bar.label} className="flex flex-col items-center gap-1">
+                    <span className="text-[10px] font-semibold text-gray-700 tabular-nums">{Math.round(bar.value)}</span>
+                    <div className="w-9 rounded-t-md chart-bar" style={{ height: `${bar.value * 1.3}px`, backgroundColor: bar.color }} />
+                    <span className="text-[10px] text-gray-500 text-center max-w-[4.5rem] leading-tight">{bar.label}</span>
                   </div>
                 ))}
               </div>
             </div>
+
+            {businessDash.has.category && (
+            <div className="min-h-0">
+              <BusinessDashboardStyleDonut
+                title="Project categories"
+                layout="hero"
+                donutVariant="thinRing"
+                slices={categoryDonutSlices}
+                centerValue={categoryDonutCenter}
+                maxNameLen={11}
+              />
+            </div>
+            )}
+
+            {businessDash.has.program && (
+            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[220px] border border-gray-100/90 chart-card">
+              <h3 className="text-sm font-bold text-gray-900 mb-2">Projects Count</h3>
+              <div className="h-40 flex items-end justify-around gap-1.5">
+                {businessDash.projectCounts.map((bar) => (
+                  <div key={bar.label} className="flex flex-col items-center gap-1 min-w-0">
+                    <span className="text-[10px] font-semibold text-gray-700 tabular-nums">{bar.value}</span>
+                    <div
+                      className="w-9 rounded-t-md chart-bar"
+                      style={{
+                        height: `${(bar.value / businessDash.projectCountMax) * 48 * 2.2}px`,
+                        backgroundColor: bar.color,
+                      }}
+                    />
+                    <span className="text-[10px] text-gray-500 text-center max-w-[3.5rem] truncate" title={bar.name}>
+                      {bar.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            )}
           </section>
 
+          {businessDash.has.budgeting && (
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl p-4 shadow-sm chart-card">
               <h3 className="text-sm font-bold text-gray-900 mb-2">BUDGETING - Actual VS Planned</h3>
-              <div className="h-44 flex items-end gap-1 overflow-hidden">
-                {budgetVsPlanned.map((item) => (
-                  <div key={item.month} className="flex-1 flex flex-col items-center justify-end">
-                    <div className="flex items-end gap-[2px] h-36">
-                      <div className="rounded-t bg-[#d9bf89] chart-bar" style={{ width: '6px', height: `${item.actual / 5}px` }} />
-                      <div className="rounded-t bg-[#a07b3c] chart-bar" style={{ width: '6px', height: `${item.planned / 5}px` }} />
-                    </div>
-                    <span className="text-[9px] text-gray-400 mt-1">{item.month}</span>
+              {businessDash.budgetingSectors.length > 0 ? (
+                <div className="h-48 overflow-x-auto pr-1">
+                  <div
+                    className="flex h-44 min-w-min items-end gap-2 border-b border-gray-100 pb-1"
+                    style={{ minWidth: `${Math.max(100, businessDash.budgetingSectors.length * 52)}px` }}
+                  >
+                    {businessDash.budgetingSectors.map((s) => (
+                      <div key={s.fullName} className="flex w-12 shrink-0 flex-col items-center justify-end gap-0.5" title={s.fullName}>
+                        <div className="flex h-36 items-end gap-0.5">
+                          <div
+                            className="w-2.5 rounded-t bg-[#d9bf89] chart-bar"
+                            style={{ height: `${(s.actualH / 120) * 132}px` }}
+                          />
+                          <div
+                            className="w-2.5 rounded-t bg-[#a07b3c] chart-bar"
+                            style={{ height: `${(s.plannedH / 120) * 132}px` }}
+                          />
+                        </div>
+                        <span className="mt-0.5 max-w-[3rem] truncate text-center text-[8px] text-gray-500" title={s.fullName}>
+                          {s.label}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                  <p className="mt-1 text-[9px] text-gray-400">By sector (planned = brown, actual = gold)</p>
+                </div>
+              ) : (
+                <div className="h-44 flex min-h-0 items-end gap-0.5 overflow-x-auto">
+                  {businessDash.budgetVsPlanned.map((item) => (
+                    <div key={item.month} className="flex min-w-[28px] flex-1 flex-col items-center justify-end">
+                      <div className="flex h-36 items-end gap-px">
+                        <div
+                          className="chart-bar w-2 min-h-[2px] rounded-t bg-[#d9bf89]"
+                          style={{ height: `${(item.actual / budgetMonthBarMax) * 132}px` }}
+                        />
+                        <div
+                          className="chart-bar w-2 min-h-[2px] rounded-t bg-[#a07b3c]"
+                          style={{ height: `${(item.planned / budgetMonthBarMax) * 132}px` }}
+                        />
+                      </div>
+                      <span className="mt-1 text-[8px] text-gray-400">{item.month}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm chart-card">
+            <div className="bg-white rounded-xl p-4 shadow-sm chart-card min-w-0">
               <h3 className="text-sm font-bold text-gray-900 mb-2">BUDGETING - Deviation</h3>
-              <svg viewBox="0 0 600 200" className="w-full h-44 chart-svg">
-                <line x1="20" y1="100" x2="580" y2="100" stroke="#d1d5db" />
-                {budgetDeviation.map((item, i) => (
-                  <g key={item.month}>
-                    <rect
-                      x={26 + i * 46}
-                      y={item.val >= 0 ? 100 - item.val * 2 : 100}
-                      width="18"
-                      height={Math.abs(item.val * 2)}
-                      fill="#a07b3c"
-                      rx="2"
-                    />
-                    <text x={35 + i * 46} y="194" textAnchor="middle" fontSize="9" fill="#9ca3af">{item.month}</text>
-                  </g>
-                ))}
-              </svg>
+              {businessDash.budgetingSectors.length > 0 ? (
+                <div className="h-48 overflow-x-auto pr-1">
+                  <svg
+                    className="chart-svg h-44 w-full"
+                    viewBox={`0 0 ${Math.max(400, 24 + businessDash.budgetingSectors.length * 44)} 200`}
+                    preserveAspectRatio="xMinYMid meet"
+                  >
+                    <line x1="8" y1="100" x2={Math.max(392, 16 + businessDash.budgetingSectors.length * 44)} y2="100" stroke="#d1d5db" />
+                    {businessDash.budgetingSectors.map((s, i) => {
+                      const h = (Math.abs(s.deviation) / sectorDevMax) * 75;
+                      const y = s.deviation >= 0 ? 100 - h : 100;
+                      return (
+                        <g key={s.fullName}>
+                          <rect x={16 + i * 44} y={y} width="20" height={Math.max(2, h)} fill="#a07b3c" rx="2" />
+                          <text x={26 + i * 44} y="195" textAnchor="middle" fontSize="7" fill="#9ca3af">
+                            {s.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+              ) : (
+                <svg viewBox="0 0 600 200" className="h-44 w-full chart-svg">
+                  <line x1="20" y1="100" x2="580" y2="100" stroke="#d1d5db" />
+                  {businessDash.budgetDeviation.map((item, i) => {
+                    const barH = (Math.abs(item.val) / budgetDevMax) * 80;
+                    const y = item.val >= 0 ? 100 - barH : 100;
+                    return (
+                      <g key={item.month}>
+                        <rect
+                          x={26 + i * 46}
+                          y={y}
+                          width="18"
+                          height={Math.max(2, barH)}
+                          fill="#a07b3c"
+                          rx="2"
+                        />
+                        <text x={35 + i * 46} y="194" textAnchor="middle" fontSize="9" fill="#9ca3af">
+                          {item.month}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
             </div>
           </section>
-            </>
           )}
+
+          {portfolioPrograms.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-gray-900">Portfolio</h2>
+                {portfolioPrograms.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveNav('Portfolio')}
+                    className={`${enj.btn} ${enj.btnOutline} h-8 px-3 text-xs font-semibold`}
+                  >
+                    View All
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
+                <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+                  <thead>
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Program</th>
+                      <th className="px-3 py-2 font-semibold">KPI</th>
+                      <th className="px-3 py-2 font-semibold">Benefits</th>
+                      <th className="px-3 py-2 font-semibold">Budget</th>
+                      <th className="px-3 py-2 font-semibold">Program Manager</th>
+                      <th className="px-3 py-2 font-semibold">ROI</th>
+                      <th className="px-3 py-2 font-semibold">Start Date</th>
+                      <th className="px-3 py-2 font-semibold">Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {latestPortfolio.map((row) => {
+                      const pid = String(row.new_programid ?? '');
+                      const normalizedPid = normalizeDataverseId(pid);
+                      const programName = readProgramString(row, ['new_name']);
+                      const programKey = normalizedPid ? `id:${normalizedPid}` : `name:${programName.toLowerCase()}`;
+                      const fallbackNameKey = `name:${programName.toLowerCase()}`;
+                      const programProjects = (
+                        portfolioProjectsByProgramKey.get(programKey)
+                        ?? portfolioProjectsByProgramKey.get(fallbackNameKey)
+                        ?? []
+                      )
+                        .slice()
+                        .sort((a, b) => {
+                          const aStart = parseTimelineDate(a.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                          const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                          return aStart - bStart;
+                        });
+                      const pPct = programProgressById.get(normalizeDataverseId(pid)) ?? 0;
+                      const start = parseTimelineDate(row.new_startdate);
+                      const isExpanded = expandedPortfolioProgramKey === programKey;
+                      const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
+                        for (const k of keys) {
+                          const v = project[k];
+                          if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+                        }
+                        return fallback;
+                      };
+
+                      return (
+                        <Fragment key={pid || programName}>
+                          <tr className="border-t border-[#d7def0] bg-white">
+                            <td className="px-3 py-2 font-normal">
+                              <button
+                                type="button"
+                                className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
+                                onClick={() => setExpandedPortfolioProgramKey((prev) => (prev === programKey ? null : programKey))}
+                                aria-expanded={isExpanded}
+                              >
+                                <ChevronDown size={14} className={`transition-transform text-[#6B7280] ${isExpanded ? 'rotate-180' : ''}`} />
+                                <span className="max-w-[18rem] truncate">{programName}</span>
+                              </button>
+                            </td>
+                            <td className="px-3 py-2">{readProgramString(row, ['new_kpi', 'crcf8_kpi'])}</td>
+                            <td className="px-3 py-2">{readProgramString(row, ['new_benefits', 'crcf8_benefit'])}</td>
+                            <td className="px-3 py-2"><TableBudgetDisplay value={readProgramString(row, ['new_budget', 'crcf8_budget'])} /></td>
+                            <td className="px-3 py-2">{readProgramString(row, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                            <td className="px-3 py-2">{readProgramString(row, ['new_roi', 'crcf8_roi'])}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1">
+                                <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
+                                <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 w-40">
+                              <div className="flex items-center gap-2">
+                                <div className="enj-table-progress-track flex-1">
+                                  <div
+                                    className="enj-table-progress-fill"
+                                    style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }}
+                                  />
+                                </div>
+                                <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-gray-600">
+                                  {Math.round(pPct)}%
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {isExpanded && (
+                            <>
+                              {programProjects.length === 0 ? (
+                                <tr className="border-t border-gray-100 bg-white">
+                                  <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">
+                                    No projects found for this program.
+                                  </td>
+                                </tr>
+                              ) : (
+                                <tr className="border-t border-gray-100 bg-[#f9fafc]">
+                                  <td colSpan={8} className="px-3 py-2.5">
+                                    <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
+                                      <table className={`${enj.table} min-w-[1140px] text-left text-xs`}>
+                                        <thead>
+                                          <tr>
+                                            <th className="px-3 py-2 font-semibold">Project</th>
+                                            <th className="px-3 py-2 font-semibold">Priority</th>
+                                            <th className="px-3 py-2 font-semibold">Sponsor</th>
+                                            <th className="px-3 py-2 font-semibold">Type</th>
+                                            <th className="px-3 py-2 font-semibold">Budget</th>
+                                            <th className="px-3 py-2 font-semibold">Starg.obj</th>
+                                            <th className="px-3 py-2 font-semibold">Project Manager</th>
+                                            <th className="px-3 py-2 font-semibold">Timeline</th>
+                                            <th className="px-3 py-2 font-semibold">Progress</th>
+                                            <th className="px-3 py-2 font-semibold">Status</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {programProjects.map((project, i) => {
+                                            const projectName =
+                                              String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
+                                            const priority = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                            const sponsor = readProjectField(project, ['new_sponsorname', 'new_sponsor']);
+                                            const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
+                                            const budget = readProjectField(project, ['new_budget']);
+                                            const strategicObj = readProjectField(
+                                              project,
+                                              ['new_strategicobjective', 'new_strategicobjectivename', 'new_strategicplan'],
+                                            );
+                                            const manager = readProjectField(project, ['new_projectmanager', 'owneridname', 'new_ownername']);
+                                            const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
+                                            const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                            const progressRaw = Number(project.new_progress ?? NaN);
+                                            const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
+                                            const statusText = String(project.new_projectstatusname ?? '').trim();
+                                            const statusBucket = businessProjectStatusBucket(project);
+                                            const statusLabel =
+                                              statusText
+                                              || (statusBucket === 'completed'
+                                                ? 'Completed'
+                                                : statusBucket === 'delayed'
+                                                  ? 'Delayed'
+                                                  : statusBucket === 'onTrack'
+                                                    ? 'On Track'
+                                                    : 'To Start');
+                                            const statusKey = statusLabel.toLowerCase();
+                                            return (
+                                              <tr key={`${programKey}-${projectName}-${i}`} className="border-t border-gray-100 bg-white">
+                                                <td className="px-3 py-2 font-medium text-[#374151]">{projectName}</td>
+                                                <td className="px-3 py-2">{priority}</td>
+                                                <td className="px-3 py-2">{sponsor}</td>
+                                                <td className="px-3 py-2">{projectType}</td>
+                                                <td className="px-3 py-2"><TableBudgetDisplay value={budget} /></td>
+                                                <td className="px-3 py-2">{strategicObj}</td>
+                                                <td className="px-3 py-2">{manager}</td>
+                                                <td className="px-3 py-2 text-[10px]">
+                                                  <div className="space-y-0.5">
+                                                    <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
+                                                    <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
+                                                  </div>
+                                                </td>
+                                                <td className="px-3 py-2 w-32">
+                                                  <div className="flex items-center gap-2">
+                                                    <div className="enj-table-progress-track flex-1">
+                                                      <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
+                                                    </div>
+                                                    <span className="w-7 text-right text-[10px] tabular-nums text-gray-600">
+                                                      {Math.round(progress)}%
+                                                    </span>
+                                                  </div>
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                  <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
+                                                    {statusLabel}
+                                                  </span>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          <p className="pt-1 text-center text-[11px] text-gray-400">
+            Copyright © 2026 Enjaz Management Tool. All rights reserved.
+          </p>
+            </div>
+              )}
+            </div>
+          )}
+          </div>
         </main>
       </div>
     </div>
@@ -2173,10 +4413,12 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
 function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const [activeNav, setActiveNav] = useState('Dashboard');
-  const [showAddProjectForm, setShowAddProjectForm] = useState(false);
   const [showAddMeetingForm, setShowAddMeetingForm] = useState(false);
+  const [programMeetings, setProgramMeetings] = useState<Array<Record<string, unknown>>>([]);
+  const [programTeamMemberRows, setProgramTeamMemberRows] = useState<Array<Record<string, unknown>>>([]);
+  const [programMeetingsLoading, setProgramMeetingsLoading] = useState(false);
   const [showAddDeliverableForm, setShowAddDeliverableForm] = useState(false);
-  const [showAddReportForm, setShowAddReportForm] = useState(false);
+  const [deliverableListRefresh, setDeliverableListRefresh] = useState(0);
   const [showAddProgramForm, setShowAddProgramForm] = useState(false);
   const [programFormMode, setProgramFormMode] = useState<'add' | 'edit'>('add');
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
@@ -2194,119 +4436,9 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   const [programFormBusy, setProgramFormBusy] = useState(false);
   const [programFormMsg, setProgramFormMsg] = useState('');
   const [programToast, setProgramToast] = useState<{ type: ToastType; message: string } | null>(null);
-  const [projectFormBusy, setProjectFormBusy] = useState(false);
-  const [projectFormErrors, setProjectFormErrors] = useState<Record<string, string>>({});
-  const [projectMetaLoading, setProjectMetaLoading] = useState(false);
-  const [projectForm, setProjectForm] = useState({
-    projectName: '',
-    programName: '',
-    vendorName: '',
-    projectPriority: '',
-    projectCategory: '',
-    projectType: '',
-    strategicGoal: '',
-    budget: '',
-    assignToProjectManager: '',
-    risks: '',
-    kpi: '',
-    methodology: '',
-    startDate: todayIso,
-    endDate: todayIso,
-    department: '',
-    projectStatus: '',
-    milestone: '',
-    projectSponsor: '',
-    note: '',
-    attachment: null as File | null,
-  });
-  const [projectChoiceOptions, setProjectChoiceOptions] = useState<{
-    projectPriority: Array<{ label: string; value: number }>;
-    projectType: Array<{ label: string; value: number }>;
-    strategicGoal: Array<{ label: string; value: number }>;
-    projectStatus: Array<{ label: string; value: number }>;
-    projectCategory: Array<{ label: string; value: number }>;
-    methodology: Array<{ label: string; value: number }>;
-    projectSponsor: Array<{ label: string; value: number }>;
-  }>({
-    projectPriority: [],
-    projectType: [],
-    strategicGoal: [],
-    projectStatus: [],
-    projectCategory: [],
-    methodology: [],
-    projectSponsor: [],
-  });
-  const [projectTextColumns, setProjectTextColumns] = useState<{
-    projectName: string;
-    program: string;
-    projectCategory: string;
-    vendor: string;
-    budget: string;
-    risks: string;
-    kpi: string;
-    methodology: string;
-    department: string;
-    milestone: string;
-    assignPm: string;
-    note: string;
-    sponsor: string;
-    startDate: string;
-    endDate: string;
-  }>({
-    projectName: 'new_projectname',
-    program: 'new_programid',
-    projectCategory: 'new_projectcategory',
-    vendor: 'new_clientname',
-    budget: 'new_budget',
-    risks: 'new_risks',
-    kpi: 'new_kpi',
-    methodology: 'new_methodology',
-    department: 'new_sector',
-    milestone: 'new_milestone',
-    assignPm: 'new_programmanager',
-    note: 'new_note',
-    sponsor: 'new_projectsponsor',
-    startDate: 'new_startdate',
-    endDate: 'new_enddate',
-  });
-  const [projectChoiceColumns, setProjectChoiceColumns] = useState<{
-    projectPriority: string;
-    projectType: string;
-    strategicGoal: string;
-    projectStatus: string;
-    projectCategory: string;
-    methodology: string;
-  }>({
-    projectPriority: 'new_projectpriority',
-    projectType: 'new_projecttype',
-    strategicGoal: 'new_strategicgoal',
-    projectStatus: 'new_projectstatus',
-    projectCategory: 'new_projectcategory',
-    methodology: 'new_methodology',
-  });
-  const [projectMasterOptions, setProjectMasterOptions] = useState<{
-    program: string[];
-    projectCategory: string[];
-    kpi: string[];
-    methodology: string[];
-    milestone: string[];
-    sector: string[];
-  }>({
-    program: [],
-    projectCategory: [],
-    kpi: [],
-    methodology: [],
-    milestone: [],
-    sector: [],
-  });
-  const [projectManagerEmails, setProjectManagerEmails] = useState<string[]>([]);
-  const [projectSponsorEmails, setProjectSponsorEmails] = useState<string[]>([]);
-  const [vendorOptions, setVendorOptions] = useState<Array<{ label: string; value: string }>>([]);
-  const [projectProgramIdByName, setProjectProgramIdByName] = useState<Record<string, string>>({});
-  const [projectUserIdByEmail, setProjectUserIdByEmail] = useState<Record<string, string>>({});
-  const [projectFieldOptionMap, setProjectFieldOptionMap] = useState<Record<string, Array<{ label: string; value: number }>>>({});
-  const [projectFieldTypeMap, setProjectFieldTypeMap] = useState<Record<string, string>>({});
-  const [projectAvailableColumns, setProjectAvailableColumns] = useState<string[]>([]);
+  const [programPipelineData, setProgramPipelineData] = useState<New_pipelines[]>([]);
+  const [programPipelineClients, setProgramPipelineClients] = useState<New_clients[]>([]);
+  const [programPipelineLoading, setProgramPipelineLoading] = useState(false);
   const [programFormErrors, setProgramFormErrors] = useState<Partial<Record<keyof typeof programForm, string>>>({});
   const [benefitsOptions, setBenefitsOptions] = useState<string[]>([]);
   const [kpiOptions, setKpiOptions] = useState<string[]>([]);
@@ -2320,8 +4452,6 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   const [statusOptions, setStatusOptions] = useState<Array<{ label: string; value: number }>>(fallbackStatusOptions);
   const [programRows, setProgramRows] = useState<Array<Record<string, unknown>>>([]);
   const [programLoading, setProgramLoading] = useState(false);
-  const [projectRows, setProjectRows] = useState<Array<Record<string, unknown>>>([]);
-  const [projectRowsLoading, setProjectRowsLoading] = useState(false);
   const [programColumns, setProgramColumns] = useState<{
     benefits?: string;
     manager?: string;
@@ -2334,214 +4464,156 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     progress?: string;
     name?: string;
   }>({});
+  const [programOverviewCounts, setProgramOverviewCounts] = useState({
+    programs: 0,
+    meetings: 0,
+    projects: 0,
+    teamMembers: 0,
+    issues: 0,
+    tasks: 0,
+    deliverables: 0,
+  });
+  const [programChartActual, setProgramChartActual] = useState<number[]>(Array(12).fill(0));
+  const [programChartPlanned, setProgramChartPlanned] = useState<number[]>(Array(12).fill(0));
+  const [programChartDeviation, setProgramChartDeviation] = useState<number[]>(Array(12).fill(0));
+  const [programInsightProjectRows, setProgramInsightProjectRows] = useState<Array<Record<string, unknown>>>([]);
+  const [programInsightTaskRows, setProgramInsightTaskRows] = useState<Array<Record<string, unknown>>>([]);
+  const [programPortfolioExpandedKey, setProgramPortfolioExpandedKey] = useState<string | null>(null);
+  const [programPortfolioPage, setProgramPortfolioPage] = useState(1);
+  const [programInsightStatusFilter, setProgramInsightStatusFilter] = useState<'all' | 'onTrack' | 'completed' | 'delayed'>('all');
+  const [programInsightPeriodFilter, setProgramInsightPeriodFilter] = useState<'allTime' | 'thisMonth' | 'last3' | 'last6' | 'thisYear'>('allTime');
+  const [programInsightProjectBars, setProgramInsightProjectBars] = useState([
+    { label: 'On Track', val: 0, color: '#34d399' },
+    { label: 'Completed', val: 0, color: '#60a5fa' },
+    { label: 'Delayed', val: 0, color: '#ef4444' },
+  ]);
+  const [programInsightBudgetSlices, setProgramInsightBudgetSlices] = useState([
+    { label: 'No Data', value: 1, color: '#cbd5e1' },
+  ]);
+  const [programMilestoneActual, setProgramMilestoneActual] = useState<number[]>([0, 0, 0, 0, 0]);
+  const [programMilestonePlanned, setProgramMilestonePlanned] = useState<number[]>([0, 0, 0, 0, 0]);
+  const [programMilestoneLabels, setProgramMilestoneLabels] = useState<string[]>(['Jan', 'Feb', 'Mar', 'Apr', 'May']);
   const overviewCards = [
-    { label: 'Projects', value: 72, color: '#d4a759' },
-    { label: 'In Work', value: 64, color: '#34d399' },
-    { label: 'Delayed', value: 48, color: '#f87171' },
-    { label: 'Completed', value: 23, color: '#60a5fa' },
-    { label: 'Tasks', value: 48, color: '#fbbf24' },
-    { label: 'Users', value: 31, color: '#fda4af' },
-    { label: 'Incidents', value: 36, color: '#3b82f6' },
+    { label: 'Program', value: programOverviewCounts.programs, color: '#b28a44' },
+    { label: 'Projects', value: programOverviewCounts.projects, color: '#34d399' },
+    { label: 'Team Members', value: programOverviewCounts.teamMembers, color: '#4f46e5' },
+    { label: 'Issues', value: programOverviewCounts.issues, color: '#3b82f6' },
+    { label: 'Tasks', value: programOverviewCounts.tasks, color: '#fbbf24' },
+    { label: 'Deliverables', value: programOverviewCounts.deliverables, color: '#94a3b8' },
+    { label: 'Meetings', value: programOverviewCounts.meetings, color: '#64748b' },
   ];
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
     { name: 'Program', icon: <FolderOpen size={16} /> },
+    { name: 'Dummy', icon: <ListTree size={16} /> },
     { name: 'Projects', icon: <Briefcase size={16} /> },
     { name: 'Meetings', icon: <Calendar size={16} /> },
     { name: 'Deliverables', icon: <ShieldCheck size={16} /> },
     { name: 'Reports', icon: <FileText size={16} /> },
     { name: 'Project Pipeline', icon: <TrendingUp size={16} /> },
   ];
-  const projectBars = [
-    { label: 'On Track', val: 74, color: '#34d399' },
-    { label: 'Completed', val: 63, color: '#60a5fa' },
-    { label: 'Delayed', val: 41, color: '#ef4444' },
-  ];
-  const projectBoardColumns = [
-    { title: 'To Start', color: '#f6be00' },
-    { title: 'On Track', color: '#10b981' },
-    { title: 'Delayed', color: '#ef4444' },
-    { title: 'Completed', color: '#2563eb' },
-  ];
-  const meetingBlocks = [
-    { label: 'Meeting 10:00', col: 1, row: 1, color: '#10b981' },
-    { label: 'Meeting 11:00', col: 2, row: 2, color: '#f6be00' },
-    { label: 'Meeting 11:30', col: 3, row: 2, color: '#ef4444' },
-    { label: 'Meeting 09:30', col: 0, row: 3, color: '#2563eb' },
-    { label: 'Meeting 14:00', col: 2, row: 3, color: '#0f5fd8' },
-    { label: 'Meeting 15:00', col: 3, row: 4, color: '#f6be00' },
-    { label: 'Meeting 16:00', col: 1, row: 4, color: '#59628a' },
-  ];
-  const scheduledMeetings = [
-    { title: 'Project Review Meeting', time: '10:00', color: '#d9f3eb' },
-    { title: 'Requirement Discussion', time: '11:00', color: '#e0ebff' },
-    { title: 'Team Standup', time: '11:30', color: '#ffe6e6' },
-    { title: 'Quick Review', time: '13:00', color: '#f6f2db' },
-    { title: 'Sprint Meeting', time: '14:00', color: '#e6f4ff' },
-    { title: 'Client Demo', time: '15:00', color: '#f2e9ff' },
-    { title: 'Planning', time: '16:00', color: '#fff0d9' },
-  ];
-  const deliverablesRows = [
-    { project: 'DP Factor', sponsor: 'HR', items: 'Design, Development, Training, Report, Document', status: 'COMPLETED', statusColor: 'bg-blue-100 text-blue-700' },
-    { project: 'Code.Tech', sponsor: 'Sales', items: 'Document, Report, Attachments, Project Plan', status: 'RESCHEDULED', statusColor: 'bg-emerald-100 text-emerald-700' },
-    { project: 'Ex.Process', sponsor: 'Operations', items: 'Document, Report, Attachments, Hardware', status: 'RESCHEDULED', statusColor: 'bg-emerald-100 text-emerald-700' },
-    { project: 'Scaling', sponsor: 'Marketing', items: 'Design, Report, License, Training, Project Plan', status: 'DELAYED', statusColor: 'bg-rose-100 text-rose-700' },
-    { project: 'Digital Portal', sponsor: 'IT', items: 'UAT link, Production Link, Attachments, Knowledge Transfer', status: 'PENDING', statusColor: 'bg-red-100 text-red-600' },
-    { project: 'DP Finster', sponsor: 'HR', items: 'Design, Development, Training, Report, Document', status: 'COMPLETED', statusColor: 'bg-blue-100 text-blue-700' },
-    { project: 'Code.Tech', sponsor: 'Sales', items: 'Document, Report, Attachments, Project Plan', status: 'ASSIGNED', statusColor: 'bg-indigo-100 text-indigo-700' },
-    { project: 'Ex.Process', sponsor: 'Operations', items: 'Document, Report, Attachments, Hardware', status: 'RESCHEDULED', statusColor: 'bg-emerald-100 text-emerald-700' },
-    { project: 'Scaling', sponsor: 'Marketing', items: 'Design, Report, License, Training, Project Plan', status: 'PENDING', statusColor: 'bg-red-100 text-red-600' },
-    { project: 'Digital Portal', sponsor: 'IT', items: 'UAT link, Production Link, Attachments, Knowledge Transfer', status: 'PENDING', statusColor: 'bg-red-100 text-red-600' },
-  ];
-  const reportStatsProgram = [
-    { label: 'Total Projects', value: 273, color: '#d4a759' },
-    { label: 'Sectors', value: 104, color: '#34d399' },
-    { label: 'Delayed Projects', value: 87, color: '#f87171' },
-    { label: 'Programs', value: 63, color: '#60a5fa' },
-    { label: 'Projects', value: 108, color: '#fbbf24' },
-    { label: 'Total Budget', value: 478, color: '#fb7185' },
-    { label: 'Completed Programs', value: 71, color: '#3b82f6' },
-  ];
-  const reportRowsProgram = [
-    { project: 'DP Factor', priority: 'High', type: 'New', budget: '$42', owner: 'Ahmed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 88, status: 'COMPLETED', statusColor: 'bg-blue-100 text-blue-700' },
-    { project: 'Code.Tech', priority: 'Medium', type: 'Enhanc.', budget: '$25', owner: 'Omar Sami', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 52, status: 'SLIGHTLY DELAYED', statusColor: 'bg-amber-100 text-amber-700' },
-    { project: 'Ex.Process', priority: 'Medium', type: 'Change Request', budget: '$30', owner: 'Waleed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 76, status: 'ON TRACK', statusColor: 'bg-emerald-100 text-emerald-700' },
-    { project: 'Scaling', priority: 'Low', type: 'Change Request', budget: '$30', owner: 'Amr Fahmy', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 21, status: 'DELAYED', statusColor: 'bg-rose-100 text-rose-700' },
-    { project: 'DP Factor', priority: 'High', type: 'New', budget: '$42', owner: 'Ahmed Ali', pm: 'Time Bound', start: 'Feb 09, 2024', end: 'May 24, 2024', progress: 90, status: 'COMPLETED', statusColor: 'bg-blue-100 text-blue-700' },
-  ];
-  const pipelineRowsProgram = [
-    { name: 'Pinnacle', benefit: 'Productivity', budget: '$42', stage: 'RFP' },
-    { name: 'Right Path', benefit: 'Efficiency', budget: '$25', stage: 'awarding' },
-    { name: 'Road Map', benefit: 'Productivity', budget: '$30', stage: 'business case approval' },
-    { name: 'Coreline', benefit: 'Improvement', budget: '$30', stage: 'budget approval' },
-    { name: 'Growth', benefit: 'Plan Realisation', budget: '$42', stage: 'acquiring resources' },
-  ];
+  const dummyProjectRows = [
+    { projectName: 'DP Factor', priority: 'High', sponsor: 'Sales', type: 'New', budget: '$42', budgetTrend: 'up', strategicObj: 'Time Bound', pm: 'Ahmed Ali', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 100, status: 'Completed', statusClass: 'enj-table-status--completed' },
+    { projectName: 'Code.Tech', priority: 'Medium', sponsor: 'HR', type: 'Enhanc.', budget: '$25', budgetTrend: 'down', strategicObj: 'Time Bound', pm: 'Omar Sami', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 40, status: 'Slightly Delayed', statusClass: 'enj-table-status--neutral' },
+    { projectName: 'Ex.Process', priority: 'Medium', sponsor: 'IT', type: 'Change Request', budget: '$30', budgetTrend: 'none', strategicObj: 'Time Bound', pm: 'Waleed Ali', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 80, status: 'On Track', statusClass: 'enj-table-status--ontrack' },
+    { projectName: 'Scaling', priority: 'Low', sponsor: 'Legal Affairs', type: 'Change Request', budget: '$30', budgetTrend: 'none', strategicObj: 'Time Bound', pm: 'Amr Fahmy', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 20, status: 'Delayed', statusClass: 'enj-table-status--delayed' },
+  ] as const;
+  const dummyProgramRows = [
+    { programName: 'Road Map', category: 'Efficiency', budget: '$142', pm: 'Dalia Fahmy', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 40 },
+    { programName: 'Growth', category: 'Improvement', budget: '$142', pm: 'Tahir Ali', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 40 },
+  ] as const;
+  const programPipelineTableRows = useMemo(
+    (): BusinessPipelineTableRow[] => programPipelineData.map((r, i) => newPipelineToTableRow(r, i)),
+    [programPipelineData],
+  );
+  const programPipelineClientOptions = useMemo(
+    () =>
+      programPipelineClients
+        .map((c) => ({
+          id: String(c.new_clientid),
+          name: String(c.new_clientname ?? '').trim(),
+        }))
+        .filter((c) => c.id && c.name),
+    [programPipelineClients],
+  );
+  const programPortfolioPageSize = 10;
+  const programPortfolioLatestFive = useMemo(() => programRows.slice(0, 5), [programRows]);
+  const programPortfolioTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(programRows.length / programPortfolioPageSize)),
+    [programRows.length],
+  );
+  const pagedProgramPortfolioRows = useMemo(() => {
+    const start = (programPortfolioPage - 1) * programPortfolioPageSize;
+    return programRows.slice(start, start + programPortfolioPageSize);
+  }, [programRows, programPortfolioPage]);
+  const programIdToName = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const row of programRows) {
+      const idRaw = row.new_programid;
+      const name = String(row.new_name ?? '').trim();
+      if (!name) continue;
+      if (idRaw !== undefined && idRaw !== null && String(idRaw).trim() !== '') {
+        out.set(normalizeDataverseId(String(idRaw)), name);
+      }
+    }
+    return out;
+  }, [programRows]);
+  const portfolioProgramProgressById = useMemo(() => {
+    const acc = new Map<string, { sum: number; n: number }>();
+    for (const r of programInsightProjectRows) {
+      const idRaw = r._new_program_value ?? r.new_programid;
+      if (idRaw === undefined || idRaw === null || String(idRaw).trim() === '') continue;
+      const id = normalizeDataverseId(String(idRaw));
+      const p = Number(r.new_progress);
+      if (!Number.isFinite(p)) continue;
+      const cur = acc.get(id) ?? { sum: 0, n: 0 };
+      cur.sum += p;
+      cur.n += 1;
+      acc.set(id, cur);
+    }
+    const out = new Map<string, number>();
+    acc.forEach((v, k) => {
+      if (v.n > 0) out.set(k, Math.round((v.sum / v.n) * 10) / 10);
+    });
+    return out;
+  }, [programInsightProjectRows]);
+  const portfolioProjectsByProgramKey = useMemo(() => {
+    const out = new Map<string, Array<Record<string, unknown>>>();
+    for (const project of programInsightProjectRows) {
+      const keys: string[] = [];
+      const rawId = project._new_program_value ?? project.new_programid;
+      if (rawId !== undefined && rawId !== null && String(rawId).trim() !== '') {
+        keys.push(`id:${normalizeDataverseId(String(rawId))}`);
+      }
+      const resolvedProgramName = resolveProjectProgramName(project, programIdToName).trim();
+      if (resolvedProgramName) {
+        keys.push(`name:${resolvedProgramName.toLowerCase()}`);
+      }
+      for (const key of keys) {
+        const bucket = out.get(key);
+        if (bucket) bucket.push(project);
+        else out.set(key, [project]);
+      }
+    }
+    return out;
+  }, [programInsightProjectRows, programIdToName]);
   const categoryFromMaster = (row: EnjazMasterDataRow): string => {
+    const typed = String((row as { new_categorytype?: unknown }).new_categorytype ?? '').trim();
+    if (typed) return typed;
     const named = String(row.new_categoryname ?? '').trim();
     if (named) return named;
     const valueMap = new Map<number, string>([
       [100000000, 'Program Code'], [100000001, 'KPI'], [100000002, 'Benefits'],
-      [100000003, 'Project Category'], [100000004, 'Sector'], [100000005, 'Milestone'],
-      [100000006, 'Project Code'], [100000007, 'Stage'], [100000008, 'Report Type'],
-      [100000009, 'Specialization'], [100000010, 'Meeting Category'], [100000011, 'Deliverables'],
-      [100000012, 'Industry'], [100000013, 'Country'], [100000014, 'Region'],
-      [100000015, 'Currency'], [100000016, 'Time'], [100000017, 'Shift'],
-      [100000018, 'Holiday'], [100000019, 'Methodology'],
+      [100000003, 'Milestone'], [100000004, 'Project Code'], [100000005, 'Stage'],
+      [100000006, 'Report Type'], [100000007, 'Specialization'], [100000008, 'Meeting Category'],
+      [100000009, 'Deliverables'], [100000010, 'Industry'], [100000011, 'Country'],
+      [100000012, 'Region'], [100000013, 'Currency'], [100000014, 'Time'],
+      [100000015, 'Shift'], [100000016, 'Holiday'], [100000017, 'Methodology'],
     ]);
     const raw = row.new_category;
     const num = typeof raw === 'number' ? raw : Number(raw);
     if (!Number.isNaN(num) && valueMap.has(num)) return valueMap.get(num) ?? '';
     return String(raw ?? '');
-  };
-
-  const isMasterActive = (row: EnjazMasterDataRow) => {
-    const raw = String(row.new_statusname ?? row.new_status ?? '').toLowerCase();
-    return !(raw.includes('inactive') || raw === '100000001' || raw === '1');
-  };
-
-  const normalizeCategory = (value: string) => value.toLowerCase().replace(/[\s_&-]+/g, '');
-
-  const optionsFromMetadataAttribute = (attrs: Array<Record<string, unknown>>, logicalName: string) => {
-    const attr = attrs.find((a) => String(a.LogicalName ?? a.logicalName ?? '').toLowerCase() === logicalName.toLowerCase());
-    const optionListRaw =
-      (attr?.OptionSet as { Options?: Array<Record<string, unknown>> } | undefined)?.Options
-      ?? (attr?.OptionSet as { options?: Array<Record<string, unknown>> } | undefined)?.options
-      ?? (attr?.optionSet as { Options?: Array<Record<string, unknown>> } | undefined)?.Options
-      ?? (attr?.optionSet as { options?: Array<Record<string, unknown>> } | undefined)?.options
-      ?? [];
-    return optionListRaw
-      .map((o) => {
-        const value = Number(o.Value ?? o.value ?? NaN);
-        const label =
-          String(
-            (o.Label as { UserLocalizedLabel?: { Label?: string } } | undefined)?.UserLocalizedLabel?.Label
-            ?? (o.Label as { LocalizedLabels?: Array<{ Label?: string }> } | undefined)?.LocalizedLabels?.[0]?.Label
-            ?? (o.label as string | undefined)
-            ?? '',
-          ).trim();
-        if (Number.isNaN(value) || !label) return null;
-        return { value, label };
-      })
-      .filter((o): o is { label: string; value: number } => Boolean(o));
-  };
-
-  const attrTypeName = (attr?: Record<string, unknown>): string =>
-    String(
-      (attr?.AttributeTypeName as { Value?: string } | undefined)?.Value
-      ?? attr?.AttributeType
-      ?? attr?.attributeType
-      ?? '',
-    ).toLowerCase();
-
-  const pickLogicalByContains = (names: string[], include: string[], exclude: string[] = []) =>
-    names.find((n) => {
-      const lower = n.toLowerCase();
-      return include.every((i) => lower.includes(i.toLowerCase())) && !exclude.some((e) => lower.includes(e.toLowerCase()));
-    });
-  const readAttrLabel = (attr: Record<string, unknown>) =>
-    String(
-      (attr.DisplayName as { UserLocalizedLabel?: { Label?: string } } | undefined)?.UserLocalizedLabel?.Label
-      ?? (attr.displayName as { userLocalizedLabel?: { label?: string } } | undefined)?.userLocalizedLabel?.label
-      ?? '',
-    ).trim();
-  const normalizeAttrKey = (value: string) => value.toLowerCase().replace(/[\s_\-]+/g, '');
-  const pickLogicalByDisplayLabel = (attrs: Array<Record<string, unknown>>, label: string) => {
-    const target = normalizeAttrKey(label);
-    const match = attrs.find((a) => normalizeAttrKey(readAttrLabel(a)) === target);
-    const logical = String(match?.LogicalName ?? match?.logicalName ?? '').trim();
-    return logical || undefined;
-  };
-  const pickLogicalFromAttrs = (
-    attrs: Array<Record<string, unknown>>,
-    includeNameParts: string[],
-    includeLabelParts: string[] = includeNameParts,
-    excludeNameParts: string[] = [],
-  ) =>
-    attrs.find((a) => {
-      const logical = String(a.LogicalName ?? a.logicalName ?? '').toLowerCase();
-      const label = readAttrLabel(a).toLowerCase();
-      const byName = includeNameParts.every((p) => logical.includes(p.toLowerCase())) && !excludeNameParts.some((p) => logical.includes(p.toLowerCase()));
-      const byLabel = includeLabelParts.every((p) => label.includes(p.toLowerCase()));
-      return byName || byLabel;
-    });
-
-  useEffect(() => {
-    if (Object.keys(projectFormErrors).length === 0) return;
-    setProjectFormErrors((prev) => {
-      const next = { ...prev };
-      if (next.projectName && projectForm.projectName.trim()) delete next.projectName;
-      if (next.programName && projectForm.programName) delete next.programName;
-      if (next.vendorName && projectForm.vendorName.trim()) delete next.vendorName;
-      if (next.projectPriority && projectForm.projectPriority) delete next.projectPriority;
-      if (next.projectCategory && projectForm.projectCategory) delete next.projectCategory;
-      if (next.projectType && projectForm.projectType) delete next.projectType;
-      if (next.strategicGoal && projectForm.strategicGoal) delete next.strategicGoal;
-      if (next.assignToProjectManager && projectForm.assignToProjectManager) delete next.assignToProjectManager;
-      if (next.risks && projectForm.risks.trim()) delete next.risks;
-      if (next.methodology && projectForm.methodology) delete next.methodology;
-      if (next.department && projectForm.department) delete next.department;
-      if (next.projectStatus && projectForm.projectStatus) delete next.projectStatus;
-      if (next.milestone && projectForm.milestone) delete next.milestone;
-      if (next.projectSponsor && projectForm.projectSponsor) delete next.projectSponsor;
-      if (next.budget && /^\d+(\.\d+)?$/.test(projectForm.budget.trim())) delete next.budget;
-      if (next.startDate && projectForm.startDate && projectForm.startDate >= todayIso) delete next.startDate;
-      if (
-        next.endDate
-        && projectForm.endDate
-        && projectForm.endDate >= todayIso
-        && (!projectForm.startDate || projectForm.endDate >= projectForm.startDate)
-      ) delete next.endDate;
-      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
-    });
-  }, [projectForm, projectFormErrors, todayIso]);
-
-  const readFirstString = (row: Record<string, unknown>, keys: string[]): string => {
-    for (const k of keys) {
-      const value = row[k];
-      const text = String(value ?? '').trim();
-      if (text) return text;
-    }
-    return '';
   };
 
   const loadPrograms = async () => {
@@ -2556,6 +4628,239 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       setProgramLoading(false);
     }
   };
+
+  const loadProgramMeetings = async () => {
+    setProgramMeetingsLoading(true);
+    try {
+      const res = await New_meetingdetailsService.getAll({ top: 2000, orderBy: ['new_meetingdate desc', 'createdon desc'] });
+      if (!res.success) {
+        setProgramMeetings([]);
+      } else {
+        const sessionEmail = (getSessionUserEmail() ?? '').trim().toLowerCase();
+        const local = sessionEmail.split('@')[0] ?? '';
+        const rows = ((res.data ?? []) as unknown as Array<Record<string, unknown>>).filter((row) => {
+          if (!sessionEmail) return true;
+          const invited = String(row.new_invitememberemails ?? '').toLowerCase();
+          return invited.includes(sessionEmail) || (local.length > 1 && invited.includes(local));
+        });
+        setProgramMeetings(rows);
+      }
+    } catch {
+      setProgramMeetings([]);
+    } finally {
+      setProgramMeetingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeNav !== 'Project Pipeline') return;
+    let cancelled = false;
+    (async () => {
+      setProgramPipelineLoading(true);
+      try {
+        const [pipeRes, clientRes] = await Promise.all([
+          New_pipelinesService.getAll({ top: 500, orderBy: ['createdon desc'] }),
+          New_clientsService.getAll({ top: 500, orderBy: ['new_clientname asc'] }),
+        ]);
+        if (cancelled) return;
+        setProgramPipelineData(
+          pipeRes.success && Array.isArray(pipeRes.data) ? (pipeRes.data as New_pipelines[]) : [],
+        );
+        setProgramPipelineClients(
+          clientRes.success && Array.isArray(clientRes.data) ? (clientRes.data as New_clients[]) : [],
+        );
+      } catch {
+        if (!cancelled) {
+          setProgramPipelineData([]);
+          setProgramPipelineClients([]);
+        }
+      } finally {
+        if (!cancelled) setProgramPipelineLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNav]);
+
+  const programNotifications = useMemo(() => {
+    const scoped = new Set(
+      programInsightProjectRows
+        .map((r) => String(r.new_projectname ?? r.new_name ?? '').trim())
+        .filter(Boolean),
+    );
+    return buildInboxNotifications('program', {
+      teamMembers: programTeamMemberRows,
+      projects: programInsightProjectRows,
+      tasks: programInsightTaskRows,
+      scopedProjectNames: scoped,
+    });
+  }, [programTeamMemberRows, programInsightProjectRows, programInsightTaskRows]);
+
+  const loadProgramOverviewCounts = async () => {
+    const settled = await Promise.allSettled([
+      New_programsService.getAll({ top: 5000 }),
+      New_projectsService.getAll({ top: 5000 }),
+      New_teammembersService.getAll({ top: 5000 }),
+      New_issuesService.getAll({ top: 5000 }),
+      New_tasksService.getAll({ top: 5000 }),
+      New_deliverablesService.getAll({ top: 5000 }),
+    ]);
+    const teamSettled = settled[2];
+    if (teamSettled?.status === 'fulfilled' && (teamSettled.value as { success?: boolean; data?: unknown[] }).success) {
+      setProgramTeamMemberRows(
+        ((teamSettled.value as { data?: unknown[] }).data ?? []) as Array<Record<string, unknown>>,
+      );
+    } else {
+      setProgramTeamMemberRows([]);
+    }
+    const countFromSettled = (idx: number) => {
+      const item = settled[idx];
+      if (!item || item.status !== 'fulfilled') return 0;
+      const res = item.value as { success?: boolean; data?: Array<unknown> };
+      return res.success ? (res.data ?? []).length : 0;
+    };
+    setProgramOverviewCounts({
+      meetings: 0,
+      programs: countFromSettled(0),
+      projects: countFromSettled(1),
+      teamMembers: countFromSettled(2),
+      issues: countFromSettled(3),
+      tasks: countFromSettled(4),
+      deliverables: countFromSettled(5),
+    });
+
+    const monthIdx = (v: unknown) => {
+      const d = new Date(String(v ?? ''));
+      return Number.isNaN(d.getTime()) ? -1 : d.getMonth();
+    };
+    const projectsRes = settled[1];
+    const tasksRes = settled[4];
+    const projectRows =
+      projectsRes && projectsRes.status === 'fulfilled' && projectsRes.value.success
+        ? ((projectsRes.value.data ?? []) as unknown as Array<Record<string, unknown>>)
+        : [];
+    const taskRows =
+      tasksRes && tasksRes.status === 'fulfilled' && tasksRes.value.success
+        ? ((tasksRes.value.data ?? []) as unknown as Array<Record<string, unknown>>)
+        : [];
+    const actual = Array(12).fill(0) as number[];
+    const planned = Array(12).fill(0) as number[];
+    projectRows.forEach((r) => {
+      const idx = monthIdx(r.createdon ?? r.new_startdate);
+      if (idx >= 0) actual[idx] += 1;
+    });
+    taskRows.forEach((r) => {
+      const idx = monthIdx(r.createdon ?? r.new_startdate ?? r.new_enddate);
+      if (idx >= 0) planned[idx] += 1;
+    });
+    setProgramChartActual(actual);
+    setProgramChartPlanned(planned);
+    setProgramChartDeviation(planned.map((p, i) => p - actual[i]));
+    setProgramInsightProjectRows(projectRows);
+    setProgramInsightTaskRows(taskRows);
+  };
+
+  useEffect(() => {
+    const statusBucket = (r: Record<string, unknown>): 'onTrack' | 'completed' | 'delayed' | 'other' => {
+      const statusNum = Number(r.new_projectstatus);
+      const statusName = String(r.new_projectstatusname ?? '').toLowerCase();
+      if (statusNum === 100000003 || statusName.includes('complet')) return 'completed';
+      if (statusNum === 100000002 || statusName.includes('delay')) return 'delayed';
+      if (statusNum === 100000001 || (statusName.includes('on') && statusName.includes('track'))) return 'onTrack';
+      return 'other';
+    };
+    const resolveDate = (r: Record<string, unknown>) =>
+      new Date(String(r.new_enddate ?? r.new_startdate ?? r.createdon ?? ''));
+    const isWithinPeriod = (dt: Date) => {
+      if (Number.isNaN(dt.getTime())) return false;
+      if (programInsightPeriodFilter === 'allTime') return true;
+      const now = new Date();
+      if (programInsightPeriodFilter === 'thisMonth') {
+        return dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth();
+      }
+      if (programInsightPeriodFilter === 'last3') {
+        const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        return dt >= start && dt <= now;
+      }
+      if (programInsightPeriodFilter === 'last6') {
+        const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+        return dt >= start && dt <= now;
+      }
+      return dt.getFullYear() === now.getFullYear();
+    };
+
+    let filteredProjects = programInsightProjectRows.filter((r) => isWithinPeriod(resolveDate(r)));
+    if (programInsightStatusFilter !== 'all') {
+      filteredProjects = filteredProjects.filter((r) => statusBucket(r) === programInsightStatusFilter);
+    }
+    const filteredTasks = programInsightTaskRows.filter((r) => isWithinPeriod(resolveDate(r)));
+
+    const buckets = { onTrack: 0, completed: 0, delayed: 0 };
+    filteredProjects.forEach((r) => {
+      const b = statusBucket(r);
+      if (b === 'onTrack' || b === 'completed' || b === 'delayed') buckets[b] += 1;
+    });
+    const totalProjects = filteredProjects.length;
+    setProgramInsightProjectBars(
+      totalProjects > 0
+        ? [
+            { label: 'On Track', val: Math.round((buckets.onTrack / totalProjects) * 100), color: '#34d399' },
+            { label: 'Completed', val: Math.round((buckets.completed / totalProjects) * 100), color: '#60a5fa' },
+            { label: 'Delayed', val: Math.round((buckets.delayed / totalProjects) * 100), color: '#ef4444' },
+          ]
+        : [
+            { label: 'On Track', val: 0, color: '#34d399' },
+            { label: 'Completed', val: 0, color: '#60a5fa' },
+            { label: 'Delayed', val: 0, color: '#ef4444' },
+          ],
+    );
+
+    const budgetByCategory = new Map<string, number>();
+    filteredProjects.forEach((r) => {
+      const budgetNum = Number(r.new_budget ?? r.crcf8_budget ?? 0);
+      if (!Number.isFinite(budgetNum) || budgetNum <= 0) return;
+      const category = String(r.new_projectcategoryname ?? r.new_sectorname ?? r.new_projectcategory ?? 'Other').trim() || 'Other';
+      budgetByCategory.set(category, (budgetByCategory.get(category) ?? 0) + budgetNum);
+    });
+    const budgetColors = ['#3b82f6', '#d4a759', '#60a5fa', '#ef4444', '#4f46e5', '#10b981'];
+    const budgetEntries = Array.from(budgetByCategory.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([label, value], i) => ({ label, value, color: budgetColors[i % budgetColors.length] }));
+    setProgramInsightBudgetSlices(
+      budgetEntries.length > 0
+        ? budgetEntries
+        : [{ label: 'No Data', value: 1, color: '#cbd5e1' }],
+    );
+
+    const now = new Date();
+    const monthWindow = Array.from({ length: 5 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - (4 - i), 1));
+    const monthLabels = monthWindow.map((d) => d.toLocaleDateString(undefined, { month: 'short' }));
+    const slotFor = (d: Date) => monthWindow.findIndex((m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth());
+    const milestoneActual = Array(5).fill(0) as number[];
+    const milestonePlanned = Array(5).fill(0) as number[];
+    filteredProjects.forEach((r) => {
+      const dt = resolveDate(r);
+      if (Number.isNaN(dt.getTime())) return;
+      const idx = slotFor(dt);
+      if (idx >= 0) milestoneActual[idx] += 1;
+    });
+    filteredTasks.forEach((r) => {
+      const dt = resolveDate(r);
+      if (Number.isNaN(dt.getTime())) return;
+      const idx = slotFor(dt);
+      if (idx >= 0) milestonePlanned[idx] += 1;
+    });
+    setProgramMilestoneActual(milestoneActual);
+    setProgramMilestonePlanned(milestonePlanned);
+    setProgramMilestoneLabels(monthLabels);
+  }, [programInsightProjectRows, programInsightTaskRows, programInsightStatusFilter, programInsightPeriodFilter]);
+
+  useEffect(() => {
+    if (activeNav !== 'Meetings') return;
+    void loadProgramMeetings();
+  }, [activeNav]);
 
   /**
    * Program Add/Edit — Project Manager: Users where `new_role` is Program (choice 100000002),
@@ -2647,29 +4952,32 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   };
 
   useEffect(() => {
-    if (activeNav !== 'Program') return;
+    if (activeNav !== 'Program' && activeNav !== 'Dashboard' && activeNav !== 'Portfolio') return;
     let cancelled = false;
     (async () => {
       try {
-        await loadProgramMetadata();
+        if (!cancelled) await loadProgramOverviewCounts();
+        if (activeNav === 'Program' || activeNav === 'Portfolio') {
+          await loadProgramMetadata();
 
-        const res = await EnjazMasterDataService.getAll({ top: 1000, orderBy: ['new_code asc'] });
-        if (!res.success) throw new Error(res.error?.message ?? 'Failed to load master data options');
-        const rows = res.data ?? [];
-        const benefits = rows
-          .filter((r) => categoryFromMaster(r) === 'Benefits')
-          .map((r) => String(r.new_enjazmasterdata1 ?? '').trim())
-          .filter(Boolean);
-        const kpis = rows
-          .filter((r) => categoryFromMaster(r) === 'KPI')
-          .map((r) => String(r.new_enjazmasterdata1 ?? '').trim())
-          .filter(Boolean);
-        if (!cancelled) {
-          setBenefitsOptions(Array.from(new Set(benefits)));
-          setKpiOptions(Array.from(new Set(kpis)));
+          const res = await EnjazMasterDataService.getAll({ top: 1000, orderBy: ['new_code asc'] });
+          if (!res.success) throw new Error(res.error?.message ?? 'Failed to load master data options');
+          const rows = res.data ?? [];
+          const benefits = rows
+            .filter((r) => categoryFromMaster(r) === 'Benefits')
+            .map((r) => String(r.new_enjazmasterdata1 ?? '').trim())
+            .filter(Boolean);
+          const kpis = rows
+            .filter((r) => categoryFromMaster(r) === 'KPI')
+            .map((r) => String(r.new_enjazmasterdata1 ?? '').trim())
+            .filter(Boolean);
+          if (!cancelled) {
+            setBenefitsOptions(Array.from(new Set(benefits)));
+            setKpiOptions(Array.from(new Set(kpis)));
+          }
+          if (!cancelled) await loadProgramManagerEmails();
+          if (!cancelled) await loadPrograms();
         }
-        if (!cancelled) await loadProgramManagerEmails();
-        if (!cancelled) await loadPrograms();
       } catch (error) {
         if (!cancelled) setProgramFormMsg(error instanceof Error ? error.message : 'Failed to load dropdown values');
       }
@@ -2678,6 +4986,12 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       cancelled = true;
     };
   }, [activeNav]);
+
+  useEffect(() => {
+    if (activeNav !== 'Portfolio') return;
+    if (programPortfolioPage > programPortfolioTotalPages) setProgramPortfolioPage(programPortfolioTotalPages);
+    if (programPortfolioPage < 1) setProgramPortfolioPage(1);
+  }, [activeNav, programPortfolioPage, programPortfolioTotalPages]);
 
   const getValueFromRow = (row: Record<string, unknown>, key: string): unknown => {
     if (row[key] !== undefined) return row[key];
@@ -2741,6 +5055,14 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     });
     setProgramFormErrors({});
     setProgramFormMsg('');
+  };
+
+  const cancelProgramForm = () => {
+    setShowAddProgramForm(false);
+    setProgramFormMsg('');
+    setProgramFormErrors({});
+    setEditingProgramId(null);
+    setProgramFormMode('add');
   };
 
   const openAddProgram = () => {
@@ -2874,380 +5196,6 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const loadProjectFormData = async () => {
-    setProjectMetaLoading(true);
-    try {
-      const [projectMetaRes, masterRes, usersRes, programsRes, vendorsRes] = await Promise.all([
-        New_projectsService.getMetadata(),
-        EnjazMasterDataService.getAll({ top: 1000, orderBy: ['new_code asc'] }),
-        NewUsersService.getAll({ top: 500, orderBy: ['createdon desc'] }),
-        New_programsService.getAll({ top: 500, orderBy: ['createdon desc'] }),
-        New_vendorsService.getAll({ top: 500, orderBy: ['createdon desc'] }),
-      ]);
-      const attrs = ((projectMetaRes as { data?: { Attributes?: Array<Record<string, unknown>> } })?.data?.Attributes ?? []);
-      const attrByLogical = new Map(
-        attrs.map((a) => [String(a.LogicalName ?? a.logicalName ?? '').toLowerCase(), a] as const),
-      );
-      const logicalNames = attrs
-        .map((a) => String(a.LogicalName ?? a.logicalName ?? '').trim())
-        .filter(Boolean);
-      setProjectAvailableColumns(logicalNames.map((n) => n.toLowerCase()));
-      const detectedMilestone =
-        String(pickLogicalFromAttrs(attrs, ['milestone'], ['milestone'], ['name', 'id'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['milestone'], ['milestone'], ['name', 'id'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['milestone'], ['name', 'id'])
-        || 'new_milestone';
-      const detectedSector =
-        String(pickLogicalFromAttrs(attrs, ['sector'], ['sector', 'department'], ['name', 'id'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['sector'], ['sector', 'department'], ['name', 'id'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['sector'], ['name', 'id'])
-        || 'new_sector';
-      const detectedProjectStatus =
-        String(pickLogicalFromAttrs(attrs, ['project', 'status'], ['project', 'status'], ['program', 'statecode', 'statuscode'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['project', 'status'], ['project', 'status'], ['program', 'statecode', 'statuscode'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['project', 'status'], ['program', 'statecode', 'statuscode'])
-        || logicalNames.find((n) => n.toLowerCase() === 'new_status')
-        || logicalNames.find((n) => n.toLowerCase() === 'new_projectstatus')
-        || 'new_projectstatus';
-      const detectedProjectCategory =
-        String(pickLogicalFromAttrs(attrs, ['project', 'category'], ['project', 'category'], ['name', 'id'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['project', 'category'], ['project', 'category'], ['name', 'id'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['project', 'category'], ['name', 'id'])
-        || 'new_projectcategory';
-      const detectedMethodology =
-        String(pickLogicalFromAttrs(attrs, ['methodology'], ['methodology'], ['name', 'id'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['methodology'], ['methodology'], ['name', 'id'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['methodology'], ['name', 'id'])
-        || 'new_methodology';
-      const detectedProgram =
-        String(pickLogicalFromAttrs(attrs, ['program'], ['program name', 'program'], ['manager', 'status', 'priority', 'type', 'category'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['program'], ['program name', 'program'], ['manager', 'status', 'priority', 'type', 'category'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['program'], ['manager', 'status', 'priority', 'type', 'category'])
-        || 'new_programid';
-      const detectedKpi =
-        String(pickLogicalFromAttrs(attrs, ['kpi'], ['kpi'], ['name', 'id'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['kpi'], ['kpi'], ['name', 'id'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['kpi'], ['name', 'id'])
-        || 'new_kpi';
-      const detectedRisks =
-        String(pickLogicalFromAttrs(attrs, ['risk'], ['risk'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['risk'], ['risk'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['risk'])
-        || 'new_risks';
-      const detectedManager =
-        String(pickLogicalFromAttrs(attrs, ['manager'], ['project manager', 'manager'], ['name'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['manager'], ['project manager', 'manager'], ['name'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['manager'], ['name'])
-        || 'new_programmanager';
-      const detectedSponsor =
-        String(pickLogicalFromAttrs(attrs, ['sponsor'], ['project sponsor', 'sponsor'], ['name'])?.LogicalName ?? '').trim()
-        || String(pickLogicalFromAttrs(attrs, ['sponsor'], ['project sponsor', 'sponsor'], ['name'])?.logicalName ?? '').trim()
-        || pickLogicalByContains(logicalNames, ['sponsor'], ['name'])
-        || 'new_projectsponsor';
-      const detectedProgramText = pickLogicalByDisplayLabel(attrs, 'Program Name') ?? detectedProgram;
-      const detectedProjectCategoryText = pickLogicalByDisplayLabel(attrs, 'Project Category') ?? detectedProjectCategory;
-      const detectedManagerText = pickLogicalByDisplayLabel(attrs, 'Project Manager') ?? detectedManager;
-      const detectedRisksText = pickLogicalByDisplayLabel(attrs, 'Risks') ?? detectedRisks;
-      const detectedKpiText = pickLogicalByDisplayLabel(attrs, 'KPI') ?? detectedKpi;
-      const detectedMethodologyText = pickLogicalByDisplayLabel(attrs, 'Methodology') ?? detectedMethodology;
-      const detectedSectorText = pickLogicalByDisplayLabel(attrs, 'Sector') ?? detectedSector;
-      const detectedMilestoneText = pickLogicalByDisplayLabel(attrs, 'Mile Stone') ?? pickLogicalByDisplayLabel(attrs, 'Milestone') ?? detectedMilestone;
-      const detectedSponsorText = pickLogicalByDisplayLabel(attrs, 'Project Sponsor') ?? detectedSponsor;
-      setProjectChoiceColumns((prev) => ({
-        ...prev,
-        projectStatus: detectedProjectStatus,
-        projectCategory: detectedProjectCategory,
-        methodology: detectedMethodology,
-      }));
-      setProjectTextColumns((prev) => ({
-        ...prev,
-        program: detectedProgramText,
-        projectCategory: detectedProjectCategoryText,
-        kpi: detectedKpiText,
-        risks: detectedRisksText,
-        methodology: detectedMethodologyText,
-        assignPm: detectedManagerText,
-        sponsor: detectedSponsorText,
-        milestone: detectedMilestoneText,
-        department: detectedSectorText,
-      }));
-      const fallbackProjectPriority = Object.entries(New_projectsnew_projectpriority).map(([value, label]) => ({ value: Number(value), label }));
-      const fallbackProjectType = Object.entries(New_projectsnew_projecttype).map(([value, label]) => ({ value: Number(value), label }));
-      const fallbackStrategicGoal = Object.entries(New_projectsnew_strategicgoal).map(([value, label]) => ({ value: Number(value), label }));
-      const fallbackProjectStatus = Object.entries(New_projectsnew_projectstatus).map(([value, label]) => ({ value: Number(value), label }));
-      const metaProjectPriority = optionsFromMetadataAttribute(attrs, 'new_projectpriority');
-      const metaProjectType = optionsFromMetadataAttribute(attrs, 'new_projecttype');
-      const metaStrategicGoal = optionsFromMetadataAttribute(attrs, 'new_strategicgoal');
-      const metaProjectStatus = optionsFromMetadataAttribute(attrs, detectedProjectStatus);
-      const metaMethodology = optionsFromMetadataAttribute(attrs, detectedMethodology);
-      const metaProjectCategory = optionsFromMetadataAttribute(attrs, detectedProjectCategory);
-      const metaMilestone = optionsFromMetadataAttribute(attrs, detectedMilestone);
-      const metaSector = optionsFromMetadataAttribute(attrs, detectedSector);
-      const metaProjectSponsor = optionsFromMetadataAttribute(attrs, 'new_projectsponsor');
-      const fallbackMethodology = [
-        { value: 100000000, label: 'Agile' },
-        { value: 100000001, label: 'Waterfall' },
-      ];
-      setProjectFieldOptionMap({
-        new_projectpriority: metaProjectPriority.length > 0 ? metaProjectPriority : fallbackProjectPriority,
-        new_projecttype: metaProjectType.length > 0 ? metaProjectType : fallbackProjectType,
-        new_strategicgoal: metaStrategicGoal.length > 0 ? metaStrategicGoal : fallbackStrategicGoal,
-        [detectedProjectStatus]: metaProjectStatus.length > 0 ? metaProjectStatus : fallbackProjectStatus,
-        [detectedProjectCategory]: metaProjectCategory,
-        [detectedMethodology]: metaMethodology.length > 0 ? metaMethodology : fallbackMethodology,
-        [detectedMilestone]: metaMilestone,
-        [detectedSector]: metaSector,
-        new_projectsponsor: metaProjectSponsor,
-      });
-      setProjectFieldTypeMap({
-        new_projectpriority: attrTypeName(attrByLogical.get('new_projectpriority')),
-        new_projecttype: attrTypeName(attrByLogical.get('new_projecttype')),
-        new_strategicgoal: attrTypeName(attrByLogical.get('new_strategicgoal')),
-        [detectedProjectStatus]: attrTypeName(attrByLogical.get(detectedProjectStatus.toLowerCase())),
-        [detectedProjectCategory]: attrTypeName(attrByLogical.get(detectedProjectCategory.toLowerCase())),
-        [detectedMethodology]: attrTypeName(attrByLogical.get(detectedMethodology.toLowerCase())),
-        [detectedMilestone]: attrTypeName(attrByLogical.get(detectedMilestone.toLowerCase())),
-        [detectedSector]: attrTypeName(attrByLogical.get(detectedSector.toLowerCase())),
-        new_projectsponsor: attrTypeName(attrByLogical.get('new_projectsponsor')),
-      });
-      setProjectChoiceOptions({
-        projectPriority: metaProjectPriority.length > 0 ? metaProjectPriority : fallbackProjectPriority,
-        projectType: metaProjectType.length > 0 ? metaProjectType : fallbackProjectType,
-        strategicGoal: metaStrategicGoal.length > 0 ? metaStrategicGoal : fallbackStrategicGoal,
-        projectStatus: metaProjectStatus.length > 0 ? metaProjectStatus : fallbackProjectStatus,
-        projectCategory: metaProjectCategory,
-        methodology: metaMethodology.length > 0 ? metaMethodology : fallbackMethodology,
-        projectSponsor: metaProjectSponsor,
-      });
-
-      if (!masterRes.success) throw new Error(masterRes.error?.message ?? 'Failed to load master data');
-      const masterRows = (masterRes.data ?? []).filter((r) => isMasterActive(r));
-      const getByCategory = (categoryCandidates: string[]) =>
-        Array.from(
-          new Set(
-            masterRows
-              .filter((r) => {
-                const cat = normalizeCategory(categoryFromMaster(r));
-                const byCategoryName = categoryCandidates.some((c) => cat.includes(normalizeCategory(c)));
-                const code = String(r.new_uniqueid ?? '').trim();
-                const byCodePrefix =
-                  (categoryCandidates.some((c) => normalizeCategory(c).includes('projectcategory')) && /^P\d+$/i.test(code))
-                  || (categoryCandidates.some((c) => normalizeCategory(c).includes('sector')) && /^S\d+$/i.test(code));
-                return byCategoryName || byCodePrefix;
-              })
-              .map((r) => String(r.new_enjazmasterdata1 ?? '').trim())
-              .filter(Boolean),
-          ),
-        );
-      setProjectMasterOptions({
-        program: programsRes.success
-          ? Array.from(new Set((programsRes.data ?? []).map((p) => String(p.new_name ?? '').trim()).filter(Boolean)))
-          : [],
-        projectCategory: (() => {
-          const vals = getByCategory(['projectcategory', 'project category']);
-          if (vals.length > 0) return vals;
-          return optionsFromMetadataAttribute(attrs, detectedProjectCategory).map((o) => o.label);
-        })(),
-        kpi: getByCategory(['kpi']),
-        methodology: getByCategory(['methodology', 'methodologymaster']),
-        milestone: getByCategory(['milestone']),
-        sector: getByCategory(['sector', 'department']),
-      });
-
-      const userRows = usersRes.success ? (usersRes.data ?? []) : [];
-      const userIdMap: Record<string, string> = {};
-      userRows.forEach((u) => {
-        const email = String(u.new_newcolumn ?? u.new_userid ?? '').trim();
-        const id = String(u.new_usersid ?? '').trim();
-        if (email && id) userIdMap[email.toLowerCase()] = id;
-      });
-      setProjectUserIdByEmail(userIdMap);
-      const projectRoleUsers = userRows.filter((u) => String(u.new_role ?? '') === '100000003' || String(u.new_rolename ?? '').toLowerCase() === 'project');
-      setProjectManagerEmails(
-        Array.from(new Set(projectRoleUsers.map((u) => String(u.new_newcolumn ?? u.new_userid ?? '').trim()).filter(Boolean))),
-      );
-      const activeUsers = userRows.filter((u) => String(u.new_status ?? '') === '100000000' || String(u.new_statusname ?? '').toLowerCase() === 'active');
-      setProjectSponsorEmails(
-        Array.from(new Set(activeUsers.map((u) => String(u.new_newcolumn ?? u.new_userid ?? '').trim()).filter(Boolean))),
-      );
-      const programIdMap: Record<string, string> = {};
-      if (programsRes.success) {
-        (programsRes.data ?? []).forEach((p) => {
-          const name = String(p.new_name ?? '').trim();
-          const id = String(p.new_programid ?? '').trim();
-          if (name && id) programIdMap[name.toLowerCase()] = id;
-        });
-      }
-      setProjectProgramIdByName(programIdMap);
-      const vendorRows = vendorsRes.success ? ((vendorsRes.data ?? []) as unknown as Array<Record<string, unknown>>) : [];
-      const activeVendors = vendorRows.filter((v) => {
-        const statusName = readFirstString(v, ['new_statusname', 'statusname', 'Status']).toLowerCase();
-        const statusCode = readFirstString(v, ['new_status', 'status', 'StatusCode']);
-        const appStatus = readFirstString(v, ['new_appstatus', 'appstatus', 'AppStatus']).toLowerCase();
-        const stateCode = readFirstString(v, ['statecode', 'StateCode']);
-        return statusName === 'active' || statusCode === '100000000' || appStatus === 'active' || stateCode === '0';
-      });
-      const byName = new Map<string, { label: string; value: string }>();
-      activeVendors.forEach((v) => {
-        const label = readFirstString(v, ['new_vendorname', 'vendorname', 'VendorName', 'Vendor Name']);
-        const value = readFirstString(v, ['new_vendoremail', 'vendoremail', 'VendorEmail', 'Vendor Email']);
-        if (!label || !value || byName.has(label)) return;
-        byName.set(label, { label, value });
-      });
-      const options = Array.from(byName.values());
-      if (options.length === 0) {
-        vendorRows.forEach((v) => {
-          const label = readFirstString(v, ['new_vendorname', 'vendorname', 'VendorName', 'Vendor Name']);
-          const value = readFirstString(v, ['new_vendoremail', 'vendoremail', 'VendorEmail', 'Vendor Email']);
-          if (!label || !value || byName.has(label)) return;
-          byName.set(label, { label, value });
-        });
-      }
-      setVendorOptions(Array.from(byName.values()));
-    } catch (error) {
-      setProgramToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load project form data' });
-    } finally {
-      setProjectMetaLoading(false);
-    }
-  };
-
-  const clearProjectForm = () => {
-    setProjectForm({
-      projectName: '',
-      programName: '',
-      vendorName: '',
-      projectPriority: '',
-      projectCategory: '',
-      projectType: '',
-      strategicGoal: '',
-      budget: '',
-      assignToProjectManager: '',
-      risks: '',
-      kpi: '',
-      methodology: '',
-      startDate: todayIso,
-      endDate: todayIso,
-      department: '',
-      projectStatus: '',
-      milestone: '',
-      projectSponsor: '',
-      note: '',
-      attachment: null,
-    });
-    setProjectFormErrors({});
-  };
-
-  const saveProject = async () => {
-    const req: Record<string, string> = {};
-    if (!projectForm.projectName.trim()) req.projectName = 'Project Name is required';
-    if (!projectForm.programName) req.programName = 'Program Name is required';
-    if (!projectForm.vendorName.trim()) req.vendorName = 'Vendor Name is required';
-    if (!projectForm.projectPriority) req.projectPriority = 'Project Priority is required';
-    if (!projectForm.projectCategory) req.projectCategory = 'Project Category is required';
-    if (!projectForm.projectType) req.projectType = 'Project Type is required';
-    if (!projectForm.strategicGoal) req.strategicGoal = 'Strategic Goal is required';
-    if (!projectForm.budget.trim()) req.budget = 'Budget is required';
-    else if (!/^\d+(\.\d+)?$/.test(projectForm.budget.trim())) req.budget = 'Budget must be numbers only';
-    if (!projectForm.assignToProjectManager) req.assignToProjectManager = 'Project Manager is required';
-    if (!projectForm.risks.trim()) req.risks = 'Risks is required';
-    if (!projectForm.methodology) req.methodology = 'Methodology is required';
-    if (!projectForm.startDate) req.startDate = 'Start Date is required';
-    if (!projectForm.endDate) req.endDate = 'End Date is required';
-    if (projectForm.startDate && projectForm.startDate < todayIso) req.startDate = 'Start Date cannot be in the past';
-    if (projectForm.endDate && projectForm.endDate < todayIso) req.endDate = 'End Date cannot be in the past';
-    if (projectForm.startDate && projectForm.endDate && projectForm.endDate < projectForm.startDate) req.endDate = 'End Date should be after Start Date';
-    if (!projectForm.department) req.department = 'Department is required';
-    if (!projectForm.projectStatus) req.projectStatus = 'Project Status is required';
-    if (!projectForm.milestone) req.milestone = 'Milestone is required';
-    if (!projectForm.projectSponsor) req.projectSponsor = 'Project Sponsor is required';
-    setProjectFormErrors(req);
-    if (Object.keys(req).length > 0) return;
-
-    const normalizeChoiceLabel = (value: string) => value.toLowerCase().replace(/[\s_\-]+/g, '');
-    const toChoice = (options: Array<{ label: string; value: number }>, label: string) =>
-      options.find((o) => normalizeChoiceLabel(o.label) === normalizeChoiceLabel(label))?.value;
-
-    const coerceByFieldType = (logicalName: string, input: string) => {
-      const type = (projectFieldTypeMap[logicalName] ?? '').toLowerCase();
-      const options = projectFieldOptionMap[logicalName] ?? [];
-      if (type.includes('picklist') || type.includes('integer') || type.includes('int32')) {
-        const matched = toChoice(options, input);
-        if (matched !== undefined) return matched;
-        const numeric = Number(input);
-        if (!Number.isNaN(numeric)) return numeric;
-      }
-      return input;
-    };
-
-    const effectiveNote = (projectForm.note || '').trim();
-
-    const payload: Record<string, unknown> = {
-      new_name: projectForm.projectName.trim(),
-      [projectTextColumns.projectName]: projectForm.projectName.trim(),
-      [projectTextColumns.vendor]: projectForm.vendorName.trim(),
-      [projectTextColumns.budget]: Number(projectForm.budget.trim()),
-      crcf8_note: effectiveNote || undefined,
-      [projectTextColumns.startDate]: new Date(projectForm.startDate).toISOString(),
-      [projectTextColumns.endDate]: new Date(projectForm.endDate).toISOString(),
-    };
-    const hasColumn = (logicalName: string) => projectAvailableColumns.includes(logicalName.toLowerCase());
-    payload.crcf8_programname = projectForm.programName;
-    payload.new_projectpriority = Number(projectForm.projectPriority);
-    payload.new_projecttype = Number(projectForm.projectType);
-    payload.new_strategicgoal = Number(projectForm.strategicGoal);
-    payload.crcf8_risks = projectForm.risks.trim();
-    payload.crcf8_projectmanager = projectForm.assignToProjectManager;
-    payload.new_kpi = projectForm.kpi;
-    payload.new_projectcategory = projectForm.projectCategory;
-    payload.new_methodology = coerceByFieldType('new_methodology', projectForm.methodology);
-    payload.new_sector = projectForm.department;
-    payload.crcf8_milestone = projectForm.milestone;
-    payload.new_projectstatus = Number(projectForm.projectStatus);
-    if (!hasColumn(projectTextColumns.projectCategory) && hasColumn(projectChoiceColumns.projectCategory)) payload[projectChoiceColumns.projectCategory] = coerceByFieldType(projectChoiceColumns.projectCategory, projectForm.projectCategory);
-    if (!hasColumn(projectTextColumns.methodology) && hasColumn(projectChoiceColumns.methodology)) payload[projectChoiceColumns.methodology] = coerceByFieldType(projectChoiceColumns.methodology, projectForm.methodology);
-    payload.crcf8_projectsponsor = projectForm.projectSponsor;
-
-    setProjectFormBusy(true);
-    try {
-      const res = await New_projectsService.create(payload as Parameters<typeof New_projectsService.create>[0]);
-      if (!res.success) throw new Error(res.error?.message ?? 'Failed to create project');
-
-      setShowAddProjectForm(false);
-      clearProjectForm();
-      setProgramToast({ type: 'success', message: 'Project created successfully.' });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Failed to create project';
-      setProgramToast({ type: 'error', message: msg });
-    } finally {
-      setProjectFormBusy(false);
-    }
-  };
-
-  const loadProjectRows = async () => {
-    setProjectRowsLoading(true);
-    try {
-      const res = await New_projectsService.getAll({ top: 500, orderBy: ['createdon desc'] });
-      if (!res.success) throw new Error(res.error?.message ?? 'Failed to load projects');
-      setProjectRows((res.data ?? []) as unknown as Array<Record<string, unknown>>);
-    } catch (error) {
-      setProgramToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load projects' });
-    } finally {
-      setProjectRowsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeNav === 'Projects' && showAddProjectForm) {
-      void loadProjectFormData();
-    }
-  }, [activeNav, showAddProjectForm]);
-
-  useEffect(() => {
-    if (activeNav === 'Projects' && !showAddProjectForm) {
-      void loadProjectRows();
-    }
-  }, [activeNav, showAddProjectForm]);
-
   const rowValueText = (row: Record<string, unknown>, column?: string) => {
     if (!column) return '-';
     if (column === (programColumns.status ?? 'new_status')) {
@@ -3266,59 +5214,100 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     if (value === undefined || value === null || String(value).trim() === '') return '-';
     return String(value);
   };
-
-  const readProjectStatusLabel = (row: Record<string, unknown>) => {
-    const named =
-      String(row.new_projectstatusname ?? row[`${projectChoiceColumns.projectStatus}name`] ?? '').trim();
-    if (named) return named.toLowerCase();
-    const raw = Number(row.new_projectstatus ?? row[projectChoiceColumns.projectStatus] ?? NaN);
-    const dynamic = projectChoiceOptions.projectStatus.find((s) => s.value === raw)?.label;
-    if (dynamic) return dynamic.toLowerCase();
-    const fallback = New_projectsnew_projectstatus[raw as keyof typeof New_projectsnew_projectstatus];
-    return String(fallback ?? '').toLowerCase();
+  const readProgramPortfolioText = (
+    row: Record<string, unknown>,
+    primary?: string,
+    fallbacks: string[] = [],
+  ) => {
+    const keys = [primary, ...fallbacks].filter(Boolean) as string[];
+    for (const key of keys) {
+      const value = rowValueText(row, key);
+      if (value !== '-') return value;
+    }
+    return '-';
   };
 
-  const boardProjectsByStatus = projectBoardColumns.reduce<Record<string, Array<Record<string, unknown>>>>((acc, column) => {
-    acc[column.title] = [];
-    return acc;
-  }, {});
-  projectRows.forEach((row) => {
-    const status = readProjectStatusLabel(row);
-    if (status.includes('tostart') || status.includes('to start') || status.includes('planned')) {
-      boardProjectsByStatus['To Start'].push(row);
-    } else if (status.includes('ontrack') || status.includes('on track') || status.includes('active')) {
-      boardProjectsByStatus['On Track'].push(row);
-    } else if (status.includes('delay')) {
-      boardProjectsByStatus.Delayed.push(row);
-    } else if (status.includes('complete')) {
-      boardProjectsByStatus.Completed.push(row);
+  /** Program list screen — budget donut from `new_program` / `programRows` (same source as the grid). */
+  const programListBudgetChartSlices = useMemo((): { label: string; value: number; color: string }[] => {
+    try {
+      const colors = ['#323b8f', '#1fcf92', '#d4a759', '#60a5fa', '#d65257', '#8b5cf6'];
+      const withBudget = programRows
+        .map((row) => {
+          const name =
+            String(getValueFromRow(row, programColumns.name ?? 'new_name') ?? getValueFromRow(row, 'new_name') ?? 'Program')
+              .trim() || 'Program';
+          const display = getProgramBudgetDisplay(row);
+          const n = parseFloat(String(display).replace(/[^0-9.+-]/g, ''));
+          const budget = Number.isFinite(n) && n > 0 ? n : 0;
+          return { name, budget };
+        })
+        .filter((x) => x.budget > 0);
+      if (withBudget.length === 0) {
+        return [{ label: 'No budget data', value: 1, color: '#e5e7eb' }];
+      }
+      const sorted = [...withBudget].sort((a, b) => b.budget - a.budget);
+      const top = sorted.slice(0, 5);
+      const otherSum = sorted.slice(5).reduce((s, x) => s + x.budget, 0);
+      const slices: { label: string; value: number; color: string }[] = top.map((x, i) => ({
+        label: x.name.length > 16 ? `${x.name.slice(0, 15)}…` : x.name,
+        value: Math.max(0, Math.round(x.budget)),
+        color: colors[i % colors.length] ?? '#94a3b8',
+      }));
+      if (otherSum > 0) {
+        slices.push({ label: 'Other', value: Math.max(0, Math.round(otherSum)), color: '#dbe2f4' });
+      }
+      return slices;
+    } catch {
+      return [{ label: 'No data', value: 1, color: '#e5e7eb' }];
     }
-  });
+  }, [programRows, programColumns]);
+
+  /** Program list screen — one bar per program (progress %), same rows as the grid, max 6 visible. */
+  const programListProgressBarRows = useMemo((): { name: string; pct: number }[] => {
+    try {
+      const col = programColumns.progress;
+      return programRows.map((row) => {
+        const name =
+          String(getValueFromRow(row, programColumns.name ?? 'new_name') ?? getValueFromRow(row, 'new_name') ?? '—')
+            .trim() || '—';
+        let pct = 0;
+        if (col) {
+          const t = rowValueText(row, col);
+          if (t !== '-') {
+            const n = parseFloat(String(t).replace(/%/g, ''));
+            if (Number.isFinite(n)) pct = Math.min(100, Math.max(0, n));
+          }
+        }
+        if (pct === 0) {
+          const n = Number(getValueFromRow(row, 'new_progress') ?? getValueFromRow(row, 'crcf8_progress') ?? NaN);
+          if (Number.isFinite(n)) pct = Math.min(100, Math.max(0, n));
+        }
+        return { name, pct };
+      });
+    } catch {
+      return [];
+    }
+  }, [programRows, programColumns, statusOptions]);
+
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
-      <aside className="w-52 bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
+      <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         <div className="px-5 py-5 border-b border-gray-100">
           <LogoMark />
         </div>
-        <nav className="flex-1 py-4 px-3 space-y-1">
+        <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-1">
           {navItems.map(({ name, icon }) => (
             <button
               key={name}
               type="button"
               onClick={() => {
                 setActiveNav(name);
-                if (name !== 'Projects') {
-                  setShowAddProjectForm(false);
-                }
                 if (name !== 'Meetings') {
                   setShowAddMeetingForm(false);
                 }
                 if (name !== 'Deliverables') {
                   setShowAddDeliverableForm(false);
-                }
-                if (name !== 'Reports') {
-                  setShowAddReportForm(false);
                 }
                 if (name !== 'Program') {
                   setShowAddProgramForm(false);
@@ -3326,7 +5315,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 activeNav === name
-                  ? 'bg-indigo-50 text-[#151d5d]'
+                  ? 'bg-indigo-50 text-primary'
                   : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
               }`}
             >
@@ -3335,34 +5324,42 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
             </button>
           ))}
         </nav>
+        <div className="shrink-0 border-t border-gray-100 px-3 py-4">
+          <ThemeModeToggle />
+        </div>
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-4 h-10 w-[420px] max-w-[52vw]">
-              <input className="bg-transparent text-sm text-gray-500 outline-none w-full" placeholder="Search anything..." />
-              <Search size={18} className="text-gray-400" />
-            </div>
-            <NotificationBell />
-            <ProfileDropdown onLogout={onLogout} />
+            <NotificationBell items={programNotifications} />
+            <ProfileDropdown onLogout={onLogout} roleLabel="Program" />
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-5 space-y-4">
-          {programToast && <NotificationToast type={programToast.type} message={programToast.message} onClose={() => setProgramToast(null)} />}
+        <main
+          className={`enj-app-main flex-1 min-h-0 min-w-0 flex flex-col ${
+            activeNav === 'Projects' ? 'overflow-hidden' : 'overflow-y-auto'
+          }`}
+        >
+          {programToast && (
+            <div className="shrink-0">
+              <NotificationToast type={programToast.type} message={programToast.message} onClose={() => setProgramToast(null)} />
+            </div>
+          )}
+          <div className={activeNav === 'Projects' ? 'flex min-h-0 flex-1 flex-col overflow-hidden min-w-0' : 'space-y-4'}>
           {activeNav === 'Program' ? (
             <>
               {showAddProgramForm ? (
                 <section className="bg-white rounded-xl p-6 shadow-sm">
                   <div className="flex items-start justify-between mb-6">
-                    <h2 className="text-2xl font-bold text-[#20243b]">
+                    <h2 className={enj.pageTitle}>
                       {programFormMode === 'edit' ? 'Program / Edit Program' : 'Program / Add New Program'}
                     </h2>
                     <button
                       type="button"
                       className="text-3xl leading-none text-gray-500 hover:text-gray-700"
-                      onClick={() => setShowAddProgramForm(false)}
+                      onClick={cancelProgramForm}
                     >
                       ×
                     </button>
@@ -3372,7 +5369,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     <label>
                       <span className="text-sm text-[#353b57]">Program Name <span className="text-rose-500">*</span></span>
                       <input
-                        className="mt-2 h-10 w-full rounded-sm border border-gray-300 px-3 text-sm"
+                        className={`${enj.control} mt-2`}
                         placeholder="Enter"
                         value={programForm.programName}
                         onChange={(e) => setProgramForm((f) => ({ ...f, programName: e.target.value }))}
@@ -3382,7 +5379,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     <label>
                       <span className="text-sm text-[#353b57]">Benefits <span className="text-rose-500">*</span></span>
                       <select
-                        className="mt-2 h-10 w-full rounded-sm border border-gray-300 px-3 text-sm text-gray-500"
+                        className={`${enj.control} mt-2 text-gray-500`}
                         value={programForm.benefits}
                         onChange={(e) => setProgramForm((f) => ({ ...f, benefits: e.target.value }))}
                       >
@@ -3396,7 +5393,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     <label>
                       <span className="text-sm text-[#353b57]">Project Manager <span className="text-rose-500">*</span></span>
                       <select
-                        className="mt-2 h-10 w-full rounded-sm border border-gray-300 px-3 text-sm text-gray-500"
+                        className={`${enj.control} mt-2 text-gray-500`}
                         value={programForm.programManager}
                         onChange={(e) => setProgramForm((f) => ({ ...f, programManager: e.target.value }))}
                       >
@@ -3412,9 +5409,9 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
                     <label>
                       <span className="text-sm text-[#353b57]">Budgets <span className="text-rose-500">*</span></span>
-                      <div className="mt-2 flex h-10 overflow-hidden rounded-sm border border-gray-300">
+                      <div className={`mt-2 flex h-9 overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm`}>
                         <input
-                          className="h-full flex-1 px-3 text-sm outline-none"
+                          className="h-full min-h-0 flex-1 border-0 bg-transparent px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-inset focus:ring-secondary/30"
                           placeholder="Enter"
                           value={programForm.budget}
                           inputMode="decimal"
@@ -3423,7 +5420,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                             if (/^\d*\.?\d*$/.test(next)) setProgramForm((f) => ({ ...f, budget: next }));
                           }}
                         />
-                        <span className="w-12 border-l border-gray-300 text-xs text-gray-500 flex items-center justify-center">AED</span>
+                        <span className="w-12 border-l border-gray-200 text-xs text-gray-500 flex items-center justify-center">AED</span>
                       </div>
                       {programFormErrors.budget && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.budget}</p>}
                     </label>
@@ -3432,7 +5429,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                       <input
                         type="date"
                         min={programFormMode === 'add' ? todayIso : undefined}
-                        className="mt-2 h-10 w-full rounded-sm border border-gray-300 px-3 text-sm outline-none"
+                        className={`${enj.control} mt-2`}
                         value={programForm.startDate}
                         onChange={(e) => setProgramForm((f) => ({ ...f, startDate: e.target.value }))}
                       />
@@ -3443,7 +5440,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                       <input
                         type="date"
                         min={programForm.startDate || (programFormMode === 'add' ? todayIso : undefined)}
-                        className="mt-2 h-10 w-full rounded-sm border border-gray-300 px-3 text-sm outline-none"
+                        className={`${enj.control} mt-2`}
                         value={programForm.endDate}
                         onChange={(e) => setProgramForm((f) => ({ ...f, endDate: e.target.value }))}
                       />
@@ -3452,7 +5449,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     <label>
                       <span className="text-sm text-[#353b57]">ROI <span className="text-rose-500">*</span></span>
                       <input
-                        className="mt-2 h-10 w-full rounded-sm border border-gray-300 px-3 text-sm"
+                        className={`${enj.control} mt-2`}
                         placeholder="Enter ROI Value"
                         value={programForm.roi}
                         onChange={(e) => setProgramForm((f) => ({ ...f, roi: e.target.value }))}
@@ -3463,7 +5460,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     <label>
                       <span className="text-sm text-[#353b57]">KPI <span className="text-rose-500">*</span></span>
                       <select
-                        className="mt-2 h-10 w-full rounded-sm border border-gray-300 px-3 text-sm text-gray-500"
+                        className={`${enj.control} mt-2 text-gray-500`}
                         value={programForm.kpi}
                         onChange={(e) => setProgramForm((f) => ({ ...f, kpi: e.target.value }))}
                       >
@@ -3477,7 +5474,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     <label>
                       <span className="text-sm text-[#353b57]">Program Status <span className="text-rose-500">*</span></span>
                       <select
-                        className="mt-2 h-10 w-full rounded-sm border border-gray-300 px-3 text-sm text-gray-500"
+                        className={`${enj.control} mt-2 text-gray-500`}
                         value={programForm.status}
                         onChange={(e) => setProgramForm((f) => ({ ...f, status: e.target.value }))}
                       >
@@ -3491,19 +5488,20 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                   {programFormMsg && <p className="mt-4 text-sm text-gray-700">{programFormMsg}</p>}
 
-                  <div className="mt-16 flex items-center justify-end gap-5">
+                  <div className="mt-10 flex items-center justify-end gap-2">
                     <button
                       type="button"
-                      className="h-10 px-10 rounded-xl border border-[#b59b59] text-[#8f7a43] text-lg"
-                      onClick={clearProgramForm}
+                      className={`${enj.btn} ${enj.btnOutline} px-4 font-medium`}
+                      onClick={cancelProgramForm}
+                      disabled={programFormBusy}
                     >
-                      Clear
+                      Cancel
                     </button>
                     <button
                       type="button"
                       onClick={() => void saveProgram()}
                       disabled={programFormBusy}
-                      className="h-10 px-12 rounded-xl bg-[#b59b59] text-white text-lg disabled:opacity-50"
+                      className={`${enj.btn} ${enj.btnPrimary} px-5 font-medium disabled:opacity-50 hover:brightness-105`}
                     >
                       {programFormBusy ? 'Saving...' : programFormMode === 'edit' ? 'Update' : 'Save'}
                     </button>
@@ -3512,10 +5510,10 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               ) : (
                 <>
                   <section className="flex items-center justify-between">
-                    <h2 className="text-3xl font-bold text-[#2f3150]">Programs</h2>
+                    <h2 className={enj.pageTitle}>Programs</h2>
                     <div className="flex items-center gap-2">
                       <button
-                        className="h-8 px-4 rounded-md border border-gray-200 bg-white text-xs text-gray-600"
+                        className={`${enj.btn} ${enj.btnDefault} text-xs`}
                         onClick={async () => {
                           await loadProgramMetadata();
                           await loadProgramManagerEmails();
@@ -3526,7 +5524,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                         {programLoading ? 'Refreshing...' : 'Refresh'}
                       </button>
                       <button
-                        className="h-8 px-4 rounded-md bg-[#b28a44] text-white text-sm font-medium"
+                        className={`${enj.btn} ${enj.btnPrimary} font-medium`}
                         onClick={openAddProgram}
                       >
                         Add New Program
@@ -3535,28 +5533,34 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   </section>
 
                   <section className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-3">
-                    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                      <table className="w-full">
-                        <thead className="bg-indigo-100 border-y border-indigo-200">
-                          <tr className="text-[10px] text-[#3b4f8f] uppercase text-left">
-                            <th className="px-3 py-2">Program Name</th>
-                            <th className="px-3 py-2">Benefits</th>
-                            <th className="px-3 py-2">Project Manager</th>
-                            <th className="px-3 py-2">Budgets</th>
-                            <th className="px-3 py-2">KPI</th>
-                            <th className="px-3 py-2">Status</th>
-                            <th className="px-3 py-2">Progress</th>
-                            <th className="px-3 py-2">Action</th>
+                    <div className="overflow-x-auto rounded-xl border border-[#E5E7EB] bg-[#eef2f9] px-2 py-3 shadow-sm sm:px-3">
+                      <table className={`${enj.table} enj-program-screen-table w-full min-w-[760px]`}>
+                        <thead>
+                          <tr>
+                            <th scope="col">Program Name</th>
+                            <th scope="col">Benefits</th>
+                            <th scope="col">Project Manager</th>
+                            <th scope="col">Budgets</th>
+                            <th scope="col">KPI</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Progress</th>
+                            <th scope="col" className="w-[4.25rem] text-center">
+                              Action
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           {programLoading ? (
-                            <tr className="border-b border-gray-100 text-xs text-gray-500">
-                              <td className="px-3 py-3" colSpan={8}>Loading programs...</td>
+                            <tr>
+                              <td className="px-4 py-6 text-center text-sm text-[#6B7280]" colSpan={8}>
+                                Loading programs...
+                              </td>
                             </tr>
                           ) : programRows.length === 0 ? (
-                            <tr className="border-b border-gray-100 text-xs text-gray-500">
-                              <td className="px-3 py-3" colSpan={8}>No programs found.</td>
+                            <tr>
+                              <td className="px-4 py-6 text-center text-sm text-[#6B7280]" colSpan={8}>
+                                No programs found.
+                              </td>
                             </tr>
                           ) : programRows.map((row) => {
                             const id = String(row.new_programid ?? row[programColumns.name ?? 'new_name'] ?? Math.random());
@@ -3570,31 +5574,59 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                             };
                             const statusLabel = displayText(programColumns.status, ['new_programstatus']);
                             const progressText = rowValueText(row, programColumns.progress);
-                            const statusClass =
-                              statusLabel.toLowerCase().includes('delayed')
-                                ? 'bg-rose-100 text-rose-700'
-                                : statusLabel.toLowerCase().includes('on hold')
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-emerald-100 text-emerald-700';
+                            const parsedProgress = Number(String(progressText).replace(/%/g, '').trim());
+                            const progressPct = Number.isFinite(parsedProgress)
+                              ? Math.max(0, Math.min(100, parsedProgress))
+                              : NaN;
+
+                            const programDisplayName = displayText(programColumns.name ?? 'new_name', ['new_name']);
+
                             return (
-                              <tr key={id} className="border-b border-gray-100 text-xs text-gray-700">
-                                <td className="px-3 py-2">{displayText(programColumns.name ?? 'new_name', ['new_name'])}</td>
-                                <td className="px-3 py-2">{displayText(programColumns.benefits, ['new_benefits'])}</td>
-                                <td className="px-3 py-2">{displayText(programColumns.manager, ['new_programmanager'])}</td>
-                                <td className="px-3 py-2">{getProgramBudgetDisplay(row)}</td>
-                                <td className="px-3 py-2">{displayText(programColumns.kpi, ['new_kpi'])}</td>
-                                <td className="px-3 py-2">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${statusClass}`}>
+                              <tr key={id} className="enj-program-screen-table__row">
+                                <td>
+                                  <button
+                                    type="button"
+                                    className={`enj-program-screen-table__name-btn ${enj.tableLink}`}
+                                    title={programDisplayName}
+                                    onClick={() => void openEditProgram(row)}
+                                  >
+                                    {programDisplayName}
+                                  </button>
+                                </td>
+                                <td>{displayText(programColumns.benefits, ['new_benefits'])}</td>
+                                <td>{displayText(programColumns.manager, ['new_programmanager'])}</td>
+                                <td>
+                                  <TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} />
+                                </td>
+                                <td>{displayText(programColumns.kpi, ['new_kpi'])}</td>
+                                <td>
+                                  <span className={`enj-table-status ${programTableStatusBadgeClass(statusLabel)}`}>
                                     {statusLabel}
                                   </span>
                                 </td>
-                                <td className="px-3 py-2">{progressText === '-' ? '-' : `${progressText}%`}</td>
-                                <td className="px-3 py-2">
+                                <td className="min-w-[7.5rem]">
+                                  {Number.isFinite(progressPct) ? (
+                                    <div className="flex min-w-[6.5rem] max-w-[9rem] items-center gap-2">
+                                      <div className="enj-table-progress-track min-w-[3rem] flex-1">
+                                        <div
+                                          className="enj-table-progress-fill"
+                                          style={{ width: `${progressPct}%` }}
+                                        />
+                                      </div>
+                                      <span className="enj-program-screen-table__pct">{Math.round(progressPct)}%</span>
+                                    </div>
+                                  ) : (
+                                    '-'
+                                  )}
+                                </td>
+                                <td className="text-center">
                                   <button
-                                    className="h-6 w-6 rounded border border-gray-200 inline-flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                                    type="button"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] text-[#6B7280] shadow-sm transition-colors hover:bg-[#F9FAFB]"
+                                    aria-label={`Edit ${programDisplayName}`}
                                     onClick={() => void openEditProgram(row)}
                                   >
-                                    <Pencil size={12} />
+                                    <Pencil size={14} strokeWidth={2} aria-hidden />
                                   </button>
                                 </td>
                               </tr>
@@ -3606,32 +5638,123 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
                     <aside className="space-y-3">
                       <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
-                        <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Budget chart</h3>
-                        <div className="flex items-center justify-center">
-                          <DonutChart
-                            className="w-40 h-40 chart-svg"
-                            showOuterLabels={false}
-                            ringWidth={42}
-                            slices={[
-                              { label: 'Default Program', value: 68, color: '#323b8f' },
-                              { label: 'Other', value: 32, color: '#dbe2f4' },
-                            ]}
-                          />
+                        <h3 className="text-sm font-semibold text-primary mb-2">Budget chart</h3>
+                        <div className="flex items-center justify-center min-h-[168px]">
+                          {programLoading ? (
+                            <p className="text-xs text-gray-400">Loading…</p>
+                          ) : (
+                            <DonutChart
+                              className="w-40 h-40 chart-svg"
+                              showOuterLabels
+                              ringWidth={42}
+                              slices={programListBudgetChartSlices}
+                            />
+                          )}
                         </div>
+                        {programListBudgetChartSlices.length === 1 && programListBudgetChartSlices[0]?.label === 'No budget data' && (
+                          <p className="text-[10px] text-center text-gray-400 mt-1">Add budgets to programs to see the split.</p>
+                        )}
                       </div>
                       <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
-                        <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Program Progress Levels</h3>
-                        <svg viewBox="0 0 260 170" className="w-full h-36 chart-svg">
-                          {[65, 66, 67, 68, 69, 70].map((v, idx) => (
-                            <g key={v}>
-                              <line x1="32" x2="240" y1={145 - idx * 22} y2={145 - idx * 22} stroke="#edf2f7" />
-                              <text x="8" y={148 - idx * 22} fontSize="8" fill="#94a3b8">{v}</text>
-                            </g>
-                          ))}
-                          <rect x="118" y="79" width="42" height="66" rx="4" fill="#1fcf92" className="chart-bar" />
-                          <text x="137" y="72" textAnchor="middle" fontSize="10" fill="#2f3150">67</text>
-                          <text x="142" y="158" textAnchor="middle" fontSize="8" fill="#6b7280" transform="rotate(-55 142 158)">Program 1</text>
-                        </svg>
+                        <h3 className="text-sm font-semibold text-primary mb-2">Program Progress Levels</h3>
+                        {programLoading ? (
+                          <p className="text-xs text-gray-400 py-6 text-center">Loading…</p>
+                        ) : programListProgressBarRows.length === 0 ? (
+                          <p className="text-xs text-gray-400 py-6 text-center">No programs to display.</p>
+                        ) : (
+                          <svg viewBox="0 0 260 170" className="w-full h-36 chart-svg">
+                            {(() => {
+                              const bars = programListProgressBarRows
+                                .slice()
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .slice(0, 6);
+                              const hasAny = bars.some((b) => b.pct > 0);
+                              if (!hasAny) {
+                                return (
+                                  <text x="130" y="90" textAnchor="middle" fontSize="9" fill="#9ca3af">
+                                    No progress values yet
+                                  </text>
+                                );
+                              }
+                              const barColors = ['#1fcf92', '#323b8f', '#d4a759', '#60a5fa', '#d65257', '#94a3b8'];
+                              const n = bars.length;
+                              const maxBar = 110;
+                              const yBase = 140;
+                              return (
+                                <>
+                                  {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
+                                    <line
+                                      key={`g-${i}`}
+                                      x1="28"
+                                      x2="248"
+                                      y1={yBase - p * maxBar}
+                                      y2={yBase - p * maxBar}
+                                      stroke="#f1f5f9"
+                                    />
+                                  ))}
+                                  {[0, 25, 50, 75, 100].map((tick) => (
+                                    <text
+                                      key={`t-${tick}`}
+                                      x="6"
+                                      y={yBase - (tick / 100) * maxBar + 3}
+                                      fontSize="7"
+                                      fill="#94a3b8"
+                                    >
+                                      {tick}
+                                    </text>
+                                  ))}
+                                  {bars.map((b, i) => {
+                                    const chartLeft = 32;
+                                    const chartW = 200;
+                                    const barSlot = chartW / Math.max(1, n);
+                                    const w = Math.max(8, n <= 1 ? 48 : barSlot - 6);
+                                    const x0 = chartLeft + i * barSlot + (barSlot - w) / 2;
+                                    const h = (b.pct / 100) * maxBar;
+                                    return (
+                                      <g key={b.name + i}>
+                                        <rect
+                                          x={x0}
+                                          y={yBase - h}
+                                          width={w}
+                                          height={Math.max(1, h)}
+                                          rx="3"
+                                          fill={barColors[i % barColors.length] ?? '#1fcf92'}
+                                          className="chart-bar"
+                                        >
+                                          <title>{`${b.name}: ${b.pct}%`}</title>
+                                        </rect>
+                                        <text
+                                          x={x0 + w / 2}
+                                          y={yBase - h - 4}
+                                          textAnchor="middle"
+                                          fontSize="8"
+                                          fill="#4c556d"
+                                        >
+                                          {b.pct}%
+                                        </text>
+                                        <text
+                                          x={x0 + w / 2}
+                                          y="158"
+                                          textAnchor="middle"
+                                          fontSize="7"
+                                          fill="#6b7280"
+                                          transform={`rotate(-48 ${x0 + w / 2} 158)`}
+                                        >
+                                          {b.name.length > 10 ? `${b.name.slice(0, 9)}…` : b.name}
+                                        </text>
+                                      </g>
+                                    );
+                                  })}
+                                  {programListProgressBarRows.length > 6 && (
+                                    <text x="250" y="12" textAnchor="end" fontSize="7" fill="#9ca3af">
+                                      +{programListProgressBarRows.length - 6} more
+                                    </text>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </svg>
+                        )}
                       </div>
                     </aside>
                   </section>
@@ -3639,719 +5762,417 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </>
           ) : activeNav === 'Reports' ? (
-            <>
-              {showAddReportForm ? (
-                <section className="bg-white rounded-xl p-6 shadow-sm max-w-4xl mx-auto w-full">
-                  <p className="text-[11px] text-gray-400 mb-5">
-                    <button className="underline text-gray-500" onClick={() => setShowAddReportForm(false)}>Reports</button>
-                    {' > '}Create New Report
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-                    {[
-                      ['Report Title', 'Enter Report Title'], ['Project Name', 'Enter Project Name'],
-                      ['Program', 'Select'], ['Sector', 'Select'],
-                      ['Program Status', 'Select'], ['Report Type', 'Select'],
-                      ['Assign to Management Member', 'Select Member'], ['Remark', 'Remarks'],
-                    ].map(([label, placeholder], idx) => (
-                      <div key={label} className={idx === 7 ? 'md:row-span-2' : ''}>
-                        <label className="text-[11px] text-gray-500">{label}</label>
-                        {idx === 7 ? (
-                          <textarea className="mt-1 w-full h-[88px] rounded-md border border-gray-200 px-3 py-2 text-sm resize-none" placeholder={placeholder} />
-                        ) : (
-                          <input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" placeholder={placeholder} />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3">
-                    <label className="text-[11px] text-gray-500">Summary</label>
-                    <textarea className="mt-1 w-full h-16 rounded-md border border-gray-200 px-3 py-2 text-sm resize-none" placeholder="Report body" />
-                  </div>
-                  <div className="mt-3">
-                    <label className="text-[11px] text-gray-500">Attachments</label>
-                    <div className="mt-1 h-20 border border-dashed border-gray-300 rounded-md text-[10px] text-gray-400 flex items-center justify-center">
-                      Choose a file or drag it here
-                    </div>
-                  </div>
-                  <div className="mt-4 flex items-center justify-end gap-3">
-                    <button className="h-9 px-8 rounded-md border border-[#b28a44] text-[#b28a44] text-sm font-semibold">Cancel</button>
-                    <button className="h-9 px-8 rounded-md border border-[#b28a44] text-[#b28a44] text-sm font-semibold">Review</button>
-                    <button className="h-9 px-8 rounded-md bg-[#b28a44] text-white text-sm font-semibold">Send Report</button>
-                  </div>
-                </section>
-              ) : (
-                <>
-                  <section className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold text-[#2f3150]">Reports</h2>
-                    <button className="h-8 px-4 rounded-md bg-[#b28a44] text-white text-sm font-medium" onClick={() => setShowAddReportForm(true)}>+ Create a Report</button>
-                  </section>
-                  <section className="bg-white rounded-xl p-3 shadow-sm">
-                    <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-10 gap-2">
-                      {['Sector', 'Program', 'Project', 'KPI', 'Type', 'Budget', 'Program Manager', 'Project Manager', 'Duration', 'Status'].map((label) => (
-                        <div key={label}>
-                          <p className="text-[10px] text-gray-400 mb-1">{label}</p>
-                          <button className="w-full h-7 rounded-md border border-gray-200 bg-gray-50 text-[10px] text-gray-500 flex items-center justify-between px-2">
-                            <span>All</span>
-                            <ChevronDown size={10} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                  <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                    {reportStatsProgram.map((card) => (
-                      <div key={card.label} className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 chart-card">
-                        <p className="text-[10px] text-gray-400">{card.label}</p>
-                        <p className="text-3xl font-bold text-gray-800 mt-1">{card.label === 'Total Budget' ? '$478M' : card.value}</p>
-                        <div className="h-0.5 rounded-full mt-3" style={{ backgroundColor: card.color }} />
-                      </div>
-                    ))}
-                  </section>
-
-                  <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                    <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
-                      <h3 className="text-xs font-semibold text-gray-700 mb-2">Project Category</h3>
-                      <div className="flex items-center justify-center">
-                        <DonutChart
-                          className="w-36 h-36 chart-svg"
-                          showOuterLabels={false}
-                          ringWidth={40}
-                          slices={[
-                            { label: 'Application', value: 43, color: '#1667de' },
-                            { label: 'Security', value: 59, color: '#d3525a' },
-                            { label: 'Support', value: 36, color: '#3b3a80' },
-                            { label: 'Infrastructure', value: 23, color: '#f6be00' },
-                          ]}
-                        />
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
-                      <h3 className="text-xs font-semibold text-gray-700 mb-2">Projects Count</h3>
-                      <svg viewBox="0 0 220 170" className="w-full h-40 chart-svg">
-                        {[20, 40, 60, 80].map((v) => <line key={v} x1="26" x2="214" y1={140 - v} y2={140 - v} stroke="#f1f5f9" />)}
-                        {[12, 45, 22, 50, 31].map((v, i) => (
-                          <rect key={i} x={35 + i * 36} y={140 - v * 1.6} width="12" height={v * 1.6} rx="3" className="chart-bar" fill={['#59628a', '#d4a759', '#b28a44', '#60a5fa', '#d65257'][i]} />
-                        ))}
-                      </svg>
-                    </div>
-                    <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
-                      <h3 className="text-xs font-semibold text-gray-700 mb-2">Budget</h3>
-                      <div className="flex items-center justify-center">
-                        <DonutChart
-                          className="w-36 h-36 chart-svg"
-                          showOuterLabels={false}
-                          ringWidth={42}
-                          slices={[
-                            { label: 'Financial', value: 43, color: '#1667de' },
-                            { label: 'Knowledge', value: 25, color: '#f6be00' },
-                            { label: 'External', value: 21, color: '#3b3a80' },
-                            { label: 'HR', value: 18, color: '#d3525a' },
-                          ]}
-                        />
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-xl p-3 shadow-sm chart-card min-h-[220px]">
-                      <h3 className="text-xs font-semibold text-gray-700 mb-2">Projects by progress</h3>
-                      <div className="flex items-center justify-center">
-                        <DonutChart
-                          className="w-36 h-36 chart-svg"
-                          showOuterLabels={false}
-                          ringWidth={42}
-                          slices={[
-                            { label: 'Completed', value: 46, color: '#1667de' },
-                            { label: 'On Hold', value: 27, color: '#f6be00' },
-                            { label: 'Delayed', value: 21, color: '#d3525a' },
-                          ]}
-                        />
-                      </div>
-                    </div>
-                  </section>
-                  <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 border-y border-gray-100">
-                        <tr className="text-[10px] text-gray-400 uppercase text-left">
-                          <th className="px-3 py-2">Project Name</th>
-                          <th className="px-3 py-2">Priority</th>
-                          <th className="px-3 py-2">Type</th>
-                          <th className="px-3 py-2">Budget</th>
-                          <th className="px-3 py-2">Strag. Obj</th>
-                          <th className="px-3 py-2">PM</th>
-                          <th className="px-3 py-2">Dates</th>
-                          <th className="px-3 py-2">Progress Level</th>
-                          <th className="px-3 py-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {reportRowsProgram.map((row, idx) => (
-                          <tr key={`${row.project}-${idx}`} className="border-b border-gray-100 text-xs text-gray-700">
-                            <td className="px-3 py-2 text-indigo-700 underline">{row.project}</td>
-                            <td className="px-3 py-2">{row.priority}</td>
-                            <td className="px-3 py-2">{row.type}</td>
-                            <td className="px-3 py-2 font-semibold text-rose-500">{row.budget}</td>
-                            <td className="px-3 py-2">{row.pm}</td>
-                            <td className="px-3 py-2">{row.owner}</td>
-                            <td className="px-3 py-2">
-                              <div className="leading-4">
-                                <p className="text-[10px] text-gray-400">Start date</p>
-                                <p>{row.start}</p>
-                                <p className="text-[10px] text-gray-400 mt-1">End date</p>
-                                <p>{row.end}</p>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${row.progress}%` }} />
-                              </div>
-                            </td>
-                            <td className="px-3 py-2">
-                              <span className={`px-2 py-1 rounded-full text-[9px] font-semibold ${row.statusColor}`}>{row.status}</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="px-3 py-2 text-[10px] text-gray-400 text-right">1-10 of 15</div>
-                  </section>
-                </>
-              )}
-            </>
+            <ProgramReportsPanel
+              isActive={activeNav === 'Reports'}
+              onNotify={(type, message) => setProgramToast({ type, message })}
+            />
           ) : activeNav === 'Project Pipeline' ? (
-            <>
-              <section className="bg-white rounded-xl p-4 shadow-sm chart-card">
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">Business Pipeline</h2>
-                <div className="border border-gray-100 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Projects</p>
-                    <div className="flex items-center gap-2">
-                      <button className="h-7 px-2 rounded-md border border-gray-200 text-[10px] text-gray-500">Year 2024</button>
-                      <button className="h-7 px-2 rounded-md border border-gray-200 text-[10px] text-gray-500">All Categories</button>
-                    </div>
-                  </div>
-                  <svg viewBox="0 0 700 210" className="w-full h-52 chart-svg">
-                    {[0, 10, 20, 30, 40].map((v) => (
-                      <g key={v}>
-                        <line x1="26" x2="680" y1={180 - v * 3.6} y2={180 - v * 3.6} stroke="#edf2f7" />
-                        <text x="14" y={184 - v * 3.6} fontSize="9" fill="#94a3b8">{v}</text>
-                      </g>
-                    ))}
-                    {[8, 30, 14, 38, 22, 28, 20, 32, 34, 16].map((v, i) => (
-                      <rect key={i} x={48 + i * 62} y={180 - v * 3.6} width="18" height={v * 3.6} rx="4" className="chart-bar" fill={['#7c3aed', '#4cc9f0', '#16a34a', '#2563eb', '#74c69d', '#fb923c', '#ef4444', '#22c55e', '#e9c46a', '#6b7280'][i]} />
-                    ))}
-                  </svg>
-                </div>
-              </section>
-
-              <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-y border-gray-100">
-                    <tr className="text-[10px] text-gray-400 uppercase text-left">
-                      <th className="px-4 py-2">Program Name</th>
-                      <th className="px-4 py-2">Benefits</th>
-                      <th className="px-4 py-2">Budget</th>
-                      <th className="px-4 py-2">Current Stage</th>
+            <BusinessPipelineScreen
+              tableRows={programPipelineTableRows}
+              clientOptions={programPipelineClientOptions}
+              loading={programPipelineLoading}
+              hidePipelineCreation
+              screenTitle="Project Pipeline"
+              onNotify={(type, message) => setProgramToast({ type, message })}
+            />
+          ) : activeNav === 'Dummy' ? (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h1 className={enj.pageTitle}>Dummy</h1>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-[#E5E7EB] bg-[#eef2f9] px-2 py-2">
+                <table className={`${enj.table} enj-dummy-projects-table min-w-[1160px] text-left`}>
+                  <thead>
+                    <tr>
+                      <th>Project Name</th>
+                      <th>Priority</th>
+                      <th>Project Sponsor</th>
+                      <th>Type</th>
+                      <th>Budget</th>
+                      <th>Starg. Obj</th>
+                      <th>PM</th>
+                      <th>Schedule</th>
+                      <th>Progress Level</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pipelineRowsProgram.map((row) => (
-                      <tr key={row.name} className="border-b border-gray-100 text-xs text-gray-700">
-                        <td className="px-4 py-2 text-indigo-700 underline">{row.name}</td>
-                        <td className="px-4 py-2">{row.benefit}</td>
-                        <td className={`px-4 py-2 font-semibold ${row.budget === '$25' ? 'text-emerald-500' : row.budget === '$42' ? 'text-rose-500' : 'text-indigo-700'}`}>{row.budget}</td>
-                        <td className="px-4 py-2">{row.stage}</td>
+                    {dummyProjectRows.map((row) => (
+                      <tr key={row.projectName} className="enj-dummy-projects-table__row">
+                        <td className={enj.tableLink}>{row.projectName}</td>
+                        <td>{row.priority}</td>
+                        <td>{row.sponsor}</td>
+                        <td>{row.type}</td>
+                        <td>
+                          <span
+                            className={`inline-flex items-center gap-0.5 font-medium ${
+                              row.budgetTrend === 'up'
+                                ? 'text-[#DC2626]'
+                                : row.budgetTrend === 'down'
+                                  ? 'text-[#16A34A]'
+                                  : 'text-[#232360]'
+                            }`}
+                          >
+                            {row.budget}
+                            {row.budgetTrend === 'up' ? <span aria-hidden>↑</span> : null}
+                            {row.budgetTrend === 'down' ? <span aria-hidden>↓</span> : null}
+                          </span>
+                        </td>
+                        <td>{row.strategicObj}</td>
+                        <td>{row.pm}</td>
+                        <td>
+                          <div className="enj-dummy-projects-table__schedule">
+                            <div>
+                              <p className="enj-dummy-projects-table__label">Start date</p>
+                              <p className="enj-dummy-projects-table__value">
+                                <Calendar size={12} className="text-[#9CA3AF]" />
+                                {row.startDate}
+                              </p>
+                            </div>
+                            <div className="enj-dummy-projects-table__schedule-sep" />
+                            <div>
+                              <p className="enj-dummy-projects-table__label">End date</p>
+                              <p className="enj-dummy-projects-table__value">
+                                <Calendar size={12} className="text-[#9CA3AF]" />
+                                {row.endDate}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <div className="enj-table-progress-track w-28">
+                              <div className="enj-table-progress-fill" style={{ width: `${row.progress}%` }} />
+                            </div>
+                            <span className="w-8 text-right text-[10px] tabular-nums text-[#6B7280]">{row.progress}%</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`enj-table-status text-[10px] ${row.statusClass}`}>{row.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                    {dummyProgramRows.map((row) => (
+                      <tr key={row.programName} className="enj-dummy-projects-table__row">
+                        <td className={enj.tableLink}>{row.programName}</td>
+                        <td>{row.category}</td>
+                        <td />
+                        <td />
+                        <td>{row.budget}</td>
+                        <td />
+                        <td>{row.pm}</td>
+                        <td>
+                          <div className="enj-dummy-projects-table__schedule">
+                            <div>
+                              <p className="enj-dummy-projects-table__label">Start date</p>
+                              <p className="enj-dummy-projects-table__value">
+                                <Calendar size={12} className="text-[#9CA3AF]" />
+                                {row.startDate}
+                              </p>
+                            </div>
+                            <div className="enj-dummy-projects-table__schedule-sep" />
+                            <div>
+                              <p className="enj-dummy-projects-table__label">End date</p>
+                              <p className="enj-dummy-projects-table__value">
+                                <Calendar size={12} className="text-[#9CA3AF]" />
+                                {row.endDate}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <div className="enj-table-progress-track w-28">
+                              <div className="enj-table-progress-fill" style={{ width: `${row.progress}%` }} />
+                            </div>
+                            <span className="w-8 text-right text-[10px] tabular-nums text-[#6B7280]">{row.progress}%</span>
+                          </div>
+                        </td>
+                        <td>
+                          <button type="button" className="inline-flex items-center gap-1 text-[12px] font-medium text-[#6B7280]">
+                            PROJECTS
+                            <ChevronDown size={12} className="text-[#6B7280]" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </section>
+          ) : activeNav === 'Portfolio' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h1 className="text-lg font-bold text-gray-900">Portfolio</h1>
+                <button
+                  type="button"
+                  onClick={() => setActiveNav('Dashboard')}
+                  className={`${enj.btn} ${enj.btnOutline} text-xs`}
+                >
+                  Back
+                </button>
+              </div>
+              <section className="space-y-3">
+                <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
+                  <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+                    <thead>
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Program</th>
+                        <th className="px-3 py-2 font-semibold">KPI</th>
+                        <th className="px-3 py-2 font-semibold">Benefits</th>
+                        <th className="px-3 py-2 font-semibold">Budget</th>
+                        <th className="px-3 py-2 font-semibold">Program Manager</th>
+                        <th className="px-3 py-2 font-semibold">ROI</th>
+                        <th className="px-3 py-2 font-semibold">Start Date</th>
+                        <th className="px-3 py-2 font-semibold">Progress</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedProgramPortfolioRows.map((row) => {
+                        const pid = String(row.new_programid ?? '');
+                        const normalizedPid = normalizeDataverseId(pid);
+                        const programName = readProgramPortfolioText(row, programColumns.name ?? 'new_name', ['new_name']);
+                        const programKey = normalizedPid ? `id:${normalizedPid}` : `name:${programName.toLowerCase()}`;
+                        const fallbackNameKey = `name:${programName.toLowerCase()}`;
+                        const programProjects = (
+                          portfolioProjectsByProgramKey.get(programKey)
+                          ?? portfolioProjectsByProgramKey.get(fallbackNameKey)
+                          ?? []
+                        )
+                          .slice()
+                          .sort((a, b) => {
+                            const aStart = parseTimelineDate(a.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                            const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                            return aStart - bStart;
+                          });
+                        const pPct = portfolioProgramProgressById.get(normalizedPid) ?? 0;
+                        const start = parseTimelineDate(row.new_startdate);
+                        const isExpanded = programPortfolioExpandedKey === programKey;
+                        const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
+                          for (const k of keys) {
+                            const v = project[k];
+                            if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+                          }
+                          return fallback;
+                        };
+
+                        return (
+                          <Fragment key={pid || programName}>
+                            <tr className="border-t border-[#d7def0] bg-white">
+                              <td className="px-3 py-2 font-normal">
+                                <button
+                                  type="button"
+                                  className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
+                                  onClick={() => setProgramPortfolioExpandedKey((prev) => (prev === programKey ? null : programKey))}
+                                  aria-expanded={isExpanded}
+                                >
+                                  <ChevronDown size={14} className={`transition-transform text-[#6B7280] ${isExpanded ? 'rotate-180' : ''}`} />
+                                  <span className="max-w-[18rem] truncate">{programName}</span>
+                                </button>
+                              </td>
+                              <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
+                              <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
+                              <td className="px-3 py-2"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
+                              <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                              <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1">
+                                  <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
+                                  <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 w-40">
+                                <div className="flex items-center gap-2">
+                                  <div className="enj-table-progress-track flex-1">
+                                    <div
+                                      className="enj-table-progress-fill"
+                                      style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }}
+                                    />
+                                  </div>
+                                  <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-gray-600">
+                                    {Math.round(pPct)}%
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <>
+                                {programProjects.length === 0 ? (
+                                  <tr className="border-t border-gray-100 bg-white">
+                                    <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">
+                                      No projects found for this program.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  <tr className="border-t border-gray-100 bg-[#f9fafc]">
+                                    <td colSpan={8} className="px-3 py-2.5">
+                                      <div className="overflow-x-auto rounded-xl border border-[#E5E7EB] bg-[#eef2f9] px-2 py-2">
+                                        <table className={`${enj.table} enj-program-projects-table min-w-[1140px] text-left text-xs`}>
+                                          <thead>
+                                            <tr>
+                                              <th className="px-3 py-2 font-semibold">Project</th>
+                                              <th className="px-3 py-2 font-semibold">Priority</th>
+                                              <th className="px-3 py-2 font-semibold">Sponsor</th>
+                                              <th className="px-3 py-2 font-semibold">Type</th>
+                                              <th className="px-3 py-2 font-semibold">Budget</th>
+                                              <th className="px-3 py-2 font-semibold">Starg.obj</th>
+                                              <th className="px-3 py-2 font-semibold">Project Manager</th>
+                                              <th className="px-3 py-2 font-semibold">Timeline</th>
+                                              <th className="px-3 py-2 font-semibold">Progress</th>
+                                              <th className="px-3 py-2 font-semibold">Status</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {programProjects.map((project, i) => {
+                                              const projectName =
+                                                String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
+                                              const priority = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                              const sponsor = readProjectField(project, ['new_sponsorname', 'new_sponsor']);
+                                              const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
+                                              const budget = readProjectField(project, ['new_budget']);
+                                              const strategicObj = readProjectField(
+                                                project,
+                                                ['new_strategicobjective', 'new_strategicobjectivename', 'new_strategicplan'],
+                                              );
+                                              const manager = readProjectField(project, ['new_projectmanager', 'owneridname', 'new_ownername']);
+                                              const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
+                                              const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                              const progressRaw = Number(project.new_progress ?? NaN);
+                                              const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
+                                              const statusText = String(project.new_projectstatusname ?? '').trim();
+                                              const statusBucket = businessProjectStatusBucket(project);
+                                              const statusLabel =
+                                                statusText
+                                                || (statusBucket === 'completed'
+                                                  ? 'Completed'
+                                                  : statusBucket === 'delayed'
+                                                    ? 'Delayed'
+                                                    : statusBucket === 'onTrack'
+                                                      ? 'On Track'
+                                                      : 'To Start');
+                                              const statusKey = statusLabel.toLowerCase();
+                                              return (
+                                                <tr key={`${programKey}-${projectName}-${i}`} className="enj-program-projects-table__row">
+                                                  <td className={`px-3 py-2 font-medium ${enj.tableLink}`}>{projectName}</td>
+                                                  <td className="px-3 py-2">{priority}</td>
+                                                  <td className="px-3 py-2">{sponsor}</td>
+                                                  <td className="px-3 py-2">{projectType}</td>
+                                                  <td className="px-3 py-2"><TableBudgetDisplay value={budget} /></td>
+                                                  <td className="px-3 py-2">{strategicObj}</td>
+                                                  <td className="px-3 py-2">{manager}</td>
+                                                  <td className="px-3 py-2">
+                                                    <div className="enj-program-projects-table__schedule">
+                                                      <div>
+                                                        <p className="enj-program-projects-table__label">Start date</p>
+                                                        <p className="enj-program-projects-table__value">
+                                                          <Calendar size={12} className="text-[#9CA3AF]" />
+                                                          {startDate}
+                                                        </p>
+                                                      </div>
+                                                      <div className="enj-program-projects-table__schedule-sep" />
+                                                      <div>
+                                                        <p className="enj-program-projects-table__label">End date</p>
+                                                        <p className="enj-program-projects-table__value">
+                                                          <Calendar size={12} className="text-[#9CA3AF]" />
+                                                          {endDate}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                  </td>
+                                                  <td className="px-3 py-2 w-32">
+                                                    <div className="flex items-center gap-2">
+                                                      <div className="enj-table-progress-track flex-1">
+                                                        <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
+                                                      </div>
+                                                      <span className="w-7 text-right text-[10px] tabular-nums text-gray-600">
+                                                        {Math.round(progress)}%
+                                                      </span>
+                                                    </div>
+                                                  </td>
+                                                  <td className="px-3 py-2">
+                                                    <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
+                                                      {statusLabel}
+                                                    </span>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <div className="border-t border-gray-100 px-3 py-2">
+                    <PagerBar
+                      page={programPortfolioPage}
+                      pageSize={programPortfolioPageSize}
+                      total={programRows.length}
+                      onPrev={() => setProgramPortfolioPage((p) => Math.max(1, p - 1))}
+                      onNext={() => setProgramPortfolioPage((p) => Math.min(programPortfolioTotalPages, p + 1))}
+                    />
+                  </div>
+                </div>
               </section>
-            </>
+            </div>
           ) : activeNav === 'Deliverables' ? (
             <>
               {showAddDeliverableForm ? (
-                <section className="bg-white rounded-xl p-6 shadow-sm max-w-4xl mx-auto w-full">
-                  <p className="text-[11px] text-gray-400 mb-5">
-                    <button className="underline text-gray-500" onClick={() => setShowAddDeliverableForm(false)}>Deliverables</button>
-                    {' > '}Add New Deliverables
-                  </p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Name</label>
-                      <select className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm text-gray-400"><option>Select Project Name</option></select>
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Category</label>
-                      <select className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm text-gray-400"><option>Auto fetch</option></select>
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Manager</label>
-                      <select className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm text-gray-400"><option>Auto fetch</option></select>
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Goal</label>
-                      <input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm text-gray-500" value="Auto fetch" readOnly />
-                    </div>
-                  </div>
-
-                  <p className="text-[12px] font-semibold text-gray-700 mt-5 mb-3">The deliverables include:</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600">
-                    {[
-                      'Hardware', 'Licenses', 'Phase1', 'Phase2', 'Design', 'Business Requirements', 'Design Document', 'User Manual Document',
-                      'UAT', 'Production Link', 'Training', 'Knowledge Transfer', 'Professional Services', 'Consultation', 'Scope Document', 'Report',
-                    ].map((item, idx) => (
-                      <label key={item} className="flex items-center gap-2">
-                        <input type="checkbox" className="accent-[#b28a44]" defaultChecked={[0, 2, 4, 8, 10, 12].includes(idx)} />
-                        {item}
-                      </label>
-                    ))}
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="text-[11px] text-gray-500">Notes</label>
-                    <textarea className="mt-1 w-full h-24 rounded-md border border-gray-200 px-3 py-2 text-sm resize-none" placeholder="Notes..." />
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-end gap-3">
-                    <button className="h-9 px-8 rounded-md border border-[#b28a44] text-[#b28a44] text-sm font-semibold">Cancel</button>
-                    <button className="h-9 px-8 rounded-md bg-[#b28a44] text-white text-sm font-semibold">+ Save</button>
-                  </div>
-                </section>
+                <AddDeliverableFormPanel
+                  onClose={() => setShowAddDeliverableForm(false)}
+                  onNotify={(type, message) => setProgramToast({ type, message })}
+                  onSaved={() => setDeliverableListRefresh((k) => k + 1)}
+                />
               ) : (
-                <>
-                  <section className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold text-[#2f3150]">Display List Of Deliverables</h2>
-                    <button className="h-8 px-4 rounded-md bg-[#b28a44] text-white text-sm font-medium" onClick={() => setShowAddDeliverableForm(true)}>+ New Deliverable</button>
-                  </section>
-
-                  <section className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-3">
-                    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                      <table className="w-full">
-                        <thead className="bg-gray-50 border-y border-gray-100">
-                          <tr className="text-[10px] text-gray-400 uppercase text-left">
-                            <th className="px-3 py-2">Project</th>
-                            <th className="px-3 py-2">Project Sponsor</th>
-                            <th className="px-3 py-2">Deliverables</th>
-                            <th className="px-3 py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {deliverablesRows.map((row, idx) => (
-                            <tr key={`${row.project}-${idx}`} className="border-b border-gray-100 text-xs text-gray-700">
-                              <td className="px-3 py-2 text-indigo-700 underline">{row.project}</td>
-                              <td className="px-3 py-2">{row.sponsor}</td>
-                              <td className="px-3 py-2">{row.items}</td>
-                              <td className="px-3 py-2">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold ${row.statusColor}`}>{row.status}</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="px-3 py-2 text-[10px] text-gray-400 text-right">1-10 of 15</div>
-                    </div>
-
-                    <aside className="space-y-3">
-                      <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
-                        <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Deliverables Status</h3>
-                        <svg viewBox="0 0 260 170" className="w-full h-36 chart-svg">
-                          {[0, 5, 10, 15, 20, 25].map((v) => (
-                            <g key={v}>
-                              <line x1="24" x2="244" y1={130 - v * 4.2} y2={130 - v * 4.2} stroke="#e5e7eb" />
-                              <text x="6" y={133 - v * 4.2} fontSize="8" fill="#94a3b8">{v}</text>
-                            </g>
-                          ))}
-                          <polygon points="24,71 79,75 134,88 189,46 244,96 244,130 24,130" fill="#1d4ed8" />
-                          <polygon points="24,130 79,122 134,35 189,67 244,28 244,130 24,130" fill="#ef4444" opacity="0.85" />
-                          <polygon points="24,71 79,122 134,118 189,46 244,96 244,130 24,130" fill="#f6be00" opacity="0.95" />
-                          {['Jan', 'Feb', 'Mar', 'Apr', 'May'].map((m, i) => (
-                            <text key={m} x={22 + i * 55} y="145" fontSize="8" fill="#94a3b8">{m}</text>
-                          ))}
-                          <circle cx="30" cy="160" r="4" fill="#ef4444" />
-                          <text x="40" y="163" fontSize="8" fill="#6b7280">Total</text>
-                          <circle cx="88" cy="160" r="4" fill="#1d4ed8" />
-                          <text x="98" y="163" fontSize="8" fill="#6b7280">Delivered</text>
-                          <circle cx="158" cy="160" r="4" fill="#f6be00" />
-                          <text x="168" y="163" fontSize="8" fill="#6b7280">To Be Delivered</text>
-                        </svg>
-                      </div>
-                      <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
-                        <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Deliverables via Projects</h3>
-                        <svg viewBox="0 0 260 180" className="w-full h-40 chart-svg">
-                          <text x="8" y="20" fontSize="8" fill="#94a3b8">DELIVERABLES</text>
-                          {[10, 20, 30, 40, 50].map((v) => (
-                            <g key={v}>
-                              <line x1="24" x2="244" y1={140 - v * 2.2} y2={140 - v * 2.2} stroke="#e5e7eb" strokeDasharray="3 3" />
-                              <text x="10" y={143 - v * 2.2} fontSize="8" fill="#94a3b8">{v}</text>
-                            </g>
-                          ))}
-                          {[13, 44, 21, 50, 30].map((v, i) => (
-                            <rect key={i} x={40 + i * 40} y={140 - v * 2.2} width="16" height={v * 2.2} rx="4" className="chart-bar" fill={['#59628a', '#e4bf7f', '#bf9650', '#6fa0e4', '#d65257'][i]} />
-                          ))}
-                          {['Code.Tech', 'ExProcess', 'Scaling', 'RightPath', 'Digital Retail'].map((name, i) => (
-                            <text key={name} x={48 + i * 40} y="160" fontSize="8" fill="#2f3150" textAnchor="middle" transform={`rotate(-60 48 ${160})`}>
-                              {name}
-                            </text>
-                          ))}
-                          <text x="236" y="176" fontSize="8" fill="#2f3150" transform="rotate(-90 236 176)">PROJECTS</text>
-                        </svg>
-                      </div>
-                    </aside>
-                  </section>
-                </>
+                <DeliverablesListPanel
+                  isActive={activeNav === 'Deliverables' && !showAddDeliverableForm}
+                  refreshKey={deliverableListRefresh}
+                  onNotify={(type, message) => setProgramToast({ type, message })}
+                  variant="program"
+                  onNewDeliverable={() => setShowAddDeliverableForm(true)}
+                />
               )}
             </>
           ) : activeNav === 'Meetings' ? (
             <>
               {showAddMeetingForm ? (
-                <section className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-3">
-                  <div className="bg-white rounded-xl p-5 shadow-sm">
-                    <p className="text-[11px] text-gray-400 mb-4">
-                      <button className="underline text-gray-500" onClick={() => setShowAddMeetingForm(false)}>Meetings</button>
-                      {' > '}Add New Meeting
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-                      {[
-                        ['Meeting Title', 'Enter Meeting Title'], ['Meeting Category', 'Select Category'],
-                        ['Department', 'Select'], ['Project Name', 'Select Project Name'],
-                        ['Vendor Name/Email', 'Enter Vendor Name/Email'], ['Project Manager', 'Select Project Manager'],
-                        ['Attendance', 'Select'], ['Meeting Date', 'Select Date'],
-                        ['Start Time', '--:--'], ['End Time', '--:--'], ['Meeting Location', 'Enter Meeting Location'],
-                      ].map(([label, placeholder], i) => (
-                        <div key={label} className={i === 10 ? 'md:col-span-2' : ''}>
-                          <label className="text-[11px] text-gray-500">{label}</label>
-                          <input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" placeholder={placeholder} />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3">
-                      <label className="text-[11px] text-gray-500">Meeting Agenda</label>
-                      <textarea className="mt-1 h-20 w-full rounded-md border border-gray-200 px-3 py-2 text-sm resize-none" placeholder="Meeting Agenda" />
-                    </div>
-                    <div className="mt-4 flex items-center justify-end gap-3">
-                      <button className="h-9 px-7 rounded-md border border-[#b28a44] text-[#b28a44] text-sm font-medium">Cancel</button>
-                      <button className="h-9 px-7 rounded-md bg-[#b28a44] text-white text-sm font-medium">Add to Calendar</button>
-                    </div>
-                  </div>
-                  <aside className="space-y-3">
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-xs font-semibold text-[#2f3150] mb-2">Meeting Insights</h3>
-                      <svg viewBox="0 0 180 130" className="w-full h-32 chart-svg">
-                        {[0, 20, 40, 60, 80, 100].map((v) => (
-                          <line key={v} x1="20" x2="170" y1={110 - v * 0.9} y2={110 - v * 0.9} stroke="#edf2f7" />
-                        ))}
-                        {[15, 38, 70, 46, 60, 68, 42, 80].map((v, i) => (
-                          <rect key={i} x={26 + i * 18} y={110 - v * 0.9} width="10" height={v * 0.9} rx="2" className="chart-bar" fill={['#ef4444','#d4a759','#d4a759','#0ea5e9','#4f46e5','#f6be00','#10b981','#2563eb'][i]} />
-                        ))}
-                      </svg>
-                    </div>
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-xs font-semibold text-[#2f3150] mb-2">Meetings Category</h3>
-                      <div className="space-y-1 text-[10px]">
-                        {[
-                          ['Follow Up', 78, '#4f46e5'], ['Requirements', 64, '#f6be00'], ['Technical', 58, '#0ea5e9'],
-                          ['Planning', 51, '#10b981'], ['Brain Session', 43, '#ef4444'], ['Testing', 37, '#8b5cf6'],
-                        ].map(([label, value, color]) => (
-                          <div key={`${label}-${value}`} className="flex items-center gap-2">
-                            <span className="w-16 text-gray-500">{label}</span>
-                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-full" style={{ width: `${value}%`, backgroundColor: String(color) }} />
-                            </div>
-                            <span className="text-gray-400">{String(value)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </aside>
-                </section>
+                <AddMeetingFormPanel
+                  parentLabel="Meetings"
+                  onCancel={() => setShowAddMeetingForm(false)}
+                  onNotify={(type, message) => setProgramToast({ type, message })}
+                  onCreated={() => void loadProgramMeetings()}
+                />
               ) : (
-                <section className="bg-white rounded-xl p-4 shadow-sm chart-card">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-3xl font-bold text-[#2f3150]">Meeting</h2>
-                    <div className="flex items-center gap-2">
-                      <button className="h-7 px-3 rounded-md border border-gray-200 text-[10px] text-gray-500">Project Name</button>
-                      <button className="h-7 px-2 rounded-md border border-gray-200 text-[10px] text-gray-500">Today</button>
-                      <button className="h-7 px-3 rounded-md border border-gray-200 text-[10px] text-gray-500">Jun 09 2024</button>
-                      <button className="h-8 px-4 rounded-md border border-[#b28a44] text-[#b28a44] text-sm font-medium">Month</button>
-                      <button className="h-8 px-4 rounded-md bg-[#b28a44] text-white text-sm font-medium" onClick={() => setShowAddMeetingForm(true)}>+ New Meeting</button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 xl:grid-cols-[1fr_250px] gap-3">
-                    <div className="border border-gray-100 rounded-lg p-2 overflow-hidden">
-                      <svg viewBox="0 0 720 360" className="w-full h-[340px] chart-svg">
-                        {[0, 1, 2, 3, 4, 5].map((r) => (
-                          <line key={`r-${r}`} x1="50" x2="700" y1={40 + r * 52} y2={40 + r * 52} stroke="#edf2f7" />
-                        ))}
-                        {[0, 1, 2, 3, 4].map((c) => (
-                          <line key={`c-${c}`} x1={50 + c * 130} x2={50 + c * 130} y1="40" y2="300" stroke="#edf2f7" />
-                        ))}
-                        {['9:00', '10:00', '11:00', '12:00', '13:00', '14:00'].map((t, i) => (
-                          <text key={t} x="8" y={44 + i * 52} fontSize="9" fill="#9ca3af">{t}</text>
-                        ))}
-                        {meetingBlocks.map((m, i) => (
-                          <g key={m.label + i}>
-                            <rect
-                              x={58 + m.col * 130}
-                              y={58 + m.row * 42}
-                              width="90"
-                              height="18"
-                              rx="9"
-                              fill={m.color}
-                              className="chart-bar"
-                            />
-                            <text x={64 + m.col * 130} y={71 + m.row * 42} fontSize="8" fill="#fff">{m.label}</text>
-                          </g>
-                        ))}
-                      </svg>
-                    </div>
-                    <aside className="bg-[#f9fafb] border border-gray-100 rounded-lg p-3">
-                      <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Scheduled Meetings</h3>
-                      <div className="space-y-2">
-                        {scheduledMeetings.map((item) => (
-                          <div key={item.title + item.time} className="rounded-md px-2 py-1.5" style={{ backgroundColor: item.color }}>
-                            <p className="text-[10px] text-[#2f3150] font-semibold">{item.title}</p>
-                            <p className="text-[9px] text-gray-500">{item.time}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </aside>
-                  </div>
-                </section>
+                <MeetingsBoardPanel
+                  meetings={programMeetings}
+                  loading={programMeetingsLoading}
+                  onNewMeeting={() => setShowAddMeetingForm(true)}
+                  onNotify={(type, message) => setProgramToast({ type, message })}
+                />
               )}
             </>
           ) : activeNav === 'Projects' ? (
-            <>
-              {showAddProjectForm ? (
-                <section className="bg-white rounded-xl p-6 shadow-sm max-w-5xl mx-auto w-full">
-                  <p className="text-[11px] text-gray-400 mb-5">
-                    <button className="underline text-gray-500" onClick={() => setShowAddProjectForm(false)}>Projects</button>
-                    {' > '}Add New Project
-                  </p>
-                  {projectMetaLoading && <p className="mb-3 text-xs text-gray-500">Loading dropdown values...</p>}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Name *</label>
-                      <input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={projectForm.projectName} onChange={(e) => setProjectForm((f) => ({ ...f, projectName: e.target.value }))} />
-                      {projectFormErrors.projectName && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.projectName}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Program Name *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.programName} onChange={(e) => setProjectForm((f) => ({ ...f, programName: e.target.value }))}>
-                        <option value="">Select Program</option>
-                        {projectMasterOptions.program.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      {projectFormErrors.programName && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.programName}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Vendor Name *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.vendorName} onChange={(e) => setProjectForm((f) => ({ ...f, vendorName: e.target.value }))}>
-                        <option value="">Select Vendor</option>
-                        {vendorOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                      </select>
-                      {projectFormErrors.vendorName && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.vendorName}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Priority *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.projectPriority} onChange={(e) => setProjectForm((f) => ({ ...f, projectPriority: e.target.value }))}>
-                        <option value="">Select Project Priority</option>
-                        {projectChoiceOptions.projectPriority.map((opt) => <option key={opt.value} value={String(opt.value)}>{opt.label}</option>)}
-                      </select>
-                      {projectFormErrors.projectPriority && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.projectPriority}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Category *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.projectCategory} onChange={(e) => setProjectForm((f) => ({ ...f, projectCategory: e.target.value }))}>
-                        <option value="">Select Project Category</option>
-                        {projectMasterOptions.projectCategory.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      {projectFormErrors.projectCategory && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.projectCategory}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Type *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.projectType} onChange={(e) => setProjectForm((f) => ({ ...f, projectType: e.target.value }))}>
-                        <option value="">Select Project Type</option>
-                        {projectChoiceOptions.projectType.map((opt) => <option key={opt.value} value={String(opt.value)}>{opt.label}</option>)}
-                      </select>
-                      {projectFormErrors.projectType && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.projectType}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Strategic Goal *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.strategicGoal} onChange={(e) => setProjectForm((f) => ({ ...f, strategicGoal: e.target.value }))}>
-                        <option value="">Select Goal</option>
-                        {projectChoiceOptions.strategicGoal.map((opt) => <option key={opt.value} value={String(opt.value)}>{opt.label}</option>)}
-                      </select>
-                      {projectFormErrors.strategicGoal && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.strategicGoal}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Budget *</label>
-                      <div className="mt-1 flex h-9 overflow-hidden rounded-md border border-gray-200">
-                        <input className="h-full flex-1 px-3 text-sm outline-none" value={projectForm.budget} inputMode="decimal" onChange={(e) => {
-                          const next = e.target.value;
-                          if (/^\d*\.?\d*$/.test(next)) setProjectForm((f) => ({ ...f, budget: next }));
-                        }} />
-                        <span className="w-12 border-l border-gray-200 text-xs text-gray-500 flex items-center justify-center">AED</span>
-                      </div>
-                      {projectFormErrors.budget && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.budget}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Assign to Project Manager *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.assignToProjectManager} onChange={(e) => setProjectForm((f) => ({ ...f, assignToProjectManager: e.target.value }))}>
-                        <option value="">Select Project Manager</option>
-                        {projectManagerEmails.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      {projectFormErrors.assignToProjectManager && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.assignToProjectManager}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Risks *</label>
-                      <input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={projectForm.risks} onChange={(e) => setProjectForm((f) => ({ ...f, risks: e.target.value }))} />
-                      {projectFormErrors.risks && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.risks}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">KPI</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.kpi} onChange={(e) => setProjectForm((f) => ({ ...f, kpi: e.target.value }))}>
-                        <option value="">Select KPI</option>
-                        {projectMasterOptions.kpi.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Methodology *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.methodology} onChange={(e) => setProjectForm((f) => ({ ...f, methodology: e.target.value }))}>
-                        <option value="">Select Methodology</option>
-                        {projectMasterOptions.methodology.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      {projectFormErrors.methodology && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.methodology}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Start Date *</label>
-                      <input type="date" min={todayIso} className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={projectForm.startDate} onChange={(e) => setProjectForm((f) => ({ ...f, startDate: e.target.value }))} />
-                      {projectFormErrors.startDate && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.startDate}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">End Date *</label>
-                      <input type="date" min={projectForm.startDate || todayIso} className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={projectForm.endDate} onChange={(e) => setProjectForm((f) => ({ ...f, endDate: e.target.value }))} />
-                      {projectFormErrors.endDate && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.endDate}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Department *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.department} onChange={(e) => setProjectForm((f) => ({ ...f, department: e.target.value }))}>
-                        <option value="">Select Department</option>
-                        {projectMasterOptions.sector.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      {projectFormErrors.department && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.department}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Status *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.projectStatus} onChange={(e) => setProjectForm((f) => ({ ...f, projectStatus: e.target.value }))}>
-                        <option value="">Select Project Status</option>
-                        {projectChoiceOptions.projectStatus.map((opt) => <option key={opt.value} value={String(opt.value)}>{opt.label}</option>)}
-                      </select>
-                      {projectFormErrors.projectStatus && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.projectStatus}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Milestone *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.milestone} onChange={(e) => setProjectForm((f) => ({ ...f, milestone: e.target.value }))}>
-                        <option value="">Select Milestone</option>
-                        {projectMasterOptions.milestone.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      {projectFormErrors.milestone && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.milestone}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Project Sponsor *</label>
-                      <select className="mt-1 h-9 w-full cursor-pointer rounded-md border border-gray-200 px-3 text-sm" value={projectForm.projectSponsor} onChange={(e) => setProjectForm((f) => ({ ...f, projectSponsor: e.target.value }))}>
-                        <option value="">Select Project Sponsor</option>
-                        {projectSponsorEmails.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      {projectFormErrors.projectSponsor && <p className="mt-1 text-[11px] text-rose-600">{projectFormErrors.projectSponsor}</p>}
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-500">Attachments</label>
-                      <input type="file" className="mt-1 h-9 w-full rounded-md border border-gray-200 px-2 text-sm" onChange={(e) => setProjectForm((f) => ({ ...f, attachment: e.target.files?.[0] ?? null }))} />
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="text-[11px] text-gray-500">Note</label>
-                    <textarea className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm h-24 resize-none" value={projectForm.note} onChange={(e) => setProjectForm((f) => ({ ...f, note: e.target.value }))} />
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-end gap-3">
-                    <button type="button" className="h-9 px-8 rounded-md border border-[#b28a44] text-[#b28a44] text-sm font-semibold" onClick={() => setShowAddProjectForm(false)}>Cancel</button>
-                    <button type="button" className="h-9 px-8 rounded-md border border-[#b28a44] text-[#b28a44] text-sm font-semibold" onClick={clearProjectForm}>Clear</button>
-                    <button type="button" className="h-9 px-8 rounded-md bg-[#b28a44] text-white text-sm font-semibold disabled:opacity-50" disabled={projectFormBusy || projectMetaLoading} onClick={() => void saveProject()}>
-                      {projectFormBusy ? 'Saving...' : '+ Save'}
-                    </button>
-                  </div>
-                </section>
-              ) : (
-                <>
-                  <section className="flex items-center justify-between">
-                    <h2 className="text-4xl font-bold text-[#262f68]">Projects</h2>
-                    <button
-                      className="h-9 px-4 rounded-md bg-[#b28a44] text-white text-sm font-medium"
-                      onClick={() => {
-                        clearProjectForm();
-                        setShowAddProjectForm(true);
-                      }}
-                    >
-                      + New Project
-                    </button>
-                  </section>
-
-                  <section className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                    {projectBoardColumns.map((column) => (
-                      <div key={column.title} className="space-y-3">
-                        <div className="bg-white rounded-lg px-3 py-2 flex items-center justify-between">
-                          <h3 className="text-2xl font-semibold text-[#2f3150]">{column.title}</h3>
-                          <span className="text-[11px] text-[#b28a44]">{boardProjectsByStatus[column.title]?.length ?? 0}</span>
-                        </div>
-                        <div className="max-h-[65vh] overflow-y-auto pr-1 space-y-3">
-                          {projectRowsLoading ? (
-                            <p className="text-xs text-gray-500 px-1">Loading projects...</p>
-                          ) : (boardProjectsByStatus[column.title] ?? []).length === 0 ? (
-                            <p className="text-xs text-gray-400 px-1">No projects in this status.</p>
-                          ) : (
-                            (boardProjectsByStatus[column.title] ?? []).map((row, rowIdx) => (
-                              <article key={`${column.title}-${String(row.new_projectid ?? rowIdx)}`} className="bg-white rounded-xl p-3 shadow-sm chart-card">
-                                <div className="flex items-center justify-between mb-2">
-                                  <p className="text-sm font-semibold underline" style={{ color: column.color }}>
-                                    {String(row.new_projectname ?? row.new_name ?? 'Project Name')}
-                                  </p>
-                                  <span className="text-[10px] text-gray-400">{String(row.new_projectstatusname ?? column.title)}</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-y-1 text-[10px] text-gray-500 mb-2">
-                                  <p>Project Sponsor: {String(row.crcf8_projectsponsor ?? row.new_projectsponsorname ?? row.new_projectsponsor ?? '-')}</p>
-                                  <p className="text-right">AED {String(row.new_budget ?? '-')}</p>
-                                  <p>Category: {String(row.new_projectcategoryname ?? row.new_projectcategory ?? '-')}</p>
-                                  <p className="text-right">Method: {String(row.new_methodologyname ?? row.new_methodology ?? '-')}</p>
-                                </div>
-                                <div className="grid grid-cols-2 text-[10px] mb-1">
-                                  <div>
-                                    <p className="text-gray-400">Start Date</p>
-                                    <p className="text-[#2f3150] font-semibold">{String(row.new_startdate ?? '-').slice(0, 10)}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-gray-400">End Date</p>
-                                    <p className="text-[#2f3150] font-semibold">{String(row.new_enddate ?? '-').slice(0, 10)}</p>
-                                  </div>
-                                </div>
-                              </article>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </section>
-                </>
-              )}
-            </>
+            <ProgramProjectsSection todayIso={todayIso} onToast={setProgramToast} />
           ) : (
             <>
-          <section className="bg-white rounded-xl p-4 shadow-sm chart-card">
-            <h2 className="text-sm font-bold text-gray-900 mb-3">Overview</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+          <section className="bg-white rounded-xl p-5 shadow-sm chart-card">
+            <h2 className="text-3xl font-bold text-primary mb-4">Overview</h2>
+            <div className="flex flex-wrap items-stretch gap-3">
               {overviewCards.map((card) => (
-                <div key={card.label} className="border rounded-lg p-2.5 bg-white" style={{ borderColor: `${card.color}66` }}>
-                  <p className="text-[10px] text-gray-400">{card.label}</p>
-                  <p className="text-2xl font-bold text-[#2f3150] mt-1">{card.value}</p>
+                <div
+                  key={card.label}
+                  className="w-[152px] rounded-2xl border bg-white px-4 py-3 shadow-sm"
+                  style={{ borderColor: `${card.color}99`, boxShadow: `0 2px 8px ${card.color}22` }}
+                >
+                  <p className="text-[11px] text-primary text-center">{card.label}</p>
+                  <p className="mt-1 text-4xl leading-none font-bold text-[#111827] text-center">{card.value}</p>
                 </div>
               ))}
             </div>
@@ -4361,40 +6182,54 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-gray-900">Insights</h2>
               <div className="flex items-center gap-2">
-                {['Projects', 'All Departments', 'All Status', 'This Month'].map((f) => (
-                  <button key={f} className="h-7 px-2 rounded-md border border-gray-200 text-[10px] text-gray-500">
-                    {f}
-                  </button>
-                ))}
+                <select
+                  value={programInsightStatusFilter}
+                  onChange={(e) => setProgramInsightStatusFilter(e.target.value as 'all' | 'onTrack' | 'completed' | 'delayed')}
+                  className={`${enj.control} !w-auto min-w-[7.5rem] text-sm text-gray-600`}
+                >
+                  <option value="all">All Status</option>
+                  <option value="onTrack">On Track</option>
+                  <option value="completed">Completed</option>
+                  <option value="delayed">Delayed</option>
+                </select>
+                <select
+                  value={programInsightPeriodFilter}
+                  onChange={(e) => setProgramInsightPeriodFilter(e.target.value as 'allTime' | 'thisMonth' | 'last3' | 'last6' | 'thisYear')}
+                  className={`${enj.control} !w-auto min-w-[8.5rem] text-sm text-gray-600`}
+                >
+                  <option value="allTime">All Time</option>
+                  <option value="thisMonth">This Month</option>
+                  <option value="last3">Last 3 Months</option>
+                  <option value="last6">Last 6 Months</option>
+                  <option value="thisYear">This Year</option>
+                </select>
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div className="bg-gray-50 rounded-lg p-3 min-h-[210px]">
                 <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Budget</h3>
-                <div className="flex items-center justify-between gap-2">
-                  <svg viewBox="0 0 180 180" className="w-44 h-44 chart-svg">
-                    <circle cx="90" cy="90" r="46" fill="#3b82f6" />
-                    <path d="M90 90 L90 44 A46 46 0 0 1 134 70 Z" fill="#d4a759" />
-                    <path d="M90 90 L134 70 A46 46 0 0 1 125 118 Z" fill="#60a5fa" />
-                    <path d="M90 90 L125 118 A46 46 0 0 1 88 136 Z" fill="#ef4444" />
-                    <path d="M90 90 L88 136 A46 46 0 0 1 54 118 Z" fill="#4f46e5" />
-                    <path d="M90 90 L54 118 A46 46 0 0 1 53 66 Z" fill="#10b981" />
-                    <circle cx="90" cy="90" r="10" fill="#fff" />
-                  </svg>
+                <div className="flex items-center gap-1">
+                  <DonutChart
+                    slices={programInsightBudgetSlices}
+                    size={170}
+                    ringWidth={42}
+                    className="w-44 h-44 chart-svg"
+                    showOuterLabels={false}
+                  />
                   <div className="text-[9px] text-gray-500 space-y-1">
-                    <p><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />Financial</p>
-                    <p><span className="inline-block w-2 h-2 rounded-full bg-[#d4a759] mr-1" />Knowledge</p>
-                    <p><span className="inline-block w-2 h-2 rounded-full bg-sky-400 mr-1" />External</p>
-                    <p><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />HR</p>
-                    <p><span className="inline-block w-2 h-2 rounded-full bg-indigo-600 mr-1" />Admin</p>
-                    <p><span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1" />Digital</p>
+                    {programInsightBudgetSlices.map((slice) => (
+                      <p key={slice.label}>
+                        <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: slice.color }} />
+                        {slice.label}
+                      </p>
+                    ))}
                   </div>
                 </div>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 min-h-[210px]">
                 <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Projects</h3>
                 <div className="space-y-3 mt-4">
-                  {projectBars.map((bar) => (
+                  {programInsightProjectBars.map((bar) => (
                     <div key={bar.label}>
                       <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
                         <span>{bar.label}</span>
@@ -4409,20 +6244,35 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
               <div className="bg-gray-50 rounded-lg p-3 min-h-[210px]">
                 <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Milestones</h3>
+                <div className="flex items-center gap-3 mb-1 text-[10px] text-gray-500">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#2563eb]" />Actual</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#f59e0b]" />Planned</span>
+                </div>
                 <svg viewBox="0 0 260 150" className="w-full h-40 chart-svg">
                   <line x1="10" y1="120" x2="250" y2="120" stroke="#e5e7eb" />
-                  <polygon points="10,120 70,120 95,80 150,95 190,55 250,70 250,120 10,120" fill="#2563eb" opacity="0.9" />
-                  <polygon points="10,120 70,120 100,90 150,60 185,88 250,50 250,120 10,120" fill="#f59e0b" opacity="0.9" />
-                  <polyline points="10,120 70,120 100,90 150,60 185,88 250,50" fill="none" stroke="#ef4444" strokeWidth="2" />
-                  <text x="12" y="136" fontSize="8" fill="#9ca3af">Jan</text>
-                  <text x="60" y="136" fontSize="8" fill="#9ca3af">Feb</text>
-                  <text x="108" y="136" fontSize="8" fill="#9ca3af">Mar</text>
-                  <text x="156" y="136" fontSize="8" fill="#9ca3af">Apr</text>
-                  <text x="204" y="136" fontSize="8" fill="#9ca3af">May</text>
+                  {(() => {
+                    const maxVal = Math.max(1, ...programMilestoneActual, ...programMilestonePlanned);
+                    const xStart = 20;
+                    const xStep = 50;
+                    const yFrom = (v: number) => 120 - (v / maxVal) * 70;
+                    const plannedPoints = programMilestonePlanned.map((v, i) => `${xStart + i * xStep},${yFrom(v)}`).join(' ');
+                    const actualPoints = programMilestoneActual.map((v, i) => `${xStart + i * xStep},${yFrom(v)}`).join(' ');
+                    return (
+                      <>
+                        <polygon points={`10,120 ${actualPoints} 250,120`} fill="#2563eb" opacity="0.9" />
+                        <polygon points={`10,120 ${plannedPoints} 250,120`} fill="#f59e0b" opacity="0.9" />
+                        <polyline points={plannedPoints} fill="none" stroke="#ef4444" strokeWidth="2" />
+                        {programMilestoneLabels.map((m, i) => (
+                          <text key={m + i} x={xStart + i * xStep - 8} y="136" fontSize="8" fill="#9ca3af">{m}</text>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </svg>
               </div>
             </div>
           </section>
+
 
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="bg-white rounded-xl p-4 shadow-sm chart-card">
@@ -4432,20 +6282,27 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#9b6f2c]" />Planned</span>
               </div>
               <svg viewBox="0 0 500 180" className="w-full h-40 chart-svg">
-                {[0, 20, 40, 60, 80, 100].map((v) => (
-                  <g key={v}>
-                    <line x1="28" x2="492" y1={150 - v * 1.2} y2={150 - v * 1.2} stroke="#eef2f7" />
-                    <text x="6" y={154 - v * 1.2} fontSize="8" fill="#9ca3af">{v}</text>
-                  </g>
-                ))}
+                {(() => {
+                  const maxValue = Math.max(1, ...programChartActual, ...programChartPlanned);
+                  const axisTicks = Array.from({ length: 6 }, (_, i) => Math.round((maxValue * i) / 5));
+                  return axisTicks.map((v) => (
+                    <g key={v}>
+                      <line x1="28" x2="492" y1={150 - (v / maxValue) * 120} y2={150 - (v / maxValue) * 120} stroke="#eef2f7" />
+                      <text x="6" y={154 - (v / maxValue) * 120} fontSize="8" fill="#9ca3af">{v}</text>
+                    </g>
+                  ));
+                })()}
                 {['J','F','M','A','M','J','J','A','S','O','N','D'].map((m, i) => {
-                  const actual = [35, 72, 45, 88, 54, 60, 50, 66, 58, 79, 61, 52][i];
-                  const planned = [42, 68, 55, 80, 48, 64, 56, 70, 62, 74, 66, 58][i];
+                  const maxValue = Math.max(1, ...programChartActual, ...programChartPlanned);
+                  const actual = programChartActual[i] ?? 0;
+                  const planned = programChartPlanned[i] ?? 0;
+                  const actualHeight = (actual / maxValue) * 120;
+                  const plannedHeight = (planned / maxValue) * 120;
                   const x = 34 + i * 38;
                   return (
                     <g key={m + i}>
-                      <rect className="chart-bar" x={x} y={150 - actual * 1.2} width="10" height={actual * 1.2} rx="2" fill="#d4b06a" />
-                      <rect className="chart-bar" x={x + 12} y={150 - planned * 1.2} width="10" height={planned * 1.2} rx="2" fill="#9b6f2c" />
+                      <rect className="chart-bar" x={x} y={150 - actualHeight} width="10" height={actualHeight} rx="2" fill="#d4b06a" />
+                      <rect className="chart-bar" x={x + 12} y={150 - plannedHeight} width="10" height={plannedHeight} rx="2" fill="#9b6f2c" />
                       <text x={x + 10} y="168" textAnchor="middle" fontSize="8" fill="#9ca3af">{m}</text>
                     </g>
                   );
@@ -4456,34 +6313,339 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Budget Deviation</h3>
               <svg viewBox="0 0 460 160" className="w-full h-36 chart-svg">
                 <line x1="10" y1="80" x2="450" y2="80" stroke="#d1d5db" />
-                {[-20, -10, 0, 10, 20].map((v) => (
-                  <text key={v} x="0" y={80 - v * 2} fontSize="8" fill="#9ca3af">{v}</text>
-                ))}
-                {[-15, 25, 18, -20, 30, -12, 24, -18, 19, -10, 22, -14].map((v, i) => (
-                  <rect key={i} x={18 + i * 36} y={v >= 0 ? 80 - v * 2 : 80} width="14" height={Math.abs(v * 2)} className="chart-bar" fill="#b28a44" rx="2" />
-                ))}
+                {(() => {
+                  const maxAbs = Math.max(1, ...programChartDeviation.map((v) => Math.abs(v)));
+                  const tickVals = [-1, -0.5, 0, 0.5, 1].map((p) => Math.round(p * maxAbs));
+                  return tickVals.map((v) => (
+                    <text key={v} x="0" y={80 - (v / maxAbs) * 60} fontSize="8" fill="#9ca3af">{v}</text>
+                  ));
+                })()}
+                {programChartDeviation.map((v, i) => {
+                  const maxAbs = Math.max(1, ...programChartDeviation.map((n) => Math.abs(n)));
+                  const height = (Math.abs(v) / maxAbs) * 60;
+                  return (
+                    <rect
+                      key={i}
+                      x={18 + i * 36}
+                      y={v >= 0 ? 80 - height : 80}
+                      width="14"
+                      height={height}
+                      className="chart-bar"
+                      fill={v >= 0 ? '#ef4444' : '#2563eb'}
+                      rx="2"
+                    />
+                  );
+                })}
                 {['J','F','M','A','M','J','J','A','S','O','N','D'].map((m, i) => (
                   <text key={m + i} x={25 + i * 36} y="154" fontSize="8" fill="#9ca3af">{m}</text>
                 ))}
               </svg>
             </div>
           </section>
+          <section className="space-y-3 rounded-xl border border-[#d6dbe8] bg-white p-3 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-bold text-gray-900">Portfolio</h2>
+              <button
+                type="button"
+                onClick={() => setActiveNav('Portfolio')}
+                className={`${enj.btn} ${enj.btnOutline} h-8 px-3 text-xs font-semibold`}
+              >
+                View All
+              </button>
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white">
+              <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+                <thead>
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Program</th>
+                    <th className="px-3 py-2 font-semibold">KPI</th>
+                    <th className="px-3 py-2 font-semibold">Benefits</th>
+                    <th className="px-3 py-2 font-semibold">Budget</th>
+                    <th className="px-3 py-2 font-semibold">Program Manager</th>
+                    <th className="px-3 py-2 font-semibold">ROI</th>
+                    <th className="px-3 py-2 font-semibold">Start Date</th>
+                    <th className="px-3 py-2 font-semibold">Progress</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {programPortfolioLatestFive.map((row) => {
+                    const pid = String(row.new_programid ?? '');
+                    const normalizedPid = normalizeDataverseId(pid);
+                    const programName = readProgramPortfolioText(row, programColumns.name ?? 'new_name', ['new_name']);
+                    const programKey = normalizedPid ? `id:${normalizedPid}` : `name:${programName.toLowerCase()}`;
+                    const fallbackNameKey = `name:${programName.toLowerCase()}`;
+                    const programProjects = (
+                      portfolioProjectsByProgramKey.get(programKey)
+                      ?? portfolioProjectsByProgramKey.get(fallbackNameKey)
+                      ?? []
+                    )
+                      .slice()
+                      .sort((a, b) => {
+                        const aStart = parseTimelineDate(a.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                        const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                        return aStart - bStart;
+                      });
+                    const pPct = portfolioProgramProgressById.get(normalizedPid) ?? 0;
+                    const start = parseTimelineDate(row.new_startdate);
+                    const isExpanded = programPortfolioExpandedKey === programKey;
+                    const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
+                      for (const k of keys) {
+                        const v = project[k];
+                        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+                      }
+                      return fallback;
+                    };
+                    return (
+                      <Fragment key={`dash-portfolio-${pid || programName}`}>
+                        <tr className="border-t border-[#d7def0] bg-white">
+                          <td className="px-3 py-2 font-normal">
+                            <button
+                              type="button"
+                              className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
+                              onClick={() => setProgramPortfolioExpandedKey((prev) => (prev === programKey ? null : programKey))}
+                              aria-expanded={isExpanded}
+                            >
+                              <ChevronDown size={14} className={`transition-transform text-[#6B7280] ${isExpanded ? 'rotate-180' : ''}`} />
+                              <span className="max-w-[18rem] truncate">{programName}</span>
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
+                          <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
+                          <td className="px-3 py-2"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
+                          <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                          <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1">
+                              <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
+                              <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 w-40">
+                            <div className="flex items-center gap-2">
+                              <div className="enj-table-progress-track flex-1">
+                                <div
+                                  className="enj-table-progress-fill"
+                                  style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }}
+                                />
+                              </div>
+                              <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-gray-600">
+                                {Math.round(pPct)}%
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <>
+                            {programProjects.length === 0 ? (
+                              <tr className="border-t border-gray-100 bg-white">
+                                <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">
+                                  No projects found for this program.
+                                </td>
+                              </tr>
+                            ) : (
+                              <tr className="border-t border-gray-100 bg-[#f9fafc]">
+                                <td colSpan={8} className="px-3 py-2.5">
+                                  <div className="overflow-x-auto rounded-xl border border-[#E5E7EB] bg-[#eef2f9] px-2 py-2">
+                                    <table className={`${enj.table} enj-program-projects-table min-w-[1140px] text-left text-xs`}>
+                                      <thead>
+                                        <tr>
+                                          <th className="px-3 py-2 font-semibold">Project</th>
+                                          <th className="px-3 py-2 font-semibold">Priority</th>
+                                          <th className="px-3 py-2 font-semibold">Sponsor</th>
+                                          <th className="px-3 py-2 font-semibold">Type</th>
+                                          <th className="px-3 py-2 font-semibold">Budget</th>
+                                          <th className="px-3 py-2 font-semibold">Starg.obj</th>
+                                          <th className="px-3 py-2 font-semibold">Project Manager</th>
+                                          <th className="px-3 py-2 font-semibold">Timeline</th>
+                                          <th className="px-3 py-2 font-semibold">Progress</th>
+                                          <th className="px-3 py-2 font-semibold">Status</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {programProjects.map((project, i) => {
+                                          const projectName =
+                                            String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
+                                          const priority = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                          const sponsor = readProjectField(project, ['new_sponsorname', 'new_sponsor']);
+                                          const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
+                                          const budget = readProjectField(project, ['new_budget']);
+                                          const strategicObj = readProjectField(
+                                            project,
+                                            ['new_strategicobjective', 'new_strategicobjectivename', 'new_strategicplan'],
+                                          );
+                                          const manager = readProjectField(project, ['new_projectmanager', 'owneridname', 'new_ownername']);
+                                          const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
+                                          const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                          const progressRaw = Number(project.new_progress ?? NaN);
+                                          const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
+                                          const statusText = String(project.new_projectstatusname ?? '').trim();
+                                          const statusBucket = businessProjectStatusBucket(project);
+                                          const statusLabel =
+                                            statusText
+                                            || (statusBucket === 'completed'
+                                              ? 'Completed'
+                                              : statusBucket === 'delayed'
+                                                ? 'Delayed'
+                                                : statusBucket === 'onTrack'
+                                                  ? 'On Track'
+                                                  : 'To Start');
+                                          const statusKey = statusLabel.toLowerCase();
+                                          return (
+                                            <tr key={`dash-${programKey}-${projectName}-${i}`} className="enj-program-projects-table__row">
+                                              <td className={`px-3 py-2 font-medium ${enj.tableLink}`}>{projectName}</td>
+                                              <td className="px-3 py-2">{priority}</td>
+                                              <td className="px-3 py-2">{sponsor}</td>
+                                              <td className="px-3 py-2">{projectType}</td>
+                                              <td className="px-3 py-2"><TableBudgetDisplay value={budget} /></td>
+                                              <td className="px-3 py-2">{strategicObj}</td>
+                                              <td className="px-3 py-2">{manager}</td>
+                                              <td className="px-3 py-2">
+                                                <div className="enj-program-projects-table__schedule">
+                                                  <div>
+                                                    <p className="enj-program-projects-table__label">Start date</p>
+                                                    <p className="enj-program-projects-table__value">
+                                                      <Calendar size={12} className="text-[#9CA3AF]" />
+                                                      {startDate}
+                                                    </p>
+                                                  </div>
+                                                  <div className="enj-program-projects-table__schedule-sep" />
+                                                  <div>
+                                                    <p className="enj-program-projects-table__label">End date</p>
+                                                    <p className="enj-program-projects-table__value">
+                                                      <Calendar size={12} className="text-[#9CA3AF]" />
+                                                      {endDate}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </td>
+                                              <td className="px-3 py-2 w-32">
+                                                <div className="flex items-center gap-2">
+                                                  <div className="enj-table-progress-track flex-1">
+                                                    <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
+                                                  </div>
+                                                  <span className="w-7 text-right text-[10px] tabular-nums text-gray-600">
+                                                    {Math.round(progress)}%
+                                                  </span>
+                                                </div>
+                                              </td>
+                                              <td className="px-3 py-2">
+                                                <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
+                                                  {statusLabel}
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
             </>
           )}
+          </div>
         </main>
       </div>
     </div>
   );
 }
 
+/** Due date (yyyy-mm-dd) from a Dataverse `new_enddate` for project task list filters. */
+function projectTaskEndDateYmd(row: Record<string, unknown>): string {
+  const raw = row.new_enddate;
+  if (raw == null || raw === '') return '';
+  const s = String(raw);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
+function projectTaskProjectNameLabel(row: Record<string, unknown>): string {
+  return String(row.new_projectname ?? row.new_taskprojectname ?? '').trim();
+}
+
+function formatYmdToDdMmYyyy(ymd: string): string {
+  if (!ymd) return '';
+  const d = new Date(`${ymd}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+const PROJECT_TASK_STATUS_FILTER_LABELS = ['All', 'Future Tasks', 'In Progress', 'Delayed', 'Completed'] as const;
+
 function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
+  const TEAM_TAB_PAGE_SIZE = 5;
+  const todayIso = new Date().toISOString().slice(0, 10);
   const [activeNav, setActiveNav] = useState('Dashboard');
   const [teamTab, setTeamTab] = useState('Workload');
+  const [teamWorkloadPage, setTeamWorkloadPage] = useState(1);
+  const [teamPerformancePage, setTeamPerformancePage] = useState(1);
+  const [teamEvaluationPage, setTeamEvaluationPage] = useState(1);
   const [showAddTeamMemberForm, setShowAddTeamMemberForm] = useState(false);
   const [showAddTaskForm, setShowAddTaskForm] = useState(false);
+  const [editingTaskRow, setEditingTaskRow] = useState<Record<string, unknown> | null>(null);
+  const [projectTaskDetailRow, setProjectTaskDetailRow] = useState<Record<string, unknown> | null>(null);
+  const [projectTaskDeleteCandidate, setProjectTaskDeleteCandidate] = useState<Record<string, unknown> | null>(null);
+  const [deletingProjectTask, setDeletingProjectTask] = useState(false);
+  const [projectBoardTasks, setProjectBoardTasks] = useState<Array<Record<string, unknown>>>([]);
+  const [projectBoardTasksLoading, setProjectBoardTasksLoading] = useState(false);
+  const [projectTaskFilterDue, setProjectTaskFilterDue] = useState('All');
+  const [projectTaskFilterAssign, setProjectTaskFilterAssign] = useState('All');
+  const [projectTaskFilterProject, setProjectTaskFilterProject] = useState('All');
+  const [projectTaskFilterStatus, setProjectTaskFilterStatus] = useState('All');
+  const [taskListRefresh, setTaskListRefresh] = useState(0);
   const [showAddMeetingForm, setShowAddMeetingForm] = useState(false);
   const [showAddDeliverableForm, setShowAddDeliverableForm] = useState(false);
+  const [deliverableListRefresh, setDeliverableListRefresh] = useState(0);
   const [showAddIssueForm, setShowAddIssueForm] = useState(false);
+  const [editingIssue, setEditingIssue] = useState<Record<string, unknown> | null>(null);
+  const [issueDeleteCandidate, setIssueDeleteCandidate] = useState<{ id: string; title: string } | null>(null);
+  const [deletingIssue, setDeletingIssue] = useState(false);
+  const [issueRefreshKey, setIssueRefreshKey] = useState(0);
+  const [issueRows, setIssueRows] = useState<Array<Record<string, unknown>>>([]);
+  const [issueProjectOptions, setIssueProjectOptions] = useState<string[]>([]);
+  const [issueProjectFilter, setIssueProjectFilter] = useState('All');
+  const [issueOwnerFilter, setIssueOwnerFilter] = useState('All');
+  const [issueSeverityFilter, setIssueSeverityFilter] = useState('All');
+  const [issueStatusFilter, setIssueStatusFilter] = useState('All');
+  const [issueDateFilter, setIssueDateFilter] = useState('');
+  const [issuesLoading, setIssuesLoading] = useState(false);
+  const [showProjectIssueDetails, setShowProjectIssueDetails] = useState(false);
+  const [projectIssueDetailRow, setProjectIssueDetailRow] = useState<Record<string, unknown> | null>(null);
+  const [showProjectSubIssueForm, setShowProjectSubIssueForm] = useState(false);
+  const [projectSubIssueFromDetail, setProjectSubIssueFromDetail] = useState(false);
+  const [projectDashToast, setProjectDashToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [dashboardProjects, setDashboardProjects] = useState<Array<Record<string, unknown>>>([]);
+  const [dashboardTasks, setDashboardTasks] = useState<Array<Record<string, unknown>>>([]);
+  const [dashboardDeliverables, setDashboardDeliverables] = useState<Array<Record<string, unknown>>>([]);
+  const [dashboardProjectsLoading, setDashboardProjectsLoading] = useState(false);
+  const [dashboardMeetings, setDashboardMeetings] = useState<Array<Record<string, unknown>>>([]);
+  const [projectMeetingsLoading, setProjectMeetingsLoading] = useState(false);
+  const [dashboardTeamMembers, setDashboardTeamMembers] = useState<Array<Record<string, unknown>>>([]);
+  const [dashboardIssues, setDashboardIssues] = useState<Array<Record<string, unknown>>>([]);
+  const [projectInboxData, setProjectInboxData] = useState<{
+    team: Array<Record<string, unknown>>;
+    projects: Array<Record<string, unknown>>;
+    tasks: Array<Record<string, unknown>>;
+  } | null>(null);
+  const [showAllProjectsScreen, setShowAllProjectsScreen] = useState(false);
+  const [projectSearchText, setProjectSearchText] = useState('');
+  const [projectStatusFilterValue, setProjectStatusFilterValue] = useState('All');
+  /** Insights bar charts: All Projects or a single project (filters in-memory rows). */
+  const [insightProjectFilter, setInsightProjectFilter] = useState<string>('all');
   const navItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
     { name: 'Projects', icon: <Briefcase size={16} /> },
@@ -4493,111 +6655,945 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
     { name: 'Meetings', icon: <Calendar size={16} /> },
     { name: 'Deliverables', icon: <FolderOpen size={16} /> },
   ];
-  const overview = [
-    { label: 'Meetings', value: 23, color: '#d4a759' },
-    { label: 'Projects', value: 4, color: '#34d399' },
-    { label: 'Team Members', value: 18, color: '#60a5fa' },
-    { label: 'Issues', value: 42, color: '#2563eb' },
-    { label: 'Tasks', value: 250, color: '#f6be00' },
-    { label: 'Deliverables', value: 53, color: '#9ca3af' },
-  ];
-  const projectColumns = [
-    {
-      name: 'To Start',
-      accent: '#f6be00',
-      cards: [
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Traditional', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Hybrid', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Traditional', start: 'Aug 16, 2023', end: 'Oct 18, 2023' },
-      ],
-    },
-    {
-      name: 'On Track',
-      accent: '#10b981',
-      cards: [
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-      ],
-    },
-    {
-      name: 'Delayed',
-      accent: '#ef4444',
-      cards: [
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-        { title: 'Project Name', progress: 30, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-      ],
-    },
-    {
-      name: 'Completed',
-      accent: '#2563eb',
-      cards: [
-        { title: 'Project Name', progress: 100, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-        { title: 'Project Name', progress: 100, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-        { title: 'Project Name', progress: 100, sponsor: 'HR', category: 'Support', approach: 'Agile', start: 'Aug 16, 2023', end: 'Oct 16, 2023' },
-      ],
-    },
-  ];
   const teamTabs = ['Workload', 'Performance', 'Evaluation'];
-  const workloadBars = [
-    { name: 'WEEK 1', value: 12, color: '#21c784' },
-    { name: 'WEEK 2', value: 42, color: '#dc595f' },
-    { name: 'WEEK 3', value: 18, color: '#f6be00' },
-    { name: 'WEEK 4', value: 50, color: '#385a8f' },
-    { name: 'WEEK 5', value: 26, color: '#7848aa' },
-    { name: 'WEEK 6', value: 34, color: '#ff7a00' },
-    { name: 'WEEK 7', value: 26, color: '#1f5fd6' },
-    { name: 'WEEK 8', value: 39, color: '#1f8a56' },
-    { name: 'WEEK 9', value: 26, color: '#88afea' },
-    { name: 'WEEK 10', value: 42, color: '#9a5f1a' },
-    { name: 'WEEK 11', value: 20, color: '#8b73d6' },
+  const teamWorkloadBarColors = [
+    '#21c784', '#dc595f', '#f6be00', '#385a8f', '#7848aa', '#ff7a00', '#1f5fd6', '#1f8a56', '#88afea', '#9a5f1a', '#8b73d6',
   ];
-  const teamRows = [
-    ['Dany Marko', '14hrs', '20 hrs', '105 hrs', '250 days', '70%', 'Low'],
-    ['Traumpy Manu', '14hrs', '20 hrs', '105 hrs', '250 days', '70%', 'High'],
-    ['Ali Aljabery', '14hrs', '20 hrs', '105 hrs', '250 days', '70%', 'Optimal'],
-    ['Samer Salem', '14hrs', '20 hrs', '105 hrs', '250 days', '70%', 'Low'],
-    ['Moemen Ali', '14hrs', '20 hrs', '105 hrs', '250 days', '70%', 'High'],
-    ['Omar Adel', '14hrs', '20 hrs', '105 hrs', '250 days', '70%', 'Optimal'],
-    ['Sami Safwat', '14hrs', '20 hrs', '105 hrs', '250 days', '70%', 'Low'],
-    ['Amer Raji', '14hrs', '20 hrs', '105 hrs', '250 days', '70%', 'High'],
-  ];
-  const evaluationRows = [
-    ['Dany Marko', 'DP Factor Proposal', 'iOS Developer', '5', 'Feb 25,2022'],
-    ['Traumpy Manu', 'Tranportation Gov.', 'BA', '3', 'Feb 24,2022'],
-    ['Ali Aljabery', 'Apex website', 'QA', '2', 'Feb 22,2022'],
-    ['Samer Salem', 'StellarSolutions', 'Assistant', '4', 'Feb 20,2022'],
-    ['Moemen Ali', 'StellarSolutions', 'Java Developer', '3', 'Feb 20,2022'],
-    ['Omar Adel', 'StellarSolutions', 'Tech Architecture', '5', 'Feb 20,2022'],
-    ['Sami Safwat', 'StellarSolutions', 'Java Developer', '5', 'Feb 20,2022'],
-    ['Amer Raji', 'StellarSolutions', 'BA', '2', 'Feb 20,2022'],
-    ['Ahmed Jalal', 'StellarSolutions', 'Assistant', '3', 'Feb 20,2022'],
-  ];
-  const performanceMembers = [
-    ['Samy Jalal', 'Junior', '30%'],
-    ['Jerry Lee', 'Senior', '50%'],
-    ['Ramy Hope', 'Junior', '30%'],
-    ['Ahmed Ali', 'Senior', '70%'],
-    ['Sam Jhon', 'Junior', '30%'],
-    ['Jaxx Lee', 'Junior', '30%'],
-    ['John Block', 'Senior', '50%'],
-    ['Ahmed Ali', 'Senior', '50%'],
-  ];
-  const taskColumns = [
-    { name: 'Future Tasks', color: '#10b981' },
-    { name: 'In Progress', color: '#f59e0b' },
-    { name: 'Delayed', color: '#ef4444' },
-    { name: 'Completed', color: '#2563eb' },
-  ];
+  const issueSeverityLabel = (row: Record<string, unknown>) => {
+    const named = String(row.new_issueseverityname ?? '').trim();
+    if (named) return named;
+    const raw = Number(row.new_issueseverity ?? NaN);
+    const fallback = New_issuesnew_issueseverity[raw as keyof typeof New_issuesnew_issueseverity];
+    return String(fallback ?? '—');
+  };
+  const issueStatusLabel = (row: Record<string, unknown>) => {
+    const named = String(row.new_issuestatusname ?? '').trim();
+    if (named) return named;
+    const raw = Number(row.new_issuestatus ?? NaN);
+    const fallback = New_issuesnew_issuestatus[raw as keyof typeof New_issuesnew_issuestatus];
+    if (!fallback) return '—';
+    return String(fallback).replace(/([a-z])([A-Z])/g, '$1 $2');
+  };
+  /** DD/MM/YYYY for issues data table (matches spec screenshots). */
+  const issueTableDate = (value: unknown) => {
+    const s = String(value ?? '').trim();
+    if (!s) return '—';
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+  const projectStatusLabel = (row: Record<string, unknown>) => {
+    const named = String(row.new_projectstatusname ?? '').trim();
+    if (named) return named;
+    const raw = Number(row.new_projectstatus ?? NaN);
+    if (raw === 100000003) return 'Completed';
+    if (raw === 100000002) return 'Delayed';
+    if (raw === 100000001) return 'On Track';
+    return 'To Start';
+  };
+  const projectObjectiveLabel = (row: Record<string, unknown>) =>
+    String(row.new_strategicgoalname ?? row.new_strategicgoal ?? '—').trim() || '—';
+  const projectSponsorLabel = (row: Record<string, unknown>) =>
+    String(row.new_projectsponsorname ?? row.new_projectsponsor ?? '—').trim() || '—';
+  const projectCategoryLabel = (row: Record<string, unknown>) =>
+    String(row.new_projectcategoryname ?? row.new_projectcategory ?? '—').trim() || '—';
+  const readProjectName = (row: Record<string, unknown>) =>
+    String(row.new_projectname ?? row.new_name ?? '').trim();
+  const projectBudgetLabel = (row: Record<string, unknown>) => {
+    const n = Number(row.new_budget ?? row.crcf8_budget ?? NaN);
+    if (Number.isFinite(n)) return String(Math.round(n));
+    const s = String(row.new_budget ?? row.crcf8_budget ?? '').trim();
+    return s || '—';
+  };
+  const projectProgressPct = (row: Record<string, unknown>) => {
+    const n = Number(row.new_progress ?? 0);
+    if (!Number.isFinite(n)) return 0;
+    if (n < 0) return 0;
+    if (n > 100) return 100;
+    return Math.round(n);
+  };
+  const projectDateLabel = (value: unknown) => {
+    const s = String(value ?? '').trim();
+    if (!s) return '—';
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+    return d.toLocaleDateString();
+  };
+  const projectStatusClass = (status: string) => {
+    const key = status.toLowerCase();
+    if (key.includes('complet')) return 'bg-blue-100 text-blue-700';
+    if (key.includes('delay')) return 'bg-rose-100 text-rose-700';
+    if (key.includes('track') || key.includes('progress')) return 'bg-amber-100 text-amber-700';
+    return 'bg-emerald-100 text-emerald-700';
+  };
+  const memberUtilizationLabel = (row: Record<string, unknown>) => {
+    const named = String(row.new_utilizationname ?? '').trim();
+    if (named) return named;
+    const raw = Number(row.new_utilization ?? NaN);
+    const m: Record<number, string> = { 100000000: 'High', 100000001: 'Medium', 100000002: 'Low' };
+    return m[raw] ?? '—';
+  };
+  const memberSpecializeLabel = (row: Record<string, unknown>) => {
+    const named = String(row.new_specializename ?? '').trim();
+    if (named) return named;
+    const raw = Number(row.new_specialize ?? NaN);
+    const m: Record<number, string> = { 100000000: 'Dev', 100000001: 'QA', 100000002: 'PM' };
+    return m[raw] ?? '—';
+  };
+  const memberPerformanceLabel = (row: Record<string, unknown>) => {
+    const named = String(row.new_performancename ?? '').trim();
+    if (named) return named.replace(/([a-z])([A-Z])/g, '$1 $2');
+    const raw = Number(row.new_performance ?? NaN);
+    const m: Record<number, string> = { 100000000: 'Outstanding', 100000001: 'Satisfactory', 100000002: 'Needs improvement' };
+    return m[raw] ?? '—';
+  };
+  const memberEvaluationLabel = (row: Record<string, unknown>) => {
+    const named = String(row.new_evaluationname ?? '').trim();
+    if (named) return named;
+    const raw = Number(row.new_evaluation ?? NaN);
+    const m: Record<number, string> = { 100000000: 'Excellent', 100000001: 'Good', 100000002: 'Average', 100000003: 'Poor' };
+    return m[raw] ?? '—';
+  };
+  const overview = useMemo(() => {
+    const n = (v: number) => (dashboardProjectsLoading ? '—' : v) as string | number;
+    return [
+      { label: 'Meetings', value: n(dashboardMeetings.length), color: '#d4a759' },
+      { label: 'Projects', value: n(dashboardProjects.length), color: '#34d399' },
+      { label: 'Team Members', value: n(dashboardTeamMembers.length), color: '#60a5fa' },
+      { label: 'Issues', value: n(dashboardIssues.length), color: '#2563eb' },
+      { label: 'Tasks', value: n(dashboardTasks.length), color: '#f6be00' },
+      { label: 'Deliverables', value: n(dashboardDeliverables.length), color: '#9ca3af' },
+    ];
+  }, [
+    dashboardProjectsLoading,
+    dashboardMeetings,
+    dashboardTeamMembers,
+    dashboardProjects,
+    dashboardIssues,
+    dashboardTasks,
+    dashboardDeliverables,
+  ]);
+  const projectDashboardTrends = useMemo(() => {
+    const months = 12;
+    const now = new Date();
+    const labels: string[] = [];
+    const monthStarts: Date[] = [];
+    for (let i = months - 1; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      monthStarts.push(d);
+      labels.push(d.toLocaleDateString(undefined, { month: 'short' }));
+    }
+    const monthEnd = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+    const inRange = (d: Date | null, start: Date, end: Date) => d && d >= start && d <= end;
+    const planned: number[] = [];
+    const actual: number[] = [];
+    for (let mi = 0; mi < months; mi += 1) {
+      const start = monthStarts[mi]!;
+      const end = monthEnd(start);
+      let p = 0;
+      let a = 0;
+      for (const row of dashboardTasks) {
+        const due = parseTimelineDate(row.new_enddate);
+        if (inRange(due, start, end)) p += 1;
+        const st = String(row.new_taskstatusname ?? '').toLowerCase();
+        const stn = Number(row.new_taskstatus ?? NaN);
+        const completed = st.includes('complet') || stn === 100000002;
+        const doneDate = parseTimelineDate(row.new_taskcompleteddate) ?? (completed ? parseTimelineDate(row.modifiedon) : null);
+        if (completed && inRange(doneDate, start, end)) a += 1;
+      }
+      planned.push(p);
+      actual.push(a);
+    }
+    const allVals = [...planned, ...actual];
+    const m = Math.max(1, ...allVals, 0);
+    const barH = (v: number) => Math.min(100, Math.round((v / m) * 92));
+    const dev = planned.map((pl, i) => (actual[i] ?? 0) - pl);
+    const maxAbs = Math.max(1, ...dev.map((x) => Math.abs(x)));
+    return { labels, planned, actual, plannedHeights: planned.map(barH), actualHeights: actual.map((v) => barH(v)), deviation: dev, maxAbs };
+  }, [dashboardTasks]);
+  const workloadBars = useMemo(() => {
+    const weeks = 11;
+    const now = new Date();
+    const startMonday = (d: Date) => {
+      const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const day = x.getDay();
+      const diff = (day + 6) % 7;
+      x.setDate(x.getDate() - diff);
+      return x;
+    };
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const anchor = startMonday(today);
+    const counts: { name: string; value: number; color: string }[] = [];
+    for (let w = 0; w < weeks; w += 1) {
+      const ws = new Date(anchor);
+      ws.setDate(ws.getDate() - (weeks - 1 - w) * 7);
+      const we = new Date(ws);
+      we.setDate(we.getDate() + 6);
+      we.setHours(23, 59, 59, 999);
+      let c = 0;
+      for (const row of dashboardTasks) {
+        const ref = parseTimelineDate(row.new_enddate) ?? parseTimelineDate(row.new_startdate) ?? parseTimelineDate(row.modifiedon);
+        if (ref && ref >= ws && ref <= we) c += 1;
+      }
+      counts.push({
+        name: `WEEK ${w + 1}`,
+        value: c,
+        color: teamWorkloadBarColors[w % teamWorkloadBarColors.length]!,
+      });
+    }
+    return counts;
+  }, [dashboardTasks]);
+  const teamManagementDonut = useMemo(() => {
+    let uh = 0;
+    let um = 0;
+    let ul = 0;
+    for (const row of dashboardTeamMembers) {
+      const lab = memberUtilizationLabel(row).toLowerCase();
+      if (lab.includes('high')) uh += 1;
+      else if (lab.includes('medium')) um += 1;
+      else if (lab.includes('low')) ul += 1;
+    }
+    const utilTotal = uh + um + ul;
+    const utilSlices = utilTotal > 0
+      ? [
+        { label: 'High', value: uh, color: '#1667de' as const },
+        { label: 'Medium', value: um, color: '#d3525a' as const },
+        { label: 'Low', value: ul, color: '#3b3a80' as const },
+      ]
+      : [{ label: 'No Data', value: 1, color: '#e5e7eb' as const }];
+    const perCounts = { Outstanding: 0, Satisfactory: 0, NeedsImprov: 0 };
+    for (const row of dashboardTeamMembers) {
+      const lab = memberPerformanceLabel(row);
+      if (lab.includes('Outstanding')) perCounts.Outstanding += 1;
+      else if (lab.includes('Satisfactory')) perCounts.Satisfactory += 1;
+      else if (lab.includes('improv')) perCounts.NeedsImprov += 1;
+    }
+    const perTotal = perCounts.Outstanding + perCounts.Satisfactory + perCounts.NeedsImprov;
+    const perSlices = perTotal > 0
+      ? [
+        { label: 'Strong', value: perCounts.Outstanding, color: '#1667de' as const },
+        { label: 'Weak', value: perCounts.NeedsImprov, color: '#d3525a' as const },
+        { label: 'Avg', value: perCounts.Satisfactory, color: '#3b3a80' as const },
+      ]
+      : [{ label: 'No Data', value: 1, color: '#e5e7eb' as const }];
+    const ev = { Excellent: 0, Good: 0, Average: 0, Poor: 0 };
+    for (const row of dashboardTeamMembers) {
+      const lab = memberEvaluationLabel(row);
+      if (lab.includes('Excellent')) ev.Excellent += 1;
+      else if (lab.includes('Good')) ev.Good += 1;
+      else if (lab.includes('Average')) ev.Average += 1;
+      else if (lab.includes('Poor')) ev.Poor += 1;
+    }
+    const evTotal = ev.Excellent + ev.Good + ev.Average + ev.Poor;
+    const evSlices = evTotal > 0
+      ? [
+        { label: 'Qualified', value: ev.Excellent + ev.Good, color: '#1667de' as const },
+        { label: 'Weak', value: ev.Poor, color: '#d3525a' as const },
+        { label: 'Medium', value: ev.Average, color: '#3b3a80' as const },
+      ]
+      : [{ label: 'No Data', value: 1, color: '#e5e7eb' as const }];
+    return { utilSlices, perSlices, evSlices, utilEmpty: utilTotal === 0, perEmpty: perTotal === 0, evEmpty: evTotal === 0 };
+  }, [dashboardTeamMembers]);
+  const teamChartMaxWorkload = useMemo(
+    () => Math.max(1, ...workloadBars.map((b) => b.value)),
+    [workloadBars],
+  );
+  const teamPerformanceLines = useMemo(() => {
+    const months = 12;
+    const now = new Date();
+    const monthStarts: Date[] = [];
+    for (let i = months - 1; i >= 0; i -= 1) {
+      monthStarts.push(new Date(now.getFullYear(), now.getMonth() - i, 1));
+    }
+    const monthEnd = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+    const inRange = (d: Date | null, start: Date, end: Date) => d && d >= start && d <= end;
+    const completed: number[] = [];
+    const open: number[] = [];
+    for (let mi = 0; mi < months; mi += 1) {
+      const start = monthStarts[mi]!;
+      const end = monthEnd(start);
+      let cl = 0;
+      let op = 0;
+      for (const row of dashboardTasks) {
+        const st = String(row.new_taskstatusname ?? '').toLowerCase();
+        const stn = Number(row.new_taskstatus ?? NaN);
+        const isDone = st.includes('complet') || stn === 100000002;
+        const isHold = st.includes('hold') || stn === 100000003;
+        const doneDate = parseTimelineDate(row.new_taskcompleteddate) ?? (isDone ? parseTimelineDate(row.modifiedon) : null);
+        if (isDone && inRange(doneDate, start, end)) cl += 1;
+        else if (!isDone && !isHold) {
+          const startT = parseTimelineDate(row.new_startdate) ?? parseTimelineDate(row.createdon);
+          if (startT && startT <= end) op += 1;
+        }
+      }
+      completed.push(cl);
+      open.push(op);
+    }
+    const m = Math.max(0.1, ...completed, ...open);
+    const y = (v: number) => Math.round(194 - (v / m) * 150);
+    const pointsA = completed.map((v, i) => `${52 + i * 48},${y(v)}`).join(' ');
+    const pointsB = open.map((v, i) => `${52 + i * 48},${y(v)}`).join(' ');
+    const hasData = completed.some((x) => x > 0) || open.some((x) => x > 0);
+    return { pointsA, pointsB, hasData };
+  }, [dashboardTasks]);
+  const projectNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of dashboardProjects) {
+      const id = normalizeDataverseId(String(p.new_projectid ?? p._new_project_value ?? '').trim());
+      const name = String(p.new_projectname ?? p.new_name ?? '').trim();
+      if (id && name) m.set(id, name);
+    }
+    return m;
+  }, [dashboardProjects]);
+  const teamMemberProjectName = useCallback((row: Record<string, unknown>) => {
+    const direct = String(row.new_projectname ?? row.crcf8_projectname ?? '').trim();
+    if (direct) return direct;
+    const idRaw = row._new_project_value ?? row.new_project ?? row.new_projectid;
+    const id = normalizeDataverseId(String(idRaw ?? '').trim());
+    if (id && projectNameById.has(id)) return projectNameById.get(id)!;
+    return '—';
+  }, [projectNameById]);
+  const taskCountByAssignee = useMemo(() => {
+    const m = new Map<string, number>();
+    const costByAssignee = new Map<string, number>();
+    const workedDaysByAssignee = new Map<string, Set<string>>();
+    for (const t of dashboardTasks) {
+      const a = String(t.new_assigntoteammember ?? '').trim().toLowerCase();
+      if (!a) continue;
+      m.set(a, (m.get(a) ?? 0) + 1);
+      const c = Number(t.new_cost);
+      if (Number.isFinite(c)) {
+        costByAssignee.set(a, (costByAssignee.get(a) ?? 0) + c);
+      }
+      const touched = parseTimelineDate(t.new_taskcompleteddate)
+        ?? parseTimelineDate(t.modifiedon)
+        ?? parseTimelineDate(t.createdon);
+      if (touched) {
+        const ymd = `${touched.getFullYear()}-${String(touched.getMonth() + 1).padStart(2, '0')}-${String(touched.getDate()).padStart(2, '0')}`;
+        const bucket = workedDaysByAssignee.get(a) ?? new Set<string>();
+        bucket.add(ymd);
+        workedDaysByAssignee.set(a, bucket);
+      }
+    }
+    return { m, costByAssignee, workedDaysByAssignee };
+  }, [dashboardTasks]);
+  const teamRows = useMemo(() => {
+    return dashboardTeamMembers.map((row) => {
+      const name = String(row.new_fullname ?? '—').trim() || '—';
+      const key = name.toLowerCase();
+      const tcount = taskCountByAssignee.m.get(key) ?? 0;
+      const hrs = taskCountByAssignee.costByAssignee.get(key) ?? 0;
+      const goalK = row.new_achivedkpi != null || row.new_kpi != null
+        ? `${String(row.new_achivedkpi ?? '—')} / ${String(row.new_kpi ?? '—')}`
+        : '—';
+      const kpi = Number(row.new_kpi);
+      const achieved = Number(row.new_achivedkpi);
+      const prodPct = Number.isFinite(kpi) && kpi > 0 && Number.isFinite(achieved)
+        ? Math.min(100, Math.round((achieved / kpi) * 100))
+        : tcount > 0 ? Math.min(100, tcount * 10) : 0;
+      const cap = row.new_score != null && String(row.new_score).trim() !== '' ? `${row.new_score}%` : '—';
+      const util = memberUtilizationLabel(row);
+      const workedDays = taskCountByAssignee.workedDaysByAssignee.get(key)?.size ?? 0;
+      return [name, `${Math.round(hrs) || 0}hrs`, goalK, String(tcount), String(workedDays), cap, util, prodPct] as [string, string, string, string, string, string, string, number];
+    });
+  }, [dashboardTeamMembers, taskCountByAssignee]);
+  const evaluationRows = useMemo(() => {
+    return dashboardTeamMembers.map((row) => {
+      const name = String(row.new_fullname ?? '—').trim() || '—';
+      return [
+        name,
+        teamMemberProjectName(row),
+        memberSpecializeLabel(row),
+        String(row.new_score ?? memberEvaluationLabel(row) ?? '—'),
+        projectDateLabel(row.modifiedon),
+      ] as [string, string, string, string, string];
+    });
+  }, [dashboardTeamMembers, teamMemberProjectName]);
+  const performanceMembers = useMemo(() => {
+    return dashboardTeamMembers.slice(0, 12).map((row) => {
+      const name = String(row.new_fullname ?? '—').trim() || '—';
+      const tier = memberSpecializeLabel(row);
+      const sc = row.new_score;
+      const pct = Number.isFinite(Number(sc)) ? `${Math.min(100, Math.max(0, Math.round(Number(sc))))}%` : '—';
+      return [name, tier, pct] as [string, string, string];
+    });
+  }, [dashboardTeamMembers]);
+  const pagedTeamRows = useMemo(() => {
+    const start = (teamWorkloadPage - 1) * TEAM_TAB_PAGE_SIZE;
+    return teamRows.slice(start, start + TEAM_TAB_PAGE_SIZE);
+  }, [teamRows, teamWorkloadPage, TEAM_TAB_PAGE_SIZE]);
+  const pagedEvaluationRows = useMemo(() => {
+    const start = (teamEvaluationPage - 1) * TEAM_TAB_PAGE_SIZE;
+    return evaluationRows.slice(start, start + TEAM_TAB_PAGE_SIZE);
+  }, [evaluationRows, teamEvaluationPage, TEAM_TAB_PAGE_SIZE]);
+  const pagedPerformanceMembers = useMemo(() => {
+    const start = (teamPerformancePage - 1) * TEAM_TAB_PAGE_SIZE;
+    return performanceMembers.slice(start, start + TEAM_TAB_PAGE_SIZE);
+  }, [performanceMembers, teamPerformancePage, TEAM_TAB_PAGE_SIZE]);
+  useEffect(() => {
+    const maxWorkloadPage = Math.max(1, Math.ceil(teamRows.length / TEAM_TAB_PAGE_SIZE));
+    if (teamWorkloadPage > maxWorkloadPage) setTeamWorkloadPage(maxWorkloadPage);
+  }, [teamRows.length, teamWorkloadPage, TEAM_TAB_PAGE_SIZE]);
+  useEffect(() => {
+    const maxEvaluationPage = Math.max(1, Math.ceil(evaluationRows.length / TEAM_TAB_PAGE_SIZE));
+    if (teamEvaluationPage > maxEvaluationPage) setTeamEvaluationPage(maxEvaluationPage);
+  }, [evaluationRows.length, teamEvaluationPage, TEAM_TAB_PAGE_SIZE]);
+  useEffect(() => {
+    const maxPerformancePage = Math.max(1, Math.ceil(performanceMembers.length / TEAM_TAB_PAGE_SIZE));
+    if (teamPerformancePage > maxPerformancePage) setTeamPerformancePage(maxPerformancePage);
+  }, [performanceMembers.length, teamPerformancePage, TEAM_TAB_PAGE_SIZE]);
+  const latestFiveProjects = useMemo(() => dashboardProjects.slice(0, 5), [dashboardProjects]);
+  const allProjectStatusOptions = useMemo(() => {
+    const vals = Array.from(new Set(dashboardProjects.map(projectStatusLabel).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return ['All', ...vals];
+  }, [dashboardProjects]);
+  const filteredAllProjects = useMemo(() => {
+    const q = projectSearchText.trim().toLowerCase();
+    return dashboardProjects.filter((row) => {
+      const name = String(row.new_projectname ?? row.new_name ?? '').trim();
+      const status = projectStatusLabel(row);
+      const start = projectDateLabel(row.new_startdate);
+      const end = projectDateLabel(row.new_enddate);
+      if (projectStatusFilterValue !== 'All' && status !== projectStatusFilterValue) return false;
+      if (!q) return true;
+      return [name, status, start, end].some((v) => v.toLowerCase().includes(q));
+    });
+  }, [dashboardProjects, projectSearchText, projectStatusFilterValue]);
+  const insightProjectNames = useMemo(
+    () => Array.from(new Set(dashboardProjects.map((p) => readProjectName(p)).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [dashboardProjects],
+  );
+  const insightScopedProjects = useMemo(() => {
+    if (insightProjectFilter === 'all') return dashboardProjects;
+    return dashboardProjects.filter((p) => readProjectName(p) === insightProjectFilter);
+  }, [dashboardProjects, insightProjectFilter]);
+  const insightScopedTasks = useMemo(() => {
+    if (insightProjectFilter === 'all') return dashboardTasks;
+    return dashboardTasks.filter(
+      (t) => String(t.new_taskprojectname ?? t.new_projectname ?? '').trim() === insightProjectFilter,
+    );
+  }, [dashboardTasks, insightProjectFilter]);
+  const projectInsights = useMemo(() => {
+    const P = {
+      green: { fg: '#00C853', bg: '#E8F5E9' },
+      blue: { fg: '#0061FE', bg: '#E8EEF8' },
+      amber: { fg: '#FFB300', bg: '#FFF8E1' },
+      red: { fg: '#D32F2F', bg: '#FFEBEE' },
+    } as const;
+    const projectStatus = { onTrack: 0, completed: 0, toStart: 0, delayed: 0 };
+    insightScopedProjects.forEach((row) => {
+      const s = projectStatusLabel(row).toLowerCase();
+      if (s.includes('complet')) projectStatus.completed += 1;
+      else if (s.includes('delay')) projectStatus.delayed += 1;
+      else if (s.includes('on track') || (s.includes('track') && !s.includes('not'))) projectStatus.onTrack += 1;
+      else if (s.includes('start') || s.includes('to start')) projectStatus.toStart += 1;
+      else projectStatus.toStart += 1;
+    });
+    const projectTotal = Math.max(1, insightScopedProjects.length);
+    const progressBars = [
+      { label: 'ON TRACK', value: Math.round((projectStatus.onTrack / projectTotal) * 100), ...P.green },
+      { label: 'COMPLETED', value: Math.round((projectStatus.completed / projectTotal) * 100), ...P.blue },
+      { label: 'TO START', value: Math.round((projectStatus.toStart / projectTotal) * 100), ...P.amber },
+      { label: 'DELAYED', value: Math.round((projectStatus.delayed / projectTotal) * 100), ...P.red },
+    ];
+
+    const taskStatus = { inProgress: 0, newTasks: 0, completed: 0, delayed: 0 };
+    insightScopedTasks.forEach((row) => {
+      const s = String(row.new_taskstatusname ?? row.new_statusname ?? '').toLowerCase();
+      const stn = Number(row.new_taskstatus ?? NaN);
+      if (stn === 100000002 || s.includes('complet') || s.includes('done')) taskStatus.completed += 1;
+      else if (stn === 100000001 || s.includes('progress')) taskStatus.inProgress += 1;
+      else if (stn === 100000003 || s.includes('hold') || s.includes('delay')) taskStatus.delayed += 1;
+      else if (stn === 100000000 || s.includes('not')) taskStatus.newTasks += 1;
+      else taskStatus.newTasks += 1;
+    });
+    const taskTotal = Math.max(1, insightScopedTasks.length);
+    const taskBars = [
+      { label: 'TO DO', value: Math.round((taskStatus.newTasks / taskTotal) * 100), ...P.green },
+      { label: 'IN PROGRESS', value: Math.round((taskStatus.inProgress / taskTotal) * 100), ...P.blue },
+      { label: 'DELAYED', value: Math.round((taskStatus.delayed / taskTotal) * 100), ...P.red },
+      { label: 'DONE', value: Math.round((taskStatus.completed / taskTotal) * 100), ...P.amber },
+    ];
+
+    const categoryMap = new Map<string, number>();
+    insightScopedProjects.forEach((row) => {
+      const cat = projectCategoryLabel(row);
+      categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + 1);
+    });
+    const categoryColors = ['#1667de', '#d3525a', '#3b3a80', '#f6be00'];
+    const categorySlicesRaw = Array.from(categoryMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([label, value], i) => ({ label, value, color: categoryColors[i % categoryColors.length] }));
+    const categorySlices = categorySlicesRaw.length > 0
+      ? categorySlicesRaw
+      : [{ label: 'No Data', value: 1, color: '#cbd5e1' }];
+
+    const deliverableTotal = [0, 0, 0, 0, 0];
+    const deliverableDone = [0, 0, 0, 0, 0];
+    const deliverablePending = [0, 0, 0, 0, 0];
+    const now = new Date();
+    const startMonth = new Date(now.getFullYear(), now.getMonth() - 4, 1);
+    const monthNames: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const d = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1);
+      monthNames.push(d.toLocaleDateString(undefined, { month: 'short' }));
+    }
+    const toIdx = (raw: unknown) => {
+      const d = parseTimelineDate(raw);
+      if (!d) return -1;
+      const idx = (d.getFullYear() - startMonth.getFullYear()) * 12 + (d.getMonth() - startMonth.getMonth());
+      return idx >= 0 && idx < 5 ? idx : -1;
+    };
+    dashboardDeliverables.forEach((row) => {
+      const idx = toIdx(row.new_duedate ?? row.new_deliverydate ?? row.createdon);
+      if (idx < 0) return;
+      deliverableTotal[idx] += 1;
+      const s = String(row.new_statusname ?? row.new_deliverablestatusname ?? row.new_status ?? '').toLowerCase();
+      if (s.includes('deliver') || s.includes('complete') || s.includes('done')) deliverableDone[idx] += 1;
+      else deliverablePending[idx] += 1;
+    });
+    return {
+      progressBars,
+      taskBars,
+      categorySlices,
+      monthNames,
+      deliverableTotal,
+      deliverableDone,
+      deliverablePending,
+    };
+  }, [insightScopedProjects, insightScopedTasks, dashboardDeliverables]);
+  const issueDateIso = (value: unknown) => {
+    const s = String(value ?? '').trim();
+    if (!s) return '';
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0, 10);
+  };
+  const normalizeIssueSeverity = (row: Record<string, unknown>) => {
+    const named = issueSeverityLabel(row).toLowerCase();
+    if (named.includes('high')) return 'High';
+    if (named.includes('medium')) return 'Medium';
+    return 'Low';
+  };
+  const normalizeIssueStatus = (row: Record<string, unknown>) => {
+    const named = issueStatusLabel(row).trim().toLowerCase();
+    if (named.includes('resolved') || named.includes('solved') || named.includes('closed')) return 'Closed';
+    if (named.includes('progress')) return 'In Progress';
+    return 'Open';
+  };
+  const issueFilterOptions = useMemo(() => {
+    const owners = Array.from(
+      new Set(
+        issueRows
+          .map((r) => String(r.new_issueowner ?? '').trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+    return { projects: issueProjectOptions, owners };
+  }, [issueRows, issueProjectOptions]);
+  const filteredIssueRows = useMemo(() => {
+    return issueRows.filter((row) => {
+      const projectName = String(row.new_projectname ?? '').trim();
+      const owner = String(row.new_issueowner ?? '').trim();
+      const severity = normalizeIssueSeverity(row);
+      const status = normalizeIssueStatus(row);
+      const raisedIso = issueDateIso(row.new_issuedate ?? row.createdon);
+      if (issueProjectFilter !== 'All' && projectName !== issueProjectFilter) return false;
+      if (issueOwnerFilter !== 'All' && owner !== issueOwnerFilter) return false;
+      if (issueSeverityFilter !== 'All' && severity !== issueSeverityFilter) return false;
+      if (issueStatusFilter !== 'All' && status !== issueStatusFilter) return false;
+      if (issueDateFilter && raisedIso !== issueDateFilter) return false;
+      return true;
+    });
+  }, [issueRows, issueProjectFilter, issueOwnerFilter, issueSeverityFilter, issueStatusFilter, issueDateFilter]);
+  const issueCharts = useMemo(() => {
+    const severityCounts = { High: 0, Medium: 0, Low: 0 };
+    const projectMap = new Map<string, number>();
+    let openCount = 0;
+    let closedCount = 0;
+    for (const row of filteredIssueRows) {
+      const sevNamed = String(row.new_issueseverityname ?? '').trim().toLowerCase();
+      const sevRaw = Number(row.new_issueseverity ?? NaN);
+      // Severity chart supports only High/Medium/Low.
+      if (sevNamed.includes('critical') || sevRaw === 100000003) severityCounts.High += 1;
+      else if (sevNamed.includes('high') || sevRaw === 100000002) severityCounts.High += 1;
+      else if (sevNamed.includes('medium') || sevRaw === 100000001) severityCounts.Medium += 1;
+      else severityCounts.Low += 1;
+
+      const statusNamed = String(row.new_issuestatusname ?? issueStatusLabel(row)).trim().toLowerCase();
+      const statusRaw = Number(row.new_issuestatus ?? NaN);
+      const isSolved = statusNamed.includes('solved') || statusNamed.includes('resolved') || statusNamed.includes('closed')
+        || statusRaw === 100000002 || statusRaw === 100000003;
+      if (isSolved) closedCount += 1;
+      else openCount += 1;
+
+      const projectName = String(row.new_projectname ?? 'Unassigned').trim() || 'Unassigned';
+      projectMap.set(projectName, (projectMap.get(projectName) ?? 0) + 1);
+    }
+    const projectBars = Array.from(projectMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, value], i) => ({
+        name,
+        shortName: name.length > 12 ? `${name.slice(0, 12)}...` : name,
+        value,
+        color: ['#d4a759', '#6ea3ef', '#d35b66', '#6b7280', '#b8872e'][i % 5],
+      }));
+    const projectMax = Math.max(1, ...projectBars.map((p) => p.value));
+    const projectTicks = [0, 0.25, 0.5, 0.75, 1].map((step) => Math.round(projectMax * step));
+    const severitySlices = [
+      { label: 'High', value: severityCounts.High, color: '#dc595f' },
+      { label: 'Medium', value: severityCounts.Medium, color: '#efb4b8' },
+      { label: 'Low', value: severityCounts.Low, color: '#d4a759' },
+    ];
+    const rawStatusSlices = [
+      { label: 'Open', value: openCount, color: '#dc4f56' },
+      { label: 'Closed', value: closedCount, color: '#1f67e0' },
+    ];
+    // Keep donut render stable even when only one status bucket has values.
+    const statusSlices = (openCount > 0 && closedCount === 0)
+      ? [
+        { label: 'Open', value: openCount, color: '#dc4f56' },
+        { label: 'Closed', value: 0.0001, color: '#1f67e0' },
+      ]
+      : (closedCount > 0 && openCount === 0)
+        ? [
+          { label: 'Open', value: 0.0001, color: '#dc4f56' },
+          { label: 'Closed', value: closedCount, color: '#1f67e0' },
+        ]
+        : rawStatusSlices;
+    const hasSeverityData = severitySlices.some((s) => s.value > 0);
+    const hasStatusData = statusSlices.some((s) => s.value > 0);
+    return {
+      total: filteredIssueRows.length,
+      openCount,
+      closedCount,
+      severityCounts,
+      severitySlices: hasSeverityData ? severitySlices : [{ label: 'No Data', value: 1, color: '#e5e7eb' }],
+      hasSeverityData,
+      projectBars,
+      projectMax,
+      projectTicks,
+      statusSlices: hasStatusData ? statusSlices : [{ label: 'No Data', value: 1, color: '#e5e7eb' }],
+      hasStatusData,
+      hasBothStatusBuckets: openCount > 0 && closedCount > 0,
+    };
+  }, [filteredIssueRows]);
+
+  const loadIssueRows = async () => {
+    setIssuesLoading(true);
+    try {
+      const res = await New_issuesService.getAll({ top: 1000, orderBy: ['createdon desc'] });
+      if (!res.success) throw new Error(res.error?.message ?? 'Failed to load issues');
+      setIssueRows((res.data ?? []) as unknown as Array<Record<string, unknown>>);
+    } catch (error) {
+      setProjectDashToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load issues' });
+      setIssueRows([]);
+    } finally {
+      setIssuesLoading(false);
+    }
+  };
+
+  const deleteIssue = async (id: string) => {
+    if (!id) return;
+    try {
+      await New_issuesService.delete(id);
+      setProjectDashToast({ type: 'success', message: 'Issue deleted successfully.' });
+      void loadIssueRows();
+    } catch (error) {
+      setProjectDashToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to delete issue' });
+    }
+  };
+
+  const confirmDeleteIssue = async () => {
+    if (!issueDeleteCandidate?.id) return;
+    setDeletingIssue(true);
+    try {
+      await deleteIssue(issueDeleteCandidate.id);
+      setIssueDeleteCandidate(null);
+    } finally {
+      setDeletingIssue(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeNav !== 'Issues' || showAddIssueForm) return;
+    void loadIssueRows();
+  }, [activeNav, showAddIssueForm, issueRefreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (activeNav !== 'Issues') return () => { cancelled = true; };
+    (async () => {
+      try {
+        const res = await New_projectsService.getAll({ top: 1000, orderBy: ['createdon desc'] });
+        if (!res.success) throw new Error(res.error?.message ?? 'Failed to load projects');
+        if (cancelled) return;
+        const projects = Array.from(
+          new Set(((res.data ?? []) as unknown as Array<Record<string, unknown>>).map(readProjectName).filter(Boolean)),
+        ).sort((a, b) => a.localeCompare(b));
+        setIssueProjectOptions(projects);
+      } catch {
+        if (!cancelled) setIssueProjectOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNav]);
+
+  useEffect(() => {
+    if (activeNav !== 'Tasks') return;
+    let cancelled = false;
+    (async () => {
+      setProjectBoardTasksLoading(true);
+      try {
+        const res = await New_tasksService.getAll({ top: 2000, orderBy: ['modifiedon desc'] });
+        if (cancelled) return;
+        if (res.success) {
+          setProjectBoardTasks((res.data ?? []) as unknown as Array<Record<string, unknown>>);
+        } else {
+          setProjectBoardTasks([]);
+        }
+      } catch {
+        if (!cancelled) setProjectBoardTasks([]);
+      } finally {
+        if (!cancelled) setProjectBoardTasksLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNav, taskListRefresh]);
+
+  useEffect(() => {
+    if (activeNav !== 'Meetings') return;
+    void loadProjectMeetings();
+  }, [activeNav]);
+
+  useEffect(() => {
+    if (activeNav !== 'Dashboard' && activeNav !== 'Team Management') return;
+    let cancelled = false;
+    (async () => {
+      setDashboardProjectsLoading(true);
+      try {
+        const [
+          projectsRes,
+          tasksRes,
+          deliverablesRes,
+          issuesRes,
+          meetingsRes,
+          teamRes,
+        ] = await Promise.all([
+          New_projectsService.getAll({ top: 1000, orderBy: ['createdon desc'] }),
+          New_tasksService.getAll({ top: 2000, orderBy: ['createdon desc'] }),
+          New_deliverablesService.getAll({ top: 2000, orderBy: ['createdon desc'] }),
+          New_issuesService.getAll({ top: 2000, orderBy: ['createdon desc'] }),
+          New_meetingdetailsService.getAll({ top: 2000, orderBy: ['createdon desc'] }),
+          New_teammembersService.getAll({ top: 2000, orderBy: ['createdon desc'] }),
+        ]);
+        if (cancelled) return;
+        if (!projectsRes.success) throw new Error(projectsRes.error?.message ?? 'Failed to load projects');
+        setDashboardProjects((projectsRes.data ?? []) as unknown as Array<Record<string, unknown>>);
+        setDashboardTasks(tasksRes.success ? ((tasksRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+        setDashboardDeliverables(
+          deliverablesRes.success ? ((deliverablesRes.data ?? []) as unknown as Array<Record<string, unknown>>) : [],
+        );
+        setDashboardIssues(issuesRes.success ? ((issuesRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+        setDashboardMeetings(meetingsRes.success ? ((meetingsRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+        setDashboardTeamMembers(teamRes.success ? ((teamRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+      } catch (error) {
+        if (!cancelled) {
+          setDashboardProjects([]);
+          setDashboardTasks([]);
+          setDashboardDeliverables([]);
+          setDashboardIssues([]);
+          setDashboardMeetings([]);
+          setDashboardTeamMembers([]);
+          setProjectDashToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load dashboard data' });
+        }
+      } finally {
+        if (!cancelled) setDashboardProjectsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNav]);
+
+  const requestDeleteProjectTask = (row: Record<string, unknown>) => {
+    if (!String(row.new_taskid ?? '').trim()) return;
+    setProjectTaskDeleteCandidate(row);
+  };
+
+  const confirmDeleteProjectTask = async () => {
+    const row = projectTaskDeleteCandidate;
+    if (!row) return;
+    const id = String(row.new_taskid ?? '').trim();
+    if (!id) {
+      setProjectTaskDeleteCandidate(null);
+      return;
+    }
+    setDeletingProjectTask(true);
+    try {
+      await New_tasksService.delete(id);
+      setTaskListRefresh((k) => k + 1);
+      setProjectDashToast({ type: 'success', message: 'Task deleted.' });
+      setProjectTaskDeleteCandidate(null);
+    } catch (e) {
+      setProjectDashToast({ type: 'error', message: e instanceof Error ? e.message : 'Failed to delete task' });
+    } finally {
+      setDeletingProjectTask(false);
+    }
+  };
+
+  const loadProjectMeetings = async () => {
+    setProjectMeetingsLoading(true);
+    try {
+      const res = await New_meetingdetailsService.getAll({ top: 2000, orderBy: ['new_meetingdate desc', 'createdon desc'] });
+      if (!res.success) {
+        setDashboardMeetings([]);
+      } else {
+        const sessionEmail = (getSessionUserEmail() ?? '').trim().toLowerCase();
+        const local = sessionEmail.split('@')[0] ?? '';
+        const rows = ((res.data ?? []) as unknown as Array<Record<string, unknown>>).filter((row) => {
+          if (!sessionEmail) return true;
+          const invited = String(row.new_invitememberemails ?? '').toLowerCase();
+          return invited.includes(sessionEmail) || (local.length > 1 && invited.includes(local));
+        });
+        setDashboardMeetings(rows);
+      }
+    } catch {
+      setDashboardMeetings([]);
+    } finally {
+      setProjectMeetingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [tm, pr, ts] = await Promise.all([
+          New_teammembersService.getAll({ top: 2000, orderBy: ['createdon desc'] }),
+          New_projectsService.getAll({ top: 1000, orderBy: ['createdon desc'] }),
+          New_tasksService.getAll({ top: 2000, orderBy: ['modifiedon desc'] }),
+        ]);
+        if (cancelled) return;
+        setProjectInboxData({
+          team: tm.success ? ((tm.data ?? []) as unknown as Array<Record<string, unknown>>) : [],
+          projects: pr.success ? ((pr.data ?? []) as unknown as Array<Record<string, unknown>>) : [],
+          tasks: ts.success ? ((ts.data ?? []) as unknown as Array<Record<string, unknown>>) : [],
+        });
+      } catch {
+        if (!cancelled) setProjectInboxData({ team: [], projects: [], tasks: [] });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskListRefresh]);
+
+  const projectNotifications = useMemo(() => {
+    if (!projectInboxData) return [];
+    const scoped = new Set(
+      (projectInboxData.projects ?? [])
+        .map((r) => String(r.new_projectname ?? r.new_name ?? '').trim())
+        .filter(Boolean),
+    );
+    return buildInboxNotifications('project', {
+      teamMembers: projectInboxData.team,
+      projects: projectInboxData.projects,
+      tasks: projectInboxData.tasks,
+      scopedProjectNames: scoped,
+    });
+  }, [projectInboxData]);
+
+  const projectTaskDueDateOptions = useMemo(() => {
+    const ymds = new Set<string>();
+    for (const r of projectBoardTasks) {
+      const y = projectTaskEndDateYmd(r);
+      if (y) ymds.add(y);
+    }
+    return ['All', ...Array.from(ymds).sort((a, b) => a.localeCompare(b))];
+  }, [projectBoardTasks]);
+
+  const projectTaskAssignOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of projectBoardTasks) {
+      const a = String(r.new_assigntoteammember ?? '').trim();
+      if (a) set.add(a);
+    }
+    return ['All', ...Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))];
+  }, [projectBoardTasks]);
+
+  const projectTaskProjectOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of projectBoardTasks) {
+      const p = projectTaskProjectNameLabel(r);
+      if (p) set.add(p);
+    }
+    return ['All', ...Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))];
+  }, [projectBoardTasks]);
+
+  const projectBoardTasksFiltered = useMemo(() => {
+    let list = projectBoardTasks;
+    if (projectTaskFilterProject !== 'All') {
+      list = list.filter((r) => projectTaskProjectNameLabel(r) === projectTaskFilterProject);
+    }
+    if (projectTaskFilterAssign !== 'All') {
+      list = list.filter(
+        (r) => String(r.new_assigntoteammember ?? '').trim().toLowerCase() === projectTaskFilterAssign.toLowerCase(),
+      );
+    }
+    if (projectTaskFilterDue !== 'All') {
+      list = list.filter((r) => projectTaskEndDateYmd(r) === projectTaskFilterDue);
+    }
+    if (projectTaskFilterStatus !== 'All') {
+      const want: 'todo' | 'inprogress' | 'delayed' | 'done' =
+        projectTaskFilterStatus === 'Future Tasks'
+          ? 'todo'
+          : projectTaskFilterStatus === 'In Progress'
+            ? 'inprogress'
+            : projectTaskFilterStatus === 'Delayed'
+              ? 'delayed'
+              : 'done';
+      list = list.filter((r) => taskStatusBucket(r) === want);
+    }
+    return list;
+  }, [projectBoardTasks, projectTaskFilterProject, projectTaskFilterAssign, projectTaskFilterDue, projectTaskFilterStatus]);
+
+  useEffect(() => {
+    if (activeNav !== 'Tasks') return;
+    if (projectTaskFilterProject !== 'All' && !projectTaskProjectOptions.includes(projectTaskFilterProject)) {
+      setProjectTaskFilterProject('All');
+    }
+  }, [activeNav, projectTaskProjectOptions, projectTaskFilterProject]);
+
+  useEffect(() => {
+    if (activeNav !== 'Tasks') return;
+    if (projectTaskFilterAssign !== 'All' && !projectTaskAssignOptions.includes(projectTaskFilterAssign)) {
+      setProjectTaskFilterAssign('All');
+    }
+  }, [activeNav, projectTaskAssignOptions, projectTaskFilterAssign]);
+
+  useEffect(() => {
+    if (activeNav !== 'Tasks') return;
+    if (projectTaskFilterDue !== 'All' && !projectTaskDueDateOptions.includes(projectTaskFilterDue)) {
+      setProjectTaskFilterDue('All');
+    }
+  }, [activeNav, projectTaskDueDateOptions, projectTaskFilterDue]);
+
+  const showTaskFormPanel = showAddTaskForm || editingTaskRow != null;
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
-      <aside className="w-52 bg-white border-r border-gray-100 flex flex-col flex-shrink-0">
+      <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         <div className="px-5 py-5 border-b border-gray-100">
           <LogoMark />
         </div>
-        <nav className="flex-1 py-4 px-3 space-y-1">
+        <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-1">
           {navItems.map(({ name, icon }) => (
             <div key={name}>
               <button
@@ -4608,20 +7604,34 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                     setTeamTab('Workload');
                     setShowAddTeamMemberForm(false);
                   }
-                  if (name !== 'Tasks') setShowAddTaskForm(false);
+                  if (name !== 'Tasks') {
+                    setShowAddTaskForm(false);
+                    setEditingTaskRow(null);
+                    setProjectTaskDetailRow(null);
+                    setProjectTaskFilterDue('All');
+                    setProjectTaskFilterAssign('All');
+                    setProjectTaskFilterProject('All');
+                    setProjectTaskFilterStatus('All');
+                  }
                   if (name !== 'Meetings') setShowAddMeetingForm(false);
                   if (name !== 'Deliverables') setShowAddDeliverableForm(false);
-                  if (name !== 'Issues') setShowAddIssueForm(false);
+                  if (name !== 'Issues') {
+                    setShowAddIssueForm(false);
+                    setShowProjectIssueDetails(false);
+                    setProjectIssueDetailRow(null);
+                    setShowProjectSubIssueForm(false);
+                    setProjectSubIssueFromDetail(false);
+                  }
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  activeNav === name ? 'bg-amber-50 text-[#151d5d]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                  activeNav === name ? 'bg-amber-50 text-primary' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
                 }`}
               >
-                <span className="flex items-center gap-3">
+                <span className="flex min-w-0 items-center gap-3 text-left">
                   {icon}
-                  {name}
+                  <span className="truncate whitespace-nowrap">{name}</span>
                 </span>
-                {name === 'Team Management' && <ChevronDown size={12} className={activeNav === 'Team Management' ? 'text-[#151d5d]' : 'text-gray-400'} />}
+                {name === 'Team Management' && <ChevronDown size={12} className={`shrink-0 ${activeNav === 'Team Management' ? 'text-primary' : 'text-gray-400'}`} />}
               </button>
               {name === 'Team Management' && activeNav === 'Team Management' && (
                 <div className="ml-9 mt-1 space-y-1">
@@ -4630,8 +7640,8 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       key={tab}
                       type="button"
                       onClick={() => setTeamTab(tab)}
-                      className={`block w-full text-left px-2 py-1 text-[10px] rounded-md ${
-                        teamTab === tab ? 'text-[#151d5d] font-semibold bg-white border border-gray-100' : 'text-gray-400 hover:text-gray-600'
+                      className={`block w-full text-left px-3 py-1.5 text-sm rounded-md ${
+                        teamTab === tab ? 'text-primary font-semibold bg-white border border-gray-100' : 'text-gray-400 hover:text-gray-600'
                       }`}
                     >
                       {tab}
@@ -4642,638 +7652,642 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           ))}
         </nav>
+        <div className="shrink-0 border-t border-gray-100 px-3 py-4">
+          <ThemeModeToggle />
+        </div>
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-4 h-10 w-[420px] max-w-[52vw]">
-              <input className="bg-transparent text-sm text-gray-500 outline-none w-full" placeholder="Search anything..." />
-              <Search size={18} className="text-gray-400" />
-            </div>
-            <NotificationBell />
-            <ProfileDropdown onLogout={onLogout} />
+            <NotificationBell items={projectNotifications} />
+            <ProfileDropdown onLogout={onLogout} roleLabel="Project" />
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-5 space-y-4">
+        <main
+          className={`enj-app-main flex-1 min-h-0 min-w-0 flex flex-col ${
+            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow)
+              ? 'overflow-hidden'
+              : 'overflow-y-auto'
+          }`}
+        >
+          {projectDashToast && (
+            <div className="shrink-0">
+              <NotificationToast
+                type={projectDashToast.type}
+                message={projectDashToast.message}
+                onClose={() => setProjectDashToast(null)}
+              />
+            </div>
+          )}
+          <div
+            className={
+              activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow)
+                ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0'
+                : 'space-y-4'
+            }
+          >
+          {issueDeleteCandidate && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+              <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+                <h3 className={enj.sectionTitle}>Delete issue?</h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  Are you sure you want to delete
+                  {' '}
+                  <span className="font-semibold text-gray-800">{issueDeleteCandidate.title || 'this issue'}</span>
+                  ?
+                </p>
+                <p className="mt-1 text-xs text-rose-600">This action cannot be undone.</p>
+                <div className="mt-5 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="h-9 px-4 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    onClick={() => setIssueDeleteCandidate(null)}
+                    disabled={deletingIssue}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="h-9 px-4 rounded-md bg-rose-600 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                    onClick={() => void confirmDeleteIssue()}
+                    disabled={deletingIssue}
+                  >
+                    {deletingIssue ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {projectTaskDeleteCandidate && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+              <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+                <h3 className={enj.sectionTitle}>Delete task?</h3>
+                <p className="mt-2 text-sm text-gray-600">
+                  Are you sure you want to delete
+                  {' '}
+                  <span className="font-semibold text-gray-800">
+                    {String(projectTaskDeleteCandidate.new_tasktitle ?? 'this task').trim() || 'this task'}
+                  </span>
+                  ?
+                </p>
+                <p className="mt-1 text-xs text-rose-600">This action cannot be undone.</p>
+                <div className="mt-5 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    className="h-9 px-4 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    onClick={() => setProjectTaskDeleteCandidate(null)}
+                    disabled={deletingProjectTask}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="h-9 px-4 rounded-md bg-rose-600 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                    onClick={() => void confirmDeleteProjectTask()}
+                    disabled={deletingProjectTask}
+                  >
+                    {deletingProjectTask ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {activeNav === 'Tasks' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
-              {showAddTaskForm ? (
-                <section className="bg-white rounded-xl p-5 shadow-sm max-w-4xl mx-auto">
-                  <p className="text-[11px] text-gray-400 mb-4">
-                    <button className="underline text-gray-500" onClick={() => setShowAddTaskForm(false)}>Tasks</button>
-                    {' > '}Add New Task
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-                    {[
-                      ['Task Title', 'Enter Task title', false],
-                      ['Project Name', 'Select project', true],
-                      ['Assign to team members', 'Select member', false],
-                      ['Level', 'Select Level', true],
-                      ['Task Duration', '', false],
-                      ['Sub Task', 'Subtask', false],
-                      ['Performance', 'Select', true],
-                      ['Score rate', 'If user add', true],
-                      ['Cost', '', false],
-                      ['Task Status', 'If user add', true],
-                    ].map(([label, placeholder, selectField]) => (
-                      <label key={String(label)} className="block">
-                        <span className="text-[11px] text-gray-500 mb-1 block">{String(label)}</span>
-                        {label === 'Task Duration' ? (
-                          <div className="flex items-center gap-2">
-                            <button className="h-9 px-3 rounded-md border border-gray-200 text-[10px] text-gray-600">2025/01/08</button>
-                            <button className="h-9 px-3 rounded-md border border-gray-200 text-[10px] text-gray-600">03/20/2025</button>
-                            <span className="text-[10px] text-gray-400">2 days</span>
-                          </div>
-                        ) : selectField ? (
-                          <select className="w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-xs text-gray-500">
-                            <option>{String(placeholder)}</option>
-                          </select>
-                        ) : (
-                          <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder={String(placeholder)} />
-                        )}
-                      </label>
-                    ))}
-                  </div>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Description</span>
-                    <textarea className="w-full h-16 rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none" placeholder="Description..." />
-                  </label>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Attachment</span>
-                    <button className="w-full h-16 rounded-md border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400">
-                      <span className="font-semibold text-gray-600">Choose a file</span> or drag it here
-                    </button>
-                  </label>
-                  <div className="mt-4 flex justify-end gap-3">
-                    <button type="button" onClick={() => setShowAddTaskForm(false)} className="h-8 px-6 rounded-md border border-[#b28a44] text-[#b28a44] text-xs">Cancel</button>
-                    <button className="h-8 px-6 rounded-md bg-[#b28a44] text-white text-xs">Assign Task</button>
-                  </div>
-                </section>
+            <section className={`${enj.panelBg} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
+              {showTaskFormPanel ? (
+                <div className="min-h-0 max-h-[min(calc(100dvh-7rem),48rem)] overflow-y-auto">
+                  <AddNewTaskFormPanel
+                    editingTask={editingTaskRow}
+                    onClose={() => {
+                      setShowAddTaskForm(false);
+                      setEditingTaskRow(null);
+                    }}
+                    onNotify={(type, message) => setProjectDashToast({ type, message })}
+                    onSaved={() => setTaskListRefresh((k) => k + 1)}
+                  />
+                </div>
+              ) : projectTaskDetailRow ? (
+                <div className="min-h-0 w-full min-w-0 max-h-[min(calc(100dvh-7rem),56rem)] flex-1 overflow-y-auto pr-0.5">
+                  <ProjectTaskDetailView
+                    task={projectTaskDetailRow}
+                    onBack={() => setProjectTaskDetailRow(null)}
+                    onTaskRefreshed={setProjectTaskDetailRow}
+                    onListRefresh={() => setTaskListRefresh((k) => k + 1)}
+                    onNotify={(type, message) => setProjectDashToast({ type, message })}
+                  />
+                </div>
               ) : (
-                <>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-5 flex-wrap">
-                      <h2 className="text-3xl font-bold text-[#2f3150]">Tasks</h2>
-                      {[
-                        ['Due date', 'Select date'],
-                        ['Assign to', 'All'],
-                        ['Project', 'All'],
-                        ['Status', 'All'],
-                      ].map(([label, value]) => (
-                        <label key={label} className="flex items-center gap-2 text-xs text-gray-500">
-                          <span>{label}</span>
-                          <select className="h-8 rounded-md border border-gray-200 bg-white px-2 text-[11px] text-gray-500">
-                            <option>{value}</option>
-                          </select>
-                        </label>
-                      ))}
+                <div className="relative min-w-0 flex w-full flex-col">
+                  {projectBoardTasksLoading && <ScreenLoader overlay className="rounded-xl" />}
+                  <div className="flex items-center justify-between mb-3 shrink-0">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h2 className={enj.pageTitle}>Tasks List</h2>
+                      <label className="flex items-center gap-2 text-xs text-gray-600">
+                        <span>Due date</span>
+                        <select
+                          className={`${enj.control} !w-auto min-w-[8.5rem] max-w-[11rem] text-sm text-gray-700`}
+                          value={projectTaskFilterDue}
+                          onChange={(e) => setProjectTaskFilterDue(e.target.value)}
+                        >
+                          {projectTaskDueDateOptions.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt === 'All' ? 'All' : formatYmdToDdMmYyyy(opt)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-600">
+                        <span>Assign to</span>
+                        <select
+                          className={`${enj.control} !w-auto min-w-[7rem] max-w-[12rem] text-sm text-gray-700`}
+                          value={projectTaskFilterAssign}
+                          onChange={(e) => setProjectTaskFilterAssign(e.target.value)}
+                        >
+                          {projectTaskAssignOptions.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt === 'All' ? 'All' : opt}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-600">
+                        <span>Project</span>
+                        <select
+                          className={`${enj.control} !w-auto min-w-[7rem] max-w-[12rem] text-sm text-gray-700`}
+                          value={projectTaskFilterProject}
+                          onChange={(e) => setProjectTaskFilterProject(e.target.value)}
+                        >
+                          {projectTaskProjectOptions.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-600">
+                        <span>Status</span>
+                        <select
+                          className={`${enj.control} !w-auto min-w-[8.5rem] max-w-[11rem] text-sm text-gray-700`}
+                          value={projectTaskFilterStatus}
+                          onChange={(e) => setProjectTaskFilterStatus(e.target.value)}
+                        >
+                          {PROJECT_TASK_STATUS_FILTER_LABELS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </div>
-                    <button type="button" onClick={() => setShowAddTaskForm(true)} className="h-9 px-5 rounded-md bg-[#b28a44] text-white text-xs font-semibold">+ New Task</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddTaskForm(true);
+                        setEditingTaskRow(null);
+                        setProjectTaskDetailRow(null);
+                      }}
+                      className={`${enj.btn} ${enj.btnPrimary} text-xs font-semibold shadow-sm hover:bg-[#9a7638]`}
+                    >
+                      + New Task
+                    </button>
                   </div>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-                    {taskColumns.map((column) => (
-                      <div key={column.name} className="space-y-3">
-                        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
-                          <p className="text-xl font-semibold text-[#2f3150]">{column.name}</p>
-                          <button className="text-[10px] text-[#b28a44]">View All</button>
-                        </div>
-                        {[0, 1, 2].map((idx) => (
-                          <div key={`${column.name}-${idx}`} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                            <div className="flex items-center justify-between">
-                              <p className="text-sm font-semibold" style={{ color: column.color }}>Task Name</p>
-                              <span className="px-2 py-0.5 rounded border border-gray-200 text-[9px] text-gray-500">Project Name</span>
-                            </div>
-                            <p className="text-[11px] text-[#4b5574] mt-1">auditing information architecture</p>
-                            <p className="text-[10px] text-gray-400">Create content for pieceland App</p>
-                            <p className="text-[10px] mt-2" style={{ color: column.color }}>Sub.Task title</p>
-                            <div className="mt-1 flex items-center justify-between text-[10px] text-gray-400">
-                              <span className="flex items-center gap-1"><Calendar size={10} /> Due Date</span>
-                              <span className="flex items-center gap-1"><Clock size={10} /> {column.name === 'Delayed' ? '5 hrs' : '5 days'}</span>
-                            </div>
-                            <div className="mt-1 flex items-center justify-between text-[10px] text-gray-400">
-                              <span>Aug 20, 2021</span>
-                              <button className="w-5 h-5 rounded border border-[#d8c9ad] text-[#b28a44] text-[10px]">↗</button>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between">
-                              <div className="w-4 h-4 rounded-full bg-orange-200 text-[8px] text-orange-700 flex items-center justify-center">E</div>
-                              <p className="text-[9px] text-gray-400">11 file</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
+                  <div className="w-full min-w-0 shrink-0">
+                    <TasksScreenBoard
+                      variant="project"
+                      tasks={projectBoardTasksFiltered}
+                      onTaskOpen={(row) => {
+                        setProjectTaskDetailRow(row as Record<string, unknown>);
+                        setShowAddTaskForm(false);
+                        setEditingTaskRow(null);
+                      }}
+                      onTaskEdit={(row) => {
+                        setProjectTaskDetailRow(null);
+                        setEditingTaskRow(row as Record<string, unknown>);
+                        setShowAddTaskForm(false);
+                      }}
+                      onTaskDelete={requestDeleteProjectTask}
+                      onTimeSheet={() =>
+                        setProjectDashToast({ type: 'info', message: 'Time Sheet: connect this to your timesheet or canvas app URL.' })
+                      }
+                    />
                   </div>
-                </>
+                </div>
               )}
             </section>
           ) : activeNav === 'Meetings' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
+            <section className={enj.panelBg}>
               {showAddMeetingForm ? (
-                <section className="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto">
-                  <p className="text-[11px] text-gray-400 mb-4">
-                    <button className="underline text-gray-500" onClick={() => setShowAddMeetingForm(false)}>Calendar</button>
-                    {' > '}Add New Meeting
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-3">
-                    {[
-                      ['Meeting Title *', 'Enter Meeting Title', false],
-                      ['Department', 'Select', true],
-                      ['Meeting Category *', 'Select Category', true],
-                      ['Project Name', 'Select Project Category', true],
-                      ['Vendor Name', 'Select Vendor Name', true],
-                      ['Project Manager', 'Auto Fetch', false],
-                      ['Invite member', 'Select member', true],
-                    ].map(([label, placeholder, selectField]) => (
-                      <label key={String(label)} className="block">
-                        <span className="text-[11px] text-gray-500 mb-1 block">{String(label)}</span>
-                        {selectField ? (
-                          <select className="w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-xs text-gray-500">
-                            <option>{String(placeholder)}</option>
-                          </select>
-                        ) : (
-                          <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder={String(placeholder)} />
-                        )}
-                      </label>
-                    ))}
-                    <label className="block">
-                      <span className="text-[11px] text-gray-500 mb-1 block">Meeting Date *</span>
-                      <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder="Select Date" />
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] text-gray-500 mb-1 block">Start Time*</span>
-                      <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder="--:--" />
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] text-gray-500 mb-1 block">End Time*</span>
-                      <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder="--:--" />
-                    </label>
-                  </div>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Meeting Location</span>
-                    <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder="Enter Meeting Location" />
-                  </label>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Meeting Agenda</span>
-                    <textarea className="w-full h-20 rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none" placeholder="Agenda..." />
-                  </label>
-                  <div className="mt-4 flex justify-end gap-3">
-                    <button type="button" onClick={() => setShowAddMeetingForm(false)} className="h-8 px-6 rounded-md border border-[#b28a44] text-[#b28a44] text-xs">Cancel</button>
-                    <button className="h-8 px-6 rounded-md bg-[#b28a44] text-white text-xs">Add to Calendar</button>
-                  </div>
-                </section>
+                <AddMeetingFormPanel
+                  parentLabel="Meetings"
+                  onCancel={() => setShowAddMeetingForm(false)}
+                  onNotify={(type, message) => setProjectDashToast({ type, message })}
+                  onCreated={() => void loadProjectMeetings()}
+                />
               ) : (
-                <>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-8">
-                      <h2 className="text-3xl font-bold text-[#2f3150]">Meeting</h2>
-                      <div className="flex items-center gap-3 text-xs">
-                        <label className="text-gray-500 flex items-center gap-2">
-                          <span>Project Name</span>
-                          <select className="h-8 rounded-md border border-gray-200 bg-white px-2 text-[11px] text-gray-500">
-                            <option>All</option>
-                          </select>
-                        </label>
-                        <button className="h-7 px-3 rounded-full border border-[#d8c9ad] text-[10px] text-[#b28a44] bg-white">Today</button>
-                        <button className="h-7 px-3 rounded-full border border-gray-200 text-[10px] text-gray-500 bg-white">June, 20,2022</button>
-                        <button className="h-8 px-4 rounded-md border border-[#d8c9ad] text-[11px] text-[#b28a44] bg-white">MOM</button>
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => setShowAddMeetingForm(true)} className="h-9 px-4 rounded-md bg-[#b28a44] text-white text-xs font-semibold">+ New Meeting</button>
-                  </div>
-
-                  <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
-                    <section className="bg-white rounded-xl p-3">
-                      <div className="grid grid-cols-[44px_1fr]">
-                        <div className="text-[10px] text-gray-300 space-y-8 pt-2">
-                          {['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map((time) => (
-                            <p key={time}>{time}</p>
-                          ))}
-                        </div>
-                        <div className="relative h-[410px] rounded-lg border border-gray-100 bg-[repeating-linear-gradient(to_right,#f6f7fb_0,#f6f7fb_1px,transparent_1px,transparent_16.66%)]">
-                          {[15, 73, 139, 205, 271, 337].map((x) => (
-                            <div key={x} className="absolute top-0 bottom-0 w-px bg-gray-100" style={{ left: x }} />
-                          ))}
-                          {[
-                            { title: 'Meeting Title 1', top: 56, left: 54, color: '#17c983' },
-                            { title: 'Meeting Title 2', top: 220, left: 2, color: '#2563eb' },
-                            { title: 'Meeting Title 3', top: 140, left: 180, color: '#f6be00' },
-                            { title: 'Meeting Title 4', top: 258, left: 275, color: '#2563eb' },
-                            { title: 'Meeting Title 5', top: 96, left: 398, color: '#21c784' },
-                            { title: 'Meeting Title 6', top: 140, left: 340, color: '#d35b66' },
-                            { title: 'Meeting Title 8', top: 304, left: 331, color: '#f6be00' },
-                            { title: 'New', top: 312, left: 78, color: '#474d7f' },
-                          ].map((item) => (
-                            <div key={item.title + item.top} className="absolute h-8 rounded-full px-4 text-white text-[9px] font-semibold flex items-center" style={{ top: item.top, left: item.left, backgroundColor: item.color }}>
-                              {item.title}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </section>
-
-                    <section className="bg-white rounded-xl p-3">
-                      <p className="text-[9px] text-gray-400 uppercase">Current Month</p>
-                      <h3 className="text-sm font-semibold text-[#2f3150] mb-2">Scheduled Meetings</h3>
-                      <div className="space-y-2">
-                        {[
-                          ['Standup', '20 HRS', '11', '#c9f4e4', '#138f6f'],
-                          ['Requirements Gathering', '12 HRS', '12', '#e9edff', '#4c64bf'],
-                          ['Technical Discussion', '22 HRS', '10', '#f7eed8', '#b8872e'],
-                          ['Brain Storm Session', '24 HRS', '12', '#eef0ff', '#4d5bb7'],
-                          ['Training Sessions', '10 HRS', '5', '#fdf4dd', '#b4882a'],
-                          ['Quality Assurance', '22 HRS', '2', '#ffe6e8', '#cb4e59'],
-                          ['Documents Review', '20 HRS', '3', '#e9e4ff', '#6958bb'],
-                          ['Technical Discussion', '12 HRS', '4', '#e2f7ef', '#2f9879'],
-                          ['Interview', '22 HRS', '8', '#ffe6e6', '#ca5454'],
-                          ['Others', '22 HRS', '6', '#f5eedf', '#9a7a35'],
-                        ].map(([name, hrs, count, bg, text]) => (
-                          <div key={String(name) + String(count)} className="rounded-full px-3 py-1.5 flex items-center justify-between" style={{ backgroundColor: String(bg) }}>
-                            <div>
-                              <p className="text-[10px] font-semibold" style={{ color: String(text) }}>{name}</p>
-                              <p className="text-[9px] text-gray-400">{hrs}</p>
-                            </div>
-                            <span className="w-5 h-5 rounded-full bg-white/80 text-[10px] font-semibold flex items-center justify-center" style={{ color: String(text) }}>{count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  </div>
-                </>
+                <MeetingsBoardPanel
+                  meetings={dashboardMeetings}
+                  loading={projectMeetingsLoading}
+                  onNewMeeting={() => setShowAddMeetingForm(true)}
+                  onNotify={(type, message) => setProjectDashToast({ type, message })}
+                />
               )}
             </section>
           ) : activeNav === 'Deliverables' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
+            <>
               {showAddDeliverableForm ? (
-                <section className="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto">
-                  <p className="text-[11px] text-gray-400 mb-4">
-                    <button className="underline text-gray-500" onClick={() => setShowAddDeliverableForm(false)}>Deliverables</button>
-                    {' > '}Add New Deliverables
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3 mb-4">
-                    {[
-                      ['Project Name', 'Select Project Name', true],
-                      ['Project Category', 'Select Project Category', true],
-                      ['Project Manager', 'Select Project Manager', true],
-                      ['Project Goal', 'Enter Project Goal', false],
-                    ].map(([label, placeholder, selectField]) => (
-                      <label key={String(label)} className="block">
-                        <span className="text-[11px] text-gray-500 mb-1 block">{String(label)}</span>
-                        {selectField ? (
-                          <select className="w-full h-10 rounded-md border border-gray-200 bg-white px-3 text-xs text-gray-500">
-                            <option>{String(placeholder)}</option>
-                          </select>
-                        ) : (
-                          <input className="w-full h-10 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder={String(placeholder)} />
-                        )}
-                      </label>
-                    ))}
-                  </div>
-                  <p className="text-[11px] font-semibold text-gray-600 mb-2">The deliverables include:</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-                    {[
-                      'Hardware', 'Licenses', 'Phase1', 'Phase2', 'Design', 'Business Requirements', 'Design Document', 'User Manual Document',
-                      'UAT', 'Production Link', 'Training', 'Knowledge Transfer', 'Professional Services', 'Consultation', 'Scope Document', 'Report',
-                    ].map((item, idx) => (
-                      <label key={item} className="flex items-center gap-2 text-xs text-gray-600">
-                        <input type="checkbox" defaultChecked={[0, 2, 4, 8, 10, 12].includes(idx)} className="rounded border-gray-300 text-[#b28a44] focus:ring-[#b28a44]" />
-                        {item}
-                      </label>
-                    ))}
-                  </div>
-                  <label className="block">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Notes</span>
-                    <textarea className="w-full h-20 rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none" placeholder="Notes..." />
-                  </label>
-                  <div className="mt-5 flex justify-end gap-3">
-                    <button type="button" onClick={() => setShowAddDeliverableForm(false)} className="h-9 px-7 rounded-md border border-[#b28a44] text-[#b28a44] text-xs font-semibold">Cancel</button>
-                    <button className="h-9 px-7 rounded-md bg-[#b28a44] text-white text-xs font-semibold">+ Save</button>
-                  </div>
-                </section>
+                <AddDeliverableFormPanel
+                  onClose={() => setShowAddDeliverableForm(false)}
+                  onNotify={(type, message) => setProjectDashToast({ type, message })}
+                  onSaved={() => setDeliverableListRefresh((k) => k + 1)}
+                  sectionClassName="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto w-full"
+                />
+              ) : (
+                <DeliverablesListPanel
+                  isActive={activeNav === 'Deliverables' && !showAddDeliverableForm}
+                  refreshKey={deliverableListRefresh}
+                  onNotify={(type, message) => setProjectDashToast({ type, message })}
+                  variant="project"
+                  onNewDeliverable={() => setShowAddDeliverableForm(true)}
+                />
+              )}
+            </>
+          ) : activeNav === 'Issues' ? (
+            <section className={`relative min-w-0 max-w-full ${enj.panelBg}`}>
+              {!showAddIssueForm &&
+                !showProjectIssueDetails &&
+                !showProjectSubIssueForm &&
+                issuesLoading && <ScreenLoader overlay />}
+              {showProjectSubIssueForm && projectIssueDetailRow ? (
+                <TeamSubIssueFormPanel
+                  parentIssue={projectIssueDetailRow}
+                  onBack={() => {
+                    setShowProjectSubIssueForm(false);
+                    if (projectSubIssueFromDetail) {
+                      setShowProjectIssueDetails(true);
+                    } else {
+                      setProjectIssueDetailRow(null);
+                    }
+                    setProjectSubIssueFromDetail(false);
+                  }}
+                  onRefresh={() => {
+                    setIssueRefreshKey((k) => k + 1);
+                  }}
+                  onNotify={(type, message) => setProjectDashToast({ type, message })}
+                  onSaved={() => {
+                    setIssueRefreshKey((k) => k + 1);
+                  }}
+                />
+              ) : showProjectIssueDetails && projectIssueDetailRow ? (
+                <TeamIssueDetailPanel
+                  issue={projectIssueDetailRow}
+                  onBack={() => {
+                    setShowProjectIssueDetails(false);
+                    setProjectIssueDetailRow(null);
+                  }}
+                  onRefreshWorkspace={() => {
+                    setIssueRefreshKey((k) => k + 1);
+                  }}
+                  onOpenSubIssue={() => {
+                    setProjectSubIssueFromDetail(true);
+                    setShowProjectSubIssueForm(true);
+                  }}
+                  onNotify={(type, message) => setProjectDashToast({ type, message })}
+                  onIssueUpdated={(row) => {
+                    setProjectIssueDetailRow(row);
+                    setIssueRefreshKey((k) => k + 1);
+                  }}
+                />
+              ) : showAddIssueForm ? (
+                <AddIssueFormPanel
+                  onClose={() => {
+                    setShowAddIssueForm(false);
+                    setEditingIssue(null);
+                  }}
+                  onNotify={(type, message) => setProjectDashToast({ type, message })}
+                  onSaved={() => setIssueRefreshKey((k) => k + 1)}
+                  issueToEdit={editingIssue}
+                />
               ) : (
                 <>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-3xl font-bold text-[#2f3150]">Display List Of Deliverables</h2>
-                    <button type="button" onClick={() => setShowAddDeliverableForm(true)} className="h-9 px-4 rounded-md bg-[#b28a44] text-white text-xs font-semibold">+ New List</button>
+                    <h2 className={enj.pageTitle}>Issue Tracking Dashboard</h2>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingIssue(null);
+                        setShowAddIssueForm(true);
+                        setShowProjectIssueDetails(false);
+                        setProjectIssueDetailRow(null);
+                        setShowProjectSubIssueForm(false);
+                        setProjectSubIssueFromDetail(false);
+                      }}
+                      className={`${enj.btn} ${enj.btnPrimary} text-xs font-semibold`}
+                    >
+                      + Create Issue
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 xl:grid-cols-[1fr_250px] gap-4">
-                    <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-                      <table className="w-full">
-                        <thead className="bg-gray-50 border-b border-gray-100">
-                          <tr className="text-[10px] text-gray-400 text-left">
-                            <th className="px-3 py-2">Project Name</th>
-                            <th className="px-3 py-2">Project Sponsor</th>
-                            <th className="px-3 py-2">Deliverables List</th>
-                            <th className="px-3 py-2">Status</th>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
+                    <label className="block">
+                      <span className="text-xs text-primary mb-1 block">Project</span>
+                      <select className={enj.control} value={issueProjectFilter} onChange={(e) => setIssueProjectFilter(e.target.value)}>
+                        <option value="All">All</option>
+                        {issueFilterOptions.projects.map((p) => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-primary mb-1 block">Issue Owner</span>
+                      <select className={enj.control} value={issueOwnerFilter} onChange={(e) => setIssueOwnerFilter(e.target.value)}>
+                        <option value="All">All</option>
+                        {issueFilterOptions.owners.map((o) => (
+                          <option key={o} value={o}>{o}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-primary mb-1 block">Severity</span>
+                      <select className={enj.control} value={issueSeverityFilter} onChange={(e) => setIssueSeverityFilter(e.target.value)}>
+                        <option value="All">All</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-primary mb-1 block">Date</span>
+                      <input type="date" className={enj.control} value={issueDateFilter} onChange={(e) => setIssueDateFilter(e.target.value)} />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-primary mb-1 block">Status</span>
+                      <select className={enj.control} value={issueStatusFilter} onChange={(e) => setIssueStatusFilter(e.target.value)}>
+                        <option value="All">All</option>
+                        <option value="Open">Open</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    {[
+                      ['Total Issues', String(issueCharts.total), 'border-[#d4a759]'],
+                      ['Open Issues', String(issueCharts.openCount), 'border-[#ef4444]'],
+                      ['Closed Issues', String(issueCharts.closedCount), 'border-[#2563eb]'],
+                    ].map(([label, value, border]) => (
+                      <div key={String(label)} className={`bg-white rounded-xl border-2 ${border} p-3 text-center`}>
+                        <p className="text-[11px] text-gray-500">{label}</p>
+                        <p className="text-4xl font-bold text-primary mt-1">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <h3 className="text-2xl font-semibold text-primary mb-2">Issues Severity</h3>
+                      <p className="text-xs text-gray-500 mb-1">Live distribution of High, Medium, and Low issues</p>
+                      <DonutChart
+                        className="w-full h-40 chart-svg"
+                        size={230}
+                        ringWidth={48}
+                        centerText={String(issueCharts.total)}
+                        centerSubtext="Total"
+                        showOuterLabels={issueCharts.hasSeverityData}
+                        slices={issueCharts.severitySlices}
+                      />
+                      <div className="mt-2 flex items-center justify-center gap-4 text-xs text-gray-700">
+                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#dc595f]" />High ({issueCharts.severityCounts.High})</span>
+                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#efb4b8]" />Medium ({issueCharts.severityCounts.Medium})</span>
+                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#d4a759]" />Low ({issueCharts.severityCounts.Low})</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <h3 className="text-2xl font-semibold text-primary mb-2">Issues vs Projects</h3>
+                      <p className="text-xs text-gray-500 mb-1">Top projects by number of issues</p>
+                      <svg viewBox="0 0 220 140" className="w-full h-40 chart-svg">
+                        {issueCharts.projectTicks.map((v) => (
+                          <g key={v}>
+                            <line x1="24" x2="210" y1={108 - ((v / issueCharts.projectMax) * 80)} y2={108 - ((v / issueCharts.projectMax) * 80)} stroke="#eef2f7" />
+                            <text x="6" y={111 - ((v / issueCharts.projectMax) * 80)} fontSize="7" fill="#9ca3af">{v}</text>
+                          </g>
+                        ))}
+                        {issueCharts.projectBars.map((item, i) => {
+                          const scaledHeight = (item.value / issueCharts.projectMax) * 80;
+                          return (
+                            <g key={item.name}>
+                              <rect x={34 + i * 34} y={108 - scaledHeight} width="12" height={scaledHeight} rx="3" className="chart-bar" fill={item.color} />
+                              <text x={40 + i * 34} y="126" textAnchor="middle" fontSize="7.5" fill="#9ca3af" transform={`rotate(-60 ${40 + i * 34} 126)`}>
+                                {item.shortName}
+                              </text>
+                              <text x={40 + i * 34} y={102 - scaledHeight} textAnchor="middle" fontSize="8.5" fill="#6b7280">{item.value}</text>
+                            </g>
+                          );
+                        })}
+                        {issueCharts.projectBars.length === 0 && (
+                          <text x="110" y="72" textAnchor="middle" fontSize="9" fill="#9ca3af">
+                            No issue data
+                          </text>
+                        )}
+                      </svg>
+                    </div>
+
+                    <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <h3 className="text-2xl font-semibold text-primary mb-2">Issue Status Overview</h3>
+                      <p className="text-xs text-gray-500 mb-1">Open vs Closed issues</p>
+                      <DonutChart
+                        className="w-full h-40 chart-svg"
+                        size={230}
+                        ringWidth={48}
+                        centerText={String(issueCharts.total)}
+                        centerSubtext="Issues"
+                        showOuterLabels={issueCharts.hasStatusData && issueCharts.hasBothStatusBuckets}
+                        slices={issueCharts.statusSlices}
+                      />
+                      <div className="mt-2 flex items-center justify-center gap-4 text-xs text-gray-700">
+                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#dc4f56]" />Open ({issueCharts.openCount})</span>
+                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#1f67e0]" />Closed ({issueCharts.closedCount})</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <section className="overflow-hidden rounded-xl border border-gray-200/90 bg-white shadow-sm">
+                    <div className="w-full min-w-0">
+                      <table className="w-full min-w-0 table-fixed border-collapse text-left">
+                        <colgroup>
+                          <col style={{ width: '10%' }} />
+                          <col style={{ width: '5%' }} />
+                          <col style={{ width: '8%' }} />
+                          <col style={{ width: '7%' }} />
+                          <col style={{ width: '8%' }} />
+                          <col style={{ width: '12%' }} />
+                          <col style={{ width: '10%' }} />
+                          <col style={{ width: '7%' }} />
+                          <col style={{ width: '4%' }} />
+                          <col style={{ width: '6%' }} />
+                          <col style={{ width: '16%' }} />
+                          <col style={{ width: '7%' }} />
+                        </colgroup>
+                        <thead className="bg-[#F0F2F5]">
+                          <tr className="text-[10px] text-gray-600 sm:text-[11px]">
+                            <th className="px-2 py-3 font-semibold tracking-tight first:pl-3 sm:px-2.5 sm:pl-4">Issue Title</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Severity</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Project Name</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Issue Owner</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Assigned To</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Issue Description</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Issue Response</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Impacted Areas</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Progress</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Status</th>
+                            <th className="px-2 py-3 font-semibold tracking-tight sm:px-2.5">Issue Date</th>
+                            <th className="px-2 py-3 text-center font-semibold tracking-tight sm:px-2.5 last:pr-3 sm:pr-4">Action</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {[
-                            ['DP Factor', 'HR', 'Design, Development, Training, Report, Document', 'COMPLETED'],
-                            ['CodeTech', 'Sales', 'Document, Report, Attachments, Project Plan', 'SLIGHTLY DELAYED'],
-                            ['Ex-Process', 'Operation', 'Document, Report, Attachments, Hardware', 'ON TRACK'],
-                            ['Scaling', 'Marketing', 'Design, Report, License, Training, Project Plan', 'DELAYED'],
-                            ['Digital Retail', 'IT', 'UAT link, Production Link, Attachments, Knowledge Transfer', 'DELAYED'],
-                            ['DP Factor', 'HR', 'Design, Development, Training, Report, Document', 'COMPLETED'],
-                            ['CodeTech', 'Sales', 'Document, Report, Attachments, Project Plan', 'SLIGHTLY DELAYED'],
-                            ['Ex-Process', 'Operation', 'Document, Report, Attachments, Hardware', 'ON TRACK'],
-                            ['Scaling', 'Marketing', 'Design, Report, License, Training, Project Plan', 'DELAYED'],
-                            ['Digital Retail', 'IT', 'UAT link, Production Link, Attachments, Knowledge Transfer', 'DELAYED'],
-                          ].map((row, idx) => (
-                            <tr key={idx} className="border-b border-gray-100 text-[10px] text-gray-700">
-                              <td className="px-3 py-2 text-indigo-700 underline">{row[0]}</td>
-                              <td className="px-3 py-2">{row[1]}</td>
-                              <td className="px-3 py-2">{row[2]}</td>
-                              <td className="px-3 py-2">
-                                <span className={`px-2 py-0.5 rounded-full text-[8px] font-semibold ${
-                                  row[3] === 'COMPLETED'
-                                    ? 'bg-blue-100 text-blue-700'
-                                    : row[3] === 'ON TRACK'
-                                      ? 'bg-emerald-100 text-emerald-700'
-                                      : row[3] === 'SLIGHTLY DELAYED'
-                                        ? 'bg-amber-100 text-amber-700'
-                                        : 'bg-rose-100 text-rose-700'
-                                }`}
-                                >
-                                  {row[3]}
-                                </span>
+                        <tbody className="bg-white">
+                          {issuesLoading ? (
+                            <tr>
+                              <td colSpan={12} className="px-5 py-10 text-sm text-gray-500 text-center">
+                                Loading issues...
                               </td>
                             </tr>
-                          ))}
+                          ) : filteredIssueRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={12} className="px-5 py-10 text-sm text-gray-500 text-center">
+                                No issues found for the selected filters.
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredIssueRows.map((row) => {
+                              const id = String(row.new_issueid ?? '');
+                              const statusText = issueStatusLabel(row);
+                              const statusUp = statusText.toUpperCase();
+                              const isResolvedStatus =
+                                statusUp.includes('SOLVED') || statusUp.includes('RESOLVED') || statusUp.includes('CLOSED');
+                              return (
+                                <tr
+                                  key={id || String(row.new_issuetitle ?? Math.random())}
+                                  className="border-b border-gray-200/90 text-[11px] text-gray-800 last:border-b-0 sm:text-[12px]"
+                                >
+                                  <td className="min-w-0 overflow-wrap-anywhere px-2 py-2.5 align-top first:pl-3 sm:px-2.5 sm:pl-4">
+                                    <button
+                                      type="button"
+                                      className="w-full min-w-0 break-words text-left text-blue-600 underline decoration-blue-500/50 underline-offset-2 hover:text-blue-800"
+                                      onClick={() => {
+                                        setProjectIssueDetailRow(row);
+                                        setShowProjectIssueDetails(true);
+                                        setShowAddIssueForm(false);
+                                        setEditingIssue(null);
+                                        setShowProjectSubIssueForm(false);
+                                        setProjectSubIssueFromDetail(false);
+                                      }}
+                                    >
+                                      {String(row.new_issuetitle ?? '—')}
+                                    </button>
+                                  </td>
+                                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5">
+                                    {issueSeverityLabel(row)}
+                                  </td>
+                                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5" title={String(row.new_projectname ?? '')}>
+                                    <span className="line-clamp-3">{String(row.new_projectname ?? '—')}</span>
+                                  </td>
+                                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5">
+                                    {String(row.new_issueowner ?? '—')}
+                                  </td>
+                                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5" title={String(row.new_assigntoteammember ?? '')}>
+                                    {String(row.new_assigntoteammember ?? '—')}
+                                  </td>
+                                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5" title={String(row.new_description ?? '')}>
+                                    <span className="line-clamp-3">{String(row.new_description ?? '—')}</span>
+                                  </td>
+                                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5" title={String(row.new_issueresponse ?? '')}>
+                                    <span className="line-clamp-2">{String(row.new_issueresponse ?? '—')}</span>
+                                  </td>
+                                  <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5" title={String(row.new_issueimpactedarea ?? '')}>
+                                    <span className="line-clamp-2">{String(row.new_issueimpactedarea ?? '—')}</span>
+                                  </td>
+                                  <td className="min-w-0 px-2 py-2.5 align-top tabular-nums text-gray-800 sm:px-2.5">
+                                    {String(row.new_progress ?? '0')}
+                                  </td>
+                                  <td className="min-w-0 break-words px-2 py-2.5 align-top font-medium text-gray-800 sm:px-2.5">
+                                    {statusText}
+                                  </td>
+                                  <td className="min-w-0 px-2 py-2.5 align-top text-gray-800 sm:px-2.5">
+                                    <div className="w-full min-w-0 text-[9px] leading-tight sm:text-[10px] sm:leading-snug">
+                                      <div className="grid w-full min-w-0 grid-cols-2 gap-1 sm:gap-0">
+                                        <div className="min-w-0 pr-1 sm:pr-1.5">
+                                          <p className="text-[9px] font-semibold text-gray-600 sm:text-[10px]">Date Raised</p>
+                                          <p className="mt-0.5 flex min-w-0 items-start gap-0.5 text-gray-700 sm:gap-1">
+                                            <Calendar className="mt-0.5 h-3 w-3 shrink-0 text-gray-500" strokeWidth={2} />
+                                            <span className="min-w-0 break-words tabular-nums">
+                                              {issueTableDate(row.new_issuedate ?? row.createdon)}
+                                            </span>
+                                          </p>
+                                        </div>
+                                        <div className="min-w-0 border-l border-dotted border-gray-300 pl-1.5 sm:pl-2">
+                                          <p className="text-[9px] font-semibold text-gray-600 sm:text-[10px]">Date Resolved</p>
+                                          <p className="mt-0.5 flex min-h-[1.1rem] min-w-0 items-start gap-0.5 sm:gap-1">
+                                            <Calendar
+                                              className={`mt-0.5 h-3 w-3 shrink-0 ${isResolvedStatus ? 'text-gray-500' : 'text-gray-300'}`}
+                                              strokeWidth={2}
+                                            />
+                                            <span className="min-w-0 break-words tabular-nums text-gray-600">
+                                              {isResolvedStatus ? issueTableDate(row.modifiedon) : '—'}
+                                            </span>
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-2 py-2.5 align-top text-center last:pr-3 sm:px-2.5 sm:pr-4">
+                                    <div className="inline-flex items-center justify-center gap-3 text-gray-500">
+                                      <button
+                                        type="button"
+                                        className="rounded p-0.5 hover:bg-gray-100 hover:text-gray-800"
+                                        title="Edit"
+                                        onClick={() => {
+                                          setShowProjectIssueDetails(false);
+                                          setProjectIssueDetailRow(null);
+                                          setShowProjectSubIssueForm(false);
+                                          setProjectSubIssueFromDetail(false);
+                                          setEditingIssue(row);
+                                          setShowAddIssueForm(true);
+                                        }}
+                                      >
+                                        <Pencil size={16} strokeWidth={1.75} className="text-gray-600" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="rounded p-0.5 hover:bg-rose-50 hover:text-rose-600"
+                                        title="Delete"
+                                        onClick={() => {
+                                          if (!id) return;
+                                          setIssueDeleteCandidate({
+                                            id,
+                                            title: String(row.new_issuetitle ?? 'this issue'),
+                                          });
+                                        }}
+                                      >
+                                        <Trash2 size={16} strokeWidth={1.75} className="text-gray-500" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
                         </tbody>
                       </table>
-                      <div className="px-3 py-3 text-xs text-gray-500 flex items-center justify-end gap-6">
-                        <span>1-10 of 15</span>
-                        <div className="flex items-center gap-2 text-lg leading-none">
-                          <button className="text-gray-400">{'<'}</button>
-                          <button className="text-gray-400">{'>'}</button>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section className="space-y-3">
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
-                        <h3 className="text-2xl font-semibold text-[#2f3150] mb-2">Deliverables Status</h3>
-                        <svg viewBox="0 0 230 120" className="w-full h-28 chart-svg">
-                          {[0, 20, 40, 60].map((v) => (
-                            <g key={v}>
-                              <line x1="16" x2="220" y1={92 - v} y2={92 - v} stroke="#eef2f7" />
-                              <text x="4" y={95 - v} fontSize="7" fill="#9ca3af">{v}</text>
-                            </g>
-                          ))}
-                          <polygon points="16,48 62,62 102,30 154,50 220,20 220,92 16,92" fill="#ef4444" opacity="0.9" />
-                          <polygon points="16,42 62,38 102,28 154,58 220,32 220,92 16,92" fill="#2563eb" opacity="0.9" />
-                          <polygon points="16,66 62,40 102,58 154,26 220,58 220,92 16,92" fill="#f6be00" opacity="0.95" />
-                          {['Jan', 'Feb', 'Mar', 'Apr', 'May'].map((m, i) => (
-                            <text key={m} x={24 + i * 44} y="106" fontSize="7" fill="#9ca3af">{m}</text>
-                          ))}
-                          <circle cx="24" cy="114" r="2.4" fill="#ef4444" />
-                          <text x="30" y="116" fontSize="7" fill="#6b7280">Total</text>
-                          <circle cx="68" cy="114" r="2.4" fill="#2563eb" />
-                          <text x="74" y="116" fontSize="7" fill="#6b7280">Delivered</text>
-                          <circle cx="130" cy="114" r="2.4" fill="#f6be00" />
-                          <text x="136" y="116" fontSize="7" fill="#6b7280">To Be Delivered</text>
-                        </svg>
-                      </div>
-
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
-                        <h3 className="text-2xl font-semibold text-[#2f3150] mb-2">Deliverables via Projects</h3>
-                        <svg viewBox="0 0 230 140" className="w-full h-32 chart-svg">
-                          {[0, 10, 20, 30, 40, 50].map((v) => (
-                            <g key={v}>
-                              <line x1="24" x2="220" y1={108 - v * 1.8} y2={108 - v * 1.8} stroke="#eef2f7" />
-                              <text x="6" y={111 - v * 1.8} fontSize="7" fill="#9ca3af">{v}</text>
-                            </g>
-                          ))}
-                          {[
-                            ['Corporate', 14, '#6b7280'],
-                            ['Global Access', 36, '#d4a759'],
-                            ['Insight', 22, '#b8872e'],
-                            ['Project A', 42, '#6ea3ef'],
-                            ['Enjaz Management', 28, '#d35b66'],
-                          ].map(([name, val, color], i) => (
-                            <g key={String(name)}>
-                              <rect x={34 + i * 36} y={108 - Number(val) * 1.8} width="12" height={Number(val) * 1.8} rx="3" className="chart-bar" fill={String(color)} />
-                              <text x={38 + i * 36} y="126" textAnchor="middle" fontSize="6.5" fill="#9ca3af" transform={`rotate(-60 ${38 + i * 36} 126)`}>{name}</text>
-                            </g>
-                          ))}
-                          <text x="212" y="129" fontSize="7" fill="#9ca3af">Projects</text>
-                        </svg>
-                      </div>
-                    </section>
-                  </div>
-                </>
-              )}
-            </section>
-          ) : activeNav === 'Issues' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
-              {showAddIssueForm ? (
-                <section className="bg-white rounded-xl p-5 shadow-sm max-w-4xl mx-auto">
-                  <p className="text-[11px] text-gray-400 mb-4">
-                    <button className="underline text-gray-500" onClick={() => setShowAddIssueForm(false)}>Issue</button>
-                    {' > '}Add New Issue
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
-                    {[
-                      ['Issue Title', 'Enter Issue Title', false],
-                      ['Issue owner', 'Select', true],
-                      ['Issue Severity', 'Low', true],
-                      ['Assign to team member', 'Select member', true],
-                      ['Project Name', '', false],
-                      ['Project Sponsor', 'Select', true],
-                      ['Issue Status', 'Solved', true],
-                      ['Raised Issue', 'Select', true],
-                    ].map(([label, placeholder, selectField]) => (
-                      <label key={String(label)} className="block">
-                        <span className="text-[11px] text-gray-500 mb-1 block">{String(label)}</span>
-                        {selectField ? (
-                          <select className="w-full h-9 rounded-md border border-gray-200 bg-white px-3 text-xs text-gray-500">
-                            <option>{String(placeholder)}</option>
-                          </select>
-                        ) : (
-                          <input className="w-full h-9 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder={String(placeholder)} />
-                        )}
-                      </label>
-                    ))}
-                  </div>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Progress</span>
-                    <textarea className="w-full h-14 rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none" />
-                  </label>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Issue Response</span>
-                    <textarea className="w-full h-14 rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none" />
-                  </label>
-                  <label className="block mt-3">
-                    <span className="text-[11px] text-gray-500 mb-1 block">Issue Description</span>
-                    <textarea className="w-full h-14 rounded-md border border-gray-200 px-3 py-2 text-xs text-gray-600 resize-none" />
-                  </label>
-                  <div className="mt-4 flex justify-end gap-3">
-                    <button type="button" onClick={() => setShowAddIssueForm(false)} className="h-8 px-6 rounded-md border border-[#b28a44] text-[#b28a44] text-xs">Cancel</button>
-                    <button className="h-8 px-6 rounded-md bg-[#b28a44] text-white text-xs">Save</button>
-                  </div>
-                </section>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-3xl font-bold text-[#2f3150]">Issue Tracking Dashboard</h2>
-                    <button type="button" onClick={() => setShowAddIssueForm(true)} className="h-9 px-4 rounded-md bg-[#b28a44] text-white text-xs font-semibold">+ Create Issue</button>
-                  </div>
-
-                  <div className="flex items-center gap-3 flex-wrap mb-4">
-                    {[
-                      ['Project', 'All'],
-                      ['Impacted Area', 'All'],
-                      ['Issue Owner', 'All'],
-                      ['Severity', 'All'],
-                      ['Date', 'Select'],
-                      ['Status', 'All'],
-                    ].map(([label, option]) => (
-                      <label key={label} className="flex items-center gap-2 text-xs text-gray-500">
-                        <span>{label}</span>
-                        <select className="h-8 rounded-md border border-gray-200 bg-white px-2 text-[11px] text-gray-500">
-                          <option>{option}</option>
-                        </select>
-                      </label>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    {[
-                      ['Total Issues', '104', 'border-[#d4a759]'],
-                      ['Opened Issues', '108', 'border-[#ef4444]'],
-                      ['Solved Issues', '71', 'border-[#2563eb]'],
-                    ].map(([label, value, border]) => (
-                      <div key={String(label)} className={`bg-white rounded-2xl border-2 ${border} p-4 text-center`}>
-                        <p className="text-xs text-gray-400">{label}</p>
-                        <p className="text-5xl font-bold text-[#2f3150] mt-1">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-2xl font-semibold text-[#2f3150] mb-2">Issues Severity</h3>
-                      <svg viewBox="0 0 220 140" className="w-full h-32 chart-svg">
-                        <circle cx="102" cy="72" r="50" fill="#f3f4f6" />
-                        <path d="M102 72 L102 22 A50 50 0 0 1 150 94 Z" fill="#e77070" />
-                        <path d="M102 72 L150 94 A50 50 0 0 1 62 104 Z" fill="#efb4b8" />
-                        <path d="M102 72 L62 104 A50 50 0 0 1 80 26 Z" fill="#d69ea4" />
-                        <circle cx="102" cy="72" r="6" fill="#fff" />
-                        <text x="150" y="26" fontSize="8" fill="#ef6b6b">27</text>
-                        <text x="150" y="34" fontSize="7" fill="#ef6b6b">Medium</text>
-                        <text x="162" y="95" fontSize="8" fill="#ef6b6b">21</text>
-                        <text x="162" y="103" fontSize="7" fill="#ef6b6b">High</text>
-                        <text x="34" y="102" fontSize="8" fill="#d4a759">46</text>
-                        <text x="34" y="110" fontSize="7" fill="#d4a759">Low</text>
-                      </svg>
                     </div>
-
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-2xl font-semibold text-[#2f3150] mb-2">Issues vs Projects</h3>
-                      <svg viewBox="0 0 220 140" className="w-full h-32 chart-svg">
-                        {[0, 10, 20, 30, 40, 50].map((v) => (
-                          <g key={v}>
-                            <line x1="24" x2="210" y1={108 - v * 1.6} y2={108 - v * 1.6} stroke="#eef2f7" />
-                            <text x="6" y={111 - v * 1.6} fontSize="7" fill="#9ca3af">{v}</text>
-                          </g>
-                        ))}
-                        {[
-                          ['Enjaz Management', 14, '#6b7280'],
-                          ['Global Access', 42, '#d4a759'],
-                          ['DP Factor', 24, '#b8872e'],
-                          ['Ex Process', 46, '#6ea3ef'],
-                          ['Digital Retail', 31, '#d35b66'],
-                        ].map(([name, val, color], i) => (
-                          <g key={String(name)}>
-                            <rect x={34 + i * 34} y={108 - Number(val) * 1.6} width="12" height={Number(val) * 1.6} rx="3" className="chart-bar" fill={String(color)} />
-                            <text x={40 + i * 34} y="126" textAnchor="middle" fontSize="6.5" fill="#9ca3af" transform={`rotate(-60 ${40 + i * 34} 126)`}>{name}</text>
-                          </g>
-                        ))}
-                      </svg>
-                    </div>
-
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-2xl font-semibold text-[#2f3150] mb-2">Issues Progress</h3>
-                      <svg viewBox="0 0 220 140" className="w-full h-32 chart-svg">
-                        <circle cx="108" cy="74" r="50" fill="#eef2f7" />
-                        <path d="M108 74 L108 24 A50 50 0 1 1 70 106 Z" fill="#dc4f56" />
-                        <path d="M108 74 L70 106 A50 50 0 0 1 128 26 Z" fill="#1f67e0" />
-                        <circle cx="108" cy="74" r="6" fill="#fff" />
-                        <text x="155" y="37" fontSize="8" fill="#1f67e0">20</text>
-                        <text x="155" y="45" fontSize="7" fill="#1f67e0">Resolved</text>
-                        <text x="54" y="114" fontSize="8" fill="#dc4f56">80</text>
-                        <text x="40" y="122" fontSize="7" fill="#dc4f56">Opened</text>
-                      </svg>
-                    </div>
-                  </div>
-
-                  <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <table className="w-full">
-                      <thead className="bg-gray-50 border-b border-gray-100">
-                        <tr className="text-[10px] text-gray-400 text-left">
-                          <th className="px-3 py-2">Issue ID</th>
-                          <th className="px-3 py-2">Issue Title</th>
-                          <th className="px-3 py-2">Severity</th>
-                          <th className="px-3 py-2">Project Name</th>
-                          <th className="px-3 py-2">Project Sponsor</th>
-                          <th className="px-3 py-2">Raised by</th>
-                          <th className="px-3 py-2">Issue owner</th>
-                          <th className="px-3 py-2">Issue description</th>
-                          <th className="px-3 py-2">Issue response</th>
-                          <th className="px-3 py-2">Impacted areas</th>
-                          <th className="px-3 py-2">Progress</th>
-                          <th className="px-3 py-2">Status</th>
-                          <th className="px-3 py-2">Date Raised</th>
-                          <th className="px-3 py-2">Date Resolved</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['1133', 'DP Factor', 'High', 'XX', 'HR', 'Ali', 'ERP Team', 'Text', 'Text', 'Schedule', 'Text', 'IN-QUEUE'],
-                          ['1133', 'Code Tech', 'Medium', 'XX', 'Legal', 'Omar', 'Yousef', 'Text', 'Text', 'Scope', 'Text', 'OPENED'],
-                          ['1133', 'Ex Process', 'Medium', 'YY', 'Sales', 'Waleed', 'Wael', 'Text', 'Text', 'Quality', 'Text', 'OPENED'],
-                          ['1133', 'Scaling', 'Low', 'YY', 'IT', 'Amr', 'ERP Team', 'Text', 'Text', 'Resources', 'Text', 'IN-QUEUE'],
-                          ['1133', 'DP Factor', 'High', 'ZZ', 'IT', 'Fahmi', 'Self', 'Text', 'Text', 'Budget', 'Text', 'IN-QUEUE'],
-                        ].map((row, idx) => (
-                          <tr key={idx} className="border-b border-gray-100 text-[10px] text-gray-700">
-                            <td className="px-3 py-2">{row[0]}</td>
-                            <td className="px-3 py-2 text-indigo-700 underline">{row[1]}</td>
-                            <td className="px-3 py-2">{row[2]}</td>
-                            <td className="px-3 py-2">{row[3]}</td>
-                            <td className="px-3 py-2">{row[4]}</td>
-                            <td className="px-3 py-2">{row[5]}</td>
-                            <td className="px-3 py-2">{row[6]}</td>
-                            <td className="px-3 py-2">{row[7]}</td>
-                            <td className="px-3 py-2">{row[8]}</td>
-                            <td className="px-3 py-2">{row[9]}</td>
-                            <td className="px-3 py-2">{row[10]}</td>
-                            <td className="px-3 py-2">
-                              <span className={`px-2 py-0.5 rounded-full text-[8px] font-semibold ${row[11] === 'OPENED' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>
-                                {row[11]}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              <p>Date Raised</p>
-                              <p className="text-gray-400">Feb 09, 2024</p>
-                            </td>
-                            <td className="px-3 py-2">
-                              <p>Date Resolved</p>
-                              <p className="text-gray-400">May 24, 2024</p>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
                   </section>
                 </>
               )}
             </section>
           ) : activeNav === 'Team Management' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
+            <section className={enj.panelBg}>
               {showAddTeamMemberForm ? (
                 <section className="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto">
                   <p className="text-[11px] text-gray-400 mb-4">
@@ -5292,11 +8306,11 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       <label key={label} className="block">
                         <span className="text-[11px] text-gray-500 mb-1 block">{label}</span>
                         {i % 2 === 1 || label.includes('Category') || label === 'Project Name' || label === 'Score' ? (
-                          <select className="w-full h-10 rounded-md border border-gray-200 bg-white px-3 text-xs text-gray-500">
+                          <select className={`${enj.control} text-xs text-gray-500`}>
                             <option>{placeholder}</option>
                           </select>
                         ) : (
-                          <input className="w-full h-10 rounded-md border border-gray-200 px-3 text-xs text-gray-600" placeholder={placeholder} />
+                          <input className={`${enj.control} text-xs text-gray-600`} placeholder={placeholder} />
                         )}
                       </label>
                     ))}
@@ -5319,21 +8333,21 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                     <button
                       type="button"
                       onClick={() => setShowAddTeamMemberForm(false)}
-                      className="h-9 px-7 rounded-md border border-[#b28a44] text-[#b28a44] text-xs font-semibold"
+                      className={`${enj.btn} ${enj.btnOutline} px-7 text-xs font-semibold`}
                     >
                       Cancel
                     </button>
-                    <button className="h-9 px-7 rounded-md bg-[#b28a44] text-white text-xs font-semibold">+ Save</button>
+                    <button type="button" className={`${enj.btn} ${enj.btnPrimary} px-7 text-xs font-semibold`}>+ Save</button>
                   </div>
                 </section>
               ) : (
                 <>
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-3xl font-bold text-[#2f3150]">Team Management Dashboard</h2>
+                <h2 className={enj.pageTitle}>Team Management Dashboard</h2>
                 <button
                   type="button"
                   onClick={() => setShowAddTeamMemberForm(true)}
-                  className="h-8 px-3 rounded-md bg-[#b28a44] text-white text-xs font-semibold"
+                  className={`${enj.btn} ${enj.btnPrimary} px-3 text-xs font-semibold`}
                 >
                   + Add New Member
                 </button>
@@ -5343,7 +8357,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-lg font-semibold text-[#2f3150]">{teamTab === 'Evaluation' ? 'Team Evaluation' : 'Team Workload'}</h3>
+                      <h3 className="text-lg font-semibold text-primary">{teamTab === 'Evaluation' ? 'Team Evaluation' : 'Team Workload'}</h3>
                       <button className="text-[10px] text-gray-400">{teamTab === 'Workload' ? 'Day/week/months' : teamTab}</button>
                     </div>
                     {teamTab === 'Performance' ? (
@@ -5354,21 +8368,27 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                             <text x="28" y={197 - v * 16} fontSize="9" fill="#a1a1aa">0.{v}</text>
                           </g>
                         ))}
-                        {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', '11', '12'].map((m, i) => (
+                        {projectDashboardTrends.labels.map((m, i) => (
                           <text key={m} x={52 + i * 48} y="214" fontSize="8" fill="#9ca3af">{m}</text>
                         ))}
-                        {[
-                          ['#ef4444', [140, 96, 152, 126, 118, 170, 124, 166, 154, 136, 172, 94]],
-                          ['#2563eb', [108, 164, 102, 170, 172, 120, 116, 168, 92, 104, 170, 128]],
-                        ].map(([stroke, values]) => (
-                          <polyline
-                            key={String(stroke)}
-                            fill="none"
-                            stroke={String(stroke)}
-                            strokeWidth="2"
-                            points={(values as number[]).map((v, i) => `${52 + i * 48},${v}`).join(' ')}
-                          />
-                        ))}
+                        {teamPerformanceLines.hasData ? (
+                          <>
+                            <polyline
+                              fill="none"
+                              stroke="#ef4444"
+                              strokeWidth="2"
+                              points={teamPerformanceLines.pointsA}
+                            />
+                            <polyline
+                              fill="none"
+                              stroke="#2563eb"
+                              strokeWidth="2"
+                              points={teamPerformanceLines.pointsB}
+                            />
+                          </>
+                        ) : (
+                          <text x="320" y="120" textAnchor="middle" fontSize="9" fill="#9ca3af">No team task data for this range</text>
+                        )}
                       </svg>
                     ) : (
                       <svg viewBox="0 0 640 240" className="w-full h-44 chart-svg">
@@ -5378,12 +8398,12 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                             <text x="36" y={194 - v * 3} fontSize="9" fill="#a1a1aa">{v}</text>
                           </g>
                         ))}
-                        {workloadBars.map((bar) => {
-                          const x = 56 + Number(bar.name.split(' ')[1] ?? 1 - 1) * 48;
-                          const h = bar.value * 3;
+                        {workloadBars.map((bar, wi) => {
+                          const x = 56 + wi * 48;
+                          const h = Math.min(150, (bar.value / teamChartMaxWorkload) * 150);
                           return (
                             <g key={bar.name}>
-                              <rect x={x} y={190 - h} width="24" height={h} rx="4" className="chart-bar" fill={bar.color} />
+                              <rect x={x} y={190 - h} width="24" height={h || 0.5} rx="4" className="chart-bar" fill={bar.color} />
                               <text x={x + 12} y="210" fontSize="8" textAnchor="middle" fill="#6b7280" transform={`rotate(-90 ${x + 12} 210)`}>{bar.name}</text>
                             </g>
                           );
@@ -5392,53 +8412,16 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                     )}
                   </div>
                   <div className="rounded-xl border border-gray-100 p-3">
-                    <h3 className="text-sm font-semibold text-[#2f3150] mb-2">{teamTab === 'Evaluation' ? 'Evaluation Category' : 'Utilization Category'}</h3>
+                    <h3 className="text-sm font-semibold text-primary mb-2">{teamTab === 'Evaluation' ? 'Evaluation Category' : 'Utilization Category'}</h3>
                     <DonutChart
                       className="w-full h-40 chart-svg"
                       ringWidth={46}
-                      slices={[
-                        { label: teamTab === 'Evaluation' ? 'Qualified' : teamTab === 'Performance' ? 'Strong' : 'Optimal', value: 27, color: '#1667de' },
-                        { label: teamTab === 'Evaluation' ? 'Weak' : teamTab === 'Performance' ? 'Weak' : 'High', value: 21, color: '#d3525a' },
-                        { label: teamTab === 'Evaluation' ? 'Medium' : teamTab === 'Performance' ? 'Avg' : 'Low', value: 46, color: '#3b3a80' },
-                      ]}
+                      showOuterLabels={teamTab === 'Workload' ? !teamManagementDonut.utilEmpty : teamTab === 'Performance' ? !teamManagementDonut.perEmpty : !teamManagementDonut.evEmpty}
+                      slices={teamTab === 'Workload' ? teamManagementDonut.utilSlices
+                        : teamTab === 'Performance' ? teamManagementDonut.perSlices
+                          : teamManagementDonut.evSlices}
                     />
                   </div>
-                </div>
-                <h3 className="text-2xl font-bold text-[#2f3150] mt-3 mb-3">
-                  {teamTab === 'Evaluation' ? 'Team Member Evaluation' : teamTab === 'Performance' ? 'Team Performance Overview' : 'Team Member Utilization'}
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                  {(teamTab === 'Evaluation'
-                    ? [
-                        ['KPI', '32', '#b28a44'],
-                        ['Qualified Rate', '34', '#22c55e'],
-                        ['Weak Rate', '10', '#ef4444'],
-                        ['Medium Rate', '42', '#2563eb'],
-                        ['Review Scale', '75%', '#f6be00'],
-                        ['Efficiency', '25', '#64748b'],
-                      ]
-                    : teamTab === 'Performance'
-                      ? [
-                          ['KPI', '44', '#b28a44'],
-                          ['Rating', '34', '#22c55e'],
-                          ['Feedback', '10', '#ef4444'],
-                          ['Plaining', '42', '#2563eb'],
-                          ['Evalution', '75%', '#f6be00'],
-                          ['Improvement', '25', '#64748b'],
-                        ]
-                    : [
-                        ['Total', '43', '#b28a44'],
-                        ['Utilized Team', '34', '#22c55e'],
-                        ['Unutilized', '10', '#ef4444'],
-                        ['Over Utilized', '42', '#2563eb'],
-                        ['Tasks', '250', '#f6be00'],
-                        ['Deliverables', '53', '#64748b'],
-                      ]).map(([label, value, color]) => (
-                    <div key={String(label)} className="rounded-xl border bg-white px-4 py-3" style={{ borderColor: `${color}99` }}>
-                      <p className="text-xs text-gray-400">{String(label)}</p>
-                      <p className="text-4xl font-bold text-[#373a50] mt-1">{String(value)}</p>
-                    </div>
-                  ))}
                 </div>
               </section>
 
@@ -5446,13 +8429,16 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 {teamTab === 'Performance' ? (
                   <div className="p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                      {performanceMembers.map((member, idx) => (
+                      {performanceMembers.length === 0 && (
+                        <p className="col-span-full text-center text-sm text-gray-500 py-8">No team members to display.</p>
+                      )}
+                      {pagedPerformanceMembers.map((member, idx) => (
                         <div key={member[0] + idx} className="border border-gray-100 rounded-lg p-3 bg-white">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <div className="w-5 h-5 rounded-full bg-orange-200 text-[8px] text-orange-700 flex items-center justify-center">{member[0][0]}</div>
                               <div>
-                                <p className="text-xs font-semibold text-[#2f3150]">{member[0]}</p>
+                                <p className="text-xs font-semibold text-primary">{member[0]}</p>
                                 <p className="text-[9px] text-gray-400">{member[1]}</p>
                               </div>
                             </div>
@@ -5468,7 +8454,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                             <span>Completion rate</span>
                           </div>
                           <div className="h-1.5 rounded-full bg-gray-200 mt-1 overflow-hidden">
-                            <div className="h-full bg-blue-600 rounded-full" style={{ width: member[2] }} />
+                            <div
+                              className="h-full bg-blue-600 rounded-full enj-progress-fill"
+                              style={{ width: /^\d+%$/.test(member[2]) ? member[2] : '0%' }}
+                            />
                           </div>
                         </div>
                       ))}
@@ -5476,15 +8465,20 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                     <div className="py-4 flex items-center justify-center gap-2 text-gray-300">
                       <span className="w-2 h-2 rounded-full bg-gray-300" />
                       <span className="w-2 h-2 rounded-full bg-gray-300" />
-                      <span className="w-2 h-2 rounded-full bg-[#b28a44]" />
+                      <span className="w-2 h-2 rounded-full bg-secondary" />
                       <span className="w-2 h-2 rounded-full bg-gray-300" />
                     </div>
-                    <div className="px-1 text-xs text-gray-500 flex items-center justify-end gap-6">
-                      <span>1-10 of 15</span>
-                      <div className="flex items-center gap-2 text-lg leading-none">
-                        <button className="text-gray-400">{'<'}</button>
-                        <button className="text-gray-400">{'>'}</button>
-                      </div>
+                    <div className="px-1">
+                      <PagerBar
+                        page={teamPerformancePage}
+                        pageSize={TEAM_TAB_PAGE_SIZE}
+                        total={performanceMembers.length}
+                        onPrev={() => setTeamPerformancePage((p) => Math.max(1, p - 1))}
+                        onNext={() =>
+                          setTeamPerformancePage((p) =>
+                            Math.min(Math.max(1, Math.ceil(performanceMembers.length / TEAM_TAB_PAGE_SIZE)), p + 1),
+                          )}
+                      />
                     </div>
                   </div>
                 ) : (
@@ -5514,8 +8508,12 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       </thead>
                       <tbody>
                         {teamTab === 'Evaluation'
-                          ? evaluationRows.map((row) => (
-                              <tr key={row[0]} className="border-b border-gray-100 text-xs text-gray-700">
+                          ? (evaluationRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-6 text-center text-xs text-gray-500">No team members to display.</td>
+                            </tr>
+                            ) : pagedEvaluationRows.map((row, eri) => (
+                              <tr key={`${row[0]}-${eri}`} className="border-b border-gray-100 text-xs text-gray-700">
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-2">
                                     <div className="w-5 h-5 rounded-full bg-orange-200 text-[8px] text-orange-700 flex items-center justify-center">{row[0][0]}</div>
@@ -5528,9 +8526,14 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                                 <td className="px-4 py-3 text-gray-500">{row[4]}</td>
                                 <td className="px-4 py-3 text-gray-400 text-lg leading-none">:</td>
                               </tr>
-                            ))
-                          : teamRows.map((row) => (
-                              <tr key={row[0]} className="border-b border-gray-100 text-xs text-gray-700">
+                            )))
+                          : teamRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-4 py-6 text-center text-xs text-gray-500">No team members to display.</td>
+                            </tr>
+                            )
+                          : pagedTeamRows.map((row, tri) => (
+                              <tr key={`${row[0]}-${tri}`} className="border-b border-gray-100 text-xs text-gray-700">
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-2">
                                     <div className="w-5 h-5 rounded-full bg-orange-200 text-[8px] text-orange-700 flex items-center justify-center">{row[0][0]}</div>
@@ -5540,7 +8543,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-2">
                                     <div className="w-20 h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                                      <div className="h-full w-1/2 bg-blue-600 rounded-full" />
+                                      <div
+                                        className="h-full bg-blue-600 rounded-full max-w-full enj-progress-fill"
+                                        style={{ width: `${Math.min(100, Math.max(0, Number(row[7])))}%` }}
+                                      />
                                     </div>
                                     <span className="text-[10px] text-gray-400">{row[1]}</span>
                                   </div>
@@ -5551,7 +8557,9 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                                 <td className="px-4 py-3">{row[5]}</td>
                                 <td className="px-4 py-3">
                                   <span className={`px-2 py-0.5 rounded-full text-[9px] ${
-                                    row[6] === 'Low' ? 'bg-emerald-100 text-emerald-700' : row[6] === 'High' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
+                                    row[6] === 'Low' ? 'bg-emerald-100 text-emerald-700'
+                                      : row[6] === 'High' ? 'bg-rose-100 text-rose-700'
+                                        : row[6] === 'Medium' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700'
                                   }`}>
                                     {row[6]}
                                   </span>
@@ -5560,12 +8568,25 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                             ))}
                       </tbody>
                     </table>
-                    <div className="px-4 py-3 text-xs text-gray-500 flex items-center justify-end gap-6">
-                      <span>1-10 of 15</span>
-                      <div className="flex items-center gap-2 text-lg leading-none">
-                        <button className="text-gray-400">{'<'}</button>
-                        <button className="text-gray-400">{'>'}</button>
-                      </div>
+                    <div className="px-4 py-3">
+                      <PagerBar
+                        page={teamTab === 'Evaluation' ? teamEvaluationPage : teamWorkloadPage}
+                        pageSize={TEAM_TAB_PAGE_SIZE}
+                        total={teamTab === 'Evaluation' ? evaluationRows.length : teamRows.length}
+                        onPrev={() => {
+                          if (teamTab === 'Evaluation') setTeamEvaluationPage((p) => Math.max(1, p - 1));
+                          else setTeamWorkloadPage((p) => Math.max(1, p - 1));
+                        }}
+                        onNext={() => {
+                          if (teamTab === 'Evaluation') {
+                            const maxPage = Math.max(1, Math.ceil(evaluationRows.length / TEAM_TAB_PAGE_SIZE));
+                            setTeamEvaluationPage((p) => Math.min(maxPage, p + 1));
+                          } else {
+                            const maxPage = Math.max(1, Math.ceil(teamRows.length / TEAM_TAB_PAGE_SIZE));
+                            setTeamWorkloadPage((p) => Math.min(maxPage, p + 1));
+                          }
+                        }}
+                      />
                     </div>
                   </>
                 )}
@@ -5574,42 +8595,104 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </section>
           ) : activeNav === 'Projects' ? (
-            <section className="bg-[#eef0f6] rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-3xl font-bold text-[#2f3150]">Projects</h2>
+            <ProgramProjectsSection todayIso={todayIso} onToast={setProjectDashToast} />
+          ) : activeNav === 'Dashboard' && showAllProjectsScreen ? (
+            <section className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">All Projects</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAllProjectsScreen(false)}
+                  className="text-sm text-gray-500 hover:text-gray-800"
+                >
+                  Back
+                </button>
               </div>
-              <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-                {projectColumns.map((column) => (
-                  <div key={column.name} className="space-y-3">
-                    <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-[#2f3150]">{column.name}</p>
-                      <button className="text-[10px] text-[#b28a44]">View All</button>
-                    </div>
-                    {column.cards.map((card, idx) => (
-                      <div key={`${column.name}-${idx}`} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-xs font-semibold" style={{ color: column.accent }}>{card.title}</p>
-                          <span className="text-[9px] text-gray-400">{card.progress}%</span>
-                        </div>
-                        <div className="h-1 bg-gray-100 rounded-full mb-2 overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${card.progress}%`, backgroundColor: column.accent }} />
-                        </div>
-                        <p className="text-[10px] text-[#2f3150] font-medium">Project Description</p>
-                        <p className="text-[9px] text-gray-400 mb-2">Project Sponsor: {card.sponsor}</p>
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px] text-gray-400 mb-2">
-                          <p>Category: <span className="text-gray-500">{card.category}</span></p>
-                          <p>Approach: <span className="text-gray-500">{card.approach}</span></p>
-                          <p className="flex items-center gap-1"><Calendar size={10} /> {card.start}</p>
-                          <p className="flex items-center gap-1">{card.end}</p>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="w-4 h-4 rounded-full bg-orange-200 text-[8px] text-orange-700 flex items-center justify-center">E</div>
-                          <p className="text-[9px] text-gray-400">1 File</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
+              <div className="px-5 py-4 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between border-b border-gray-100">
+                <input
+                  value={projectSearchText}
+                  onChange={(e) => setProjectSearchText(e.target.value)}
+                  placeholder="Search project, status, or date"
+                  className="h-9 w-full sm:w-72 rounded-md border border-gray-200 px-3 text-sm outline-none focus:border-secondary"
+                />
+                <select
+                  value={projectStatusFilterValue}
+                  onChange={(e) => setProjectStatusFilterValue(e.target.value)}
+                  className="h-9 rounded-md border border-gray-200 px-3 text-sm text-gray-700 outline-none focus:border-secondary"
+                >
+                  {allProjectStatusOptions.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="max-h-[70vh] overflow-auto">
+                <table className="w-full">
+                  <thead className="bg-[#eaecf3] border-b border-gray-100 sticky top-0">
+                    <tr className="text-xs font-semibold text-[#6d7488] text-left">
+                      <th className="px-3 py-2">Project Name</th>
+                      <th className="px-3 py-2">Strategic Objective</th>
+                      <th className="px-3 py-2">Project Sponsor</th>
+                      <th className="px-3 py-2">Budget</th>
+                      <th className="px-3 py-2">Category</th>
+                      <th className="px-3 py-2">Start Date</th>
+                      <th className="px-3 py-2">Progress Level</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAllProjects.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="px-3 py-8 text-center text-xs text-gray-500">No matching projects found.</td>
+                      </tr>
+                    )}
+                    {filteredAllProjects.map((row) => {
+                      const name = String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
+                      const status = projectStatusLabel(row);
+                      const progress = projectProgressPct(row);
+                      return (
+                        <tr key={`screen-${String(row.new_projectid ?? row.createdon ?? name)}`} className="border-b border-[#ececf3] text-sm text-[#4c556d]">
+                          <td className="px-3 py-2">{name}</td>
+                          <td className="px-3 py-2">{projectObjectiveLabel(row)}</td>
+                          <td className="px-3 py-2">{projectSponsorLabel(row)}</td>
+                          <td className="px-3 py-2">{projectBudgetLabel(row)}</td>
+                          <td className="px-3 py-2">{projectCategoryLabel(row)}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-3">
+                              <div>
+                                <p className="text-[10px] text-[#40475d]">Start Date</p>
+                                <p className="text-[10px] text-[#7b8193] flex items-center gap-1">
+                                  <Calendar size={12} className="text-[#9aa1b4]" />
+                                  {projectDateLabel(row.new_startdate)}
+                                </p>
+                              </div>
+                              <div className="w-px h-8 bg-[#d9dbe5]" />
+                              <div>
+                                <p className="text-[10px] text-[#40475d]">End Date</p>
+                                <p className="text-[10px] text-[#7b8193] flex items-center gap-1">
+                                  <Calendar size={12} className="text-[#9aa1b4]" />
+                                  {projectDateLabel(row.new_enddate)}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="w-[160px]">
+                              <p className="text-[11px] text-[#8c93a6] text-right mb-1">{progress}%</p>
+                              <div className="h-3 rounded-full bg-[#e5e7eb] overflow-hidden">
+                                <div className="h-full rounded-full bg-blue-600 enj-progress-fill" style={{ width: `${progress}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`inline-block min-w-[90px] text-center px-2 py-1 rounded-md text-[11px] font-semibold ${projectStatusClass(status)}`}>
+                              {status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </section>
           ) : (
@@ -5620,7 +8703,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               {overview.map((item) => (
                 <div key={item.label} className="border rounded-lg px-3 py-2" style={{ borderColor: `${item.color}88` }}>
                   <p className="text-[10px] text-gray-400">{item.label}</p>
-                  <p className="text-3xl font-bold text-[#2f3150]">{item.value}</p>
+                  <p className={enj.pageTitle}>{item.value}</p>
                 </div>
               ))}
             </div>
@@ -5628,70 +8711,132 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               <div className="bg-gray-50 rounded-lg p-3">
                 <h3 className="text-[11px] text-gray-500 mb-1">Actual Vs Planned</h3>
                 <svg viewBox="0 0 500 120" className="w-full h-28 chart-svg">
-                  {[35, 72, 45, 88, 54, 60, 50, 66, 58, 79, 61, 52].map((v, i) => (
+                  {projectDashboardTrends.plannedHeights.map((v, i) => (
                     <g key={i}>
                       <rect x={22 + i * 38} y={100 - v} width="10" height={v} className="chart-bar" fill="#2563eb" />
-                      <rect x={34 + i * 38} y={100 - (v - 8)} width="10" height={v - 8} className="chart-bar" fill="#ef4444" />
+                      <rect x={34 + i * 38} y={100 - (projectDashboardTrends.actualHeights[i] ?? 0)} width="10" height={projectDashboardTrends.actualHeights[i] ?? 0} className="chart-bar" fill="#ef4444" />
                     </g>
                   ))}
+                  {projectDashboardTrends.planned.every((p, i) => p === 0 && (projectDashboardTrends.actual[i] ?? 0) === 0) && (
+                    <text x="250" y="60" textAnchor="middle" fontSize="9" fill="#9ca3af">No task data for this range</text>
+                  )}
                 </svg>
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <h3 className="text-[11px] text-gray-500 mb-1">Deviation</h3>
                 <svg viewBox="0 0 500 120" className="w-full h-28 chart-svg">
                   <line x1="10" y1="60" x2="490" y2="60" stroke="#d1d5db" />
-                  {[-12, 18, -20, 14, -16, 22, -14, 20, -10, 17, -9, 21].map((v, i) => (
-                    <rect key={i} x={24 + i * 38} y={v >= 0 ? 60 - v * 2 : 60} width="12" height={Math.abs(v * 2)} className="chart-bar" fill={i % 2 ? '#ef4444' : '#2563eb'} />
-                  ))}
+                  {projectDashboardTrends.deviation.map((v, i) => {
+                    const h = (Math.abs(v) / projectDashboardTrends.maxAbs) * 50;
+                    return (
+                      <rect
+                        key={i}
+                        x={24 + i * 38}
+                        y={v >= 0 ? 60 - h : 60}
+                        width="12"
+                        height={h || 0.5}
+                        className="chart-bar"
+                        fill={i % 2 ? '#ef4444' : '#2563eb'}
+                      />
+                    );
+                  })}
                 </svg>
               </div>
             </div>
           </section>
 
-          <section className="bg-white rounded-xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Insights</h2>
-              <div className="flex items-center gap-4 text-[10px] text-gray-400">
-                <span>Projects</span>
-                <span>This Month</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="flex flex-col min-h-[300px] rounded-lg border border-gray-100 bg-gray-50/40 p-4">
-                <h3 className="text-xs font-semibold text-gray-600 mb-3 shrink-0">Projects Progress</h3>
-                <div className="flex-1 flex flex-col justify-center gap-2.5">
-                  {[
-                    ['ON TRACK', 70, '#34d399'],
-                    ['COMPLETED', 64, '#60a5fa'],
-                    ['SLIGHTLY DELAYED', 53, '#f6be00'],
-                    ['DELAYED', 38, '#ef4444'],
-                  ].map(([label, value, color]) => (
-                    <div key={String(label)} className="flex items-center gap-2">
-                      <div className="flex-1 h-5 bg-gray-100 rounded-sm overflow-hidden flex items-center">
-                        <div className="h-full flex items-center px-2 text-[8px] text-white font-semibold tracking-wide" style={{ width: `${value}%`, backgroundColor: String(color) }}>{label}</div>
-                      </div>
-                      <span className="text-[10px] text-gray-500 w-8 text-right">{String(value)}%</span>
-                    </div>
+          <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-bold text-[#1a1d2e]">Insights</h2>
+              <label className="flex items-center gap-2 text-[10px] text-gray-500">
+                <span className="sr-only">Filter by project</span>
+                <select
+                  className={`${enj.control} !w-auto min-w-[8rem] text-sm font-medium text-gray-700`}
+                  value={insightProjectFilter}
+                  onChange={(e) => {
+                    setInsightProjectFilter(e.target.value);
+                  }}
+                >
+                  <option value="all">All Projects</option>
+                  {insightProjectNames.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
                   ))}
+                </select>
+              </label>
+            </div>
+            <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-4 sm:max-w-3xl lg:max-w-5xl lg:grid-cols-2 lg:items-stretch lg:gap-6">
+              <div className="flex min-h-[240px] w-full min-w-0 flex-col rounded border border-gray-100 bg-white p-4 sm:min-h-[260px]">
+                <h3 className="mb-3 shrink-0 text-[10px] font-medium text-gray-500">Projects Progress</h3>
+                <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-2.5">
+                  {projectInsights.progressBars.map(({ label, value, fg, bg }) => {
+                    const v = Math.max(0, Math.min(100, Number(value)));
+                    const warmFg = fg === '#FFB300' || fg === '#00C853';
+                    return (
+                      <div key={String(label)} className="flex min-h-5 items-center gap-2 sm:gap-2.5">
+                        <div
+                          className="relative h-5 min-w-0 w-full flex-1 overflow-hidden rounded-none"
+                          style={{ backgroundColor: String(bg) }}
+                        >
+                          {v < 1 ? (
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8px] font-bold uppercase leading-tight tracking-wide text-gray-700">
+                              {label}
+                            </span>
+                          ) : (
+                            <div
+                              className="flex h-5 min-h-5 items-center justify-start rounded-none px-1.5 sm:px-2"
+                              style={{
+                                width: `${v}%`,
+                                minWidth: v < 14 ? '2.5rem' : undefined,
+                                backgroundColor: String(fg),
+                              }}
+                            >
+                              <span
+                                className={`truncate text-[8px] font-extrabold uppercase leading-tight tracking-wide ${warmFg ? 'text-gray-900' : 'text-white'}`}
+                              >
+                                {label}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <span className="w-7 shrink-0 text-right text-[10px] font-semibold tabular-nums text-gray-800 sm:w-8">{v}%</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="flex flex-col min-h-[300px] rounded-lg border border-gray-100 bg-gray-50/40 p-4">
-                <h3 className="text-xs font-semibold text-gray-600 mb-3 shrink-0">Tasks</h3>
-                <div className="flex-1 flex items-end justify-around gap-2 px-1">
-                  {[
-                    ['IN PROGRESS', 70, '#34d399'],
-                    ['NEW TASKS', 64, '#9adfd2'],
-                    ['COMPLETED', 53, '#4f46e5'],
-                    ['DELAYED', 38, '#ef4444'],
-                  ].map(([label, v, color], i) => (
-                    <div key={i} className="flex flex-col items-center gap-1 flex-1 max-w-[72px]">
-                      <span className="text-[9px] text-gray-500">{Number(v)}%</span>
-                      <div className="w-full max-w-[44px] rounded-t chart-bar flex items-center justify-center" style={{ height: `${Number(v) * 1.55}px`, backgroundColor: String(color) }}>
-                        <span className="text-[7px] text-white font-semibold -rotate-90 whitespace-nowrap">{String(label)}</span>
+              <div className="flex min-h-[240px] w-full min-w-0 flex-col rounded border border-gray-100 bg-white p-4 sm:min-h-[260px]">
+                <h3 className="mb-3 shrink-0 text-[10px] font-medium text-gray-500">Tasks</h3>
+                <div className="grid w-full min-h-0 flex-1 grid-cols-4 items-end gap-2 px-0.5 sm:gap-3 sm:px-1">
+                  {projectInsights.taskBars.map(({ label, value: rawV, fg, bg }) => {
+                    const v = Math.max(0, Math.min(100, Number(rawV)));
+                    return (
+                      <div key={String(label)} className="flex min-w-0 flex-col items-stretch">
+                        <div className="mb-1 text-center text-[9px] font-semibold tabular-nums text-gray-900 sm:text-[10px]">{v}%</div>
+                        <div
+                          className="relative mx-auto h-[80px] w-full max-w-[48px] rounded-none sm:h-[88px] sm:max-w-[52px]"
+                          style={{ backgroundColor: String(bg) }}
+                        >
+                          <div
+                            className="absolute bottom-0 left-0 right-0 flex items-end justify-center rounded-none px-0.5 pb-0.5 pt-0.5"
+                            style={{
+                              height: v > 0 ? `${v}%` : 0,
+                              minHeight: v > 0 ? 18 : 0,
+                              backgroundColor: String(fg),
+                            }}
+                          >
+                            {v > 0 ? (
+                              <span className="max-h-full text-[7px] font-extrabold uppercase leading-tight [writing-mode:vertical-rl] rotate-180 [text-orientation:mixed] text-gray-900 sm:text-[8px]">
+                                {label}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -5700,12 +8845,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 <div className="flex-1 flex items-center justify-center min-h-[220px]">
                   <DonutChart
                     className="w-full max-w-[320px] h-56 chart-svg"
-                    slices={[
-                      { label: 'Application', value: 43, color: '#1667de' },
-                      { label: 'Security', value: 59, color: '#d3525a' },
-                      { label: 'Support', value: 36, color: '#3b3a80' },
-                      { label: 'Infrastructure', value: 23, color: '#f6be00' },
-                    ]}
+                    slices={projectInsights.categorySlices}
                     ringWidth={50}
                   />
                 </div>
@@ -5721,10 +8861,25 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                         <text x="8" y={153 - v * 5.2} fontSize="9" fill="#94a3b8">{v}</text>
                       </g>
                     ))}
-                    <polygon points="32,118 88,124 114,94 162,102 202,72 268,84 268,150 32,150" fill="#2563eb" />
-                    <polygon points="32,150 88,140 114,88 162,68 196,94 268,66 268,150 32,150" fill="#ef4444" opacity="0.85" />
-                    <polygon points="32,118 88,150 114,148 162,146 200,70 268,124 268,150 32,150" fill="#f6be00" opacity="0.95" />
-                    {['Jan', 'Feb', 'Mar', 'Apr', 'May'].map((m, i) => (
+                    {(() => {
+                      const maxVal = Math.max(
+                        1,
+                        ...projectInsights.deliverableTotal,
+                        ...projectInsights.deliverableDone,
+                        ...projectInsights.deliverablePending,
+                      );
+                      const x = [32, 88, 144, 200, 268];
+                      const yFrom = (n: number) => 150 - (n / maxVal) * 84;
+                      const poly = (arr: number[]) => `${x.map((xp, i) => `${xp},${yFrom(arr[i] ?? 0)}`).join(' ')} 268,150 32,150`;
+                      return (
+                        <>
+                          <polygon points={poly(projectInsights.deliverableDone)} fill="#2563eb" />
+                          <polygon points={poly(projectInsights.deliverableTotal)} fill="#ef4444" opacity="0.85" />
+                          <polygon points={poly(projectInsights.deliverablePending)} fill="#f6be00" opacity="0.95" />
+                        </>
+                      );
+                    })()}
+                    {projectInsights.monthNames.map((m, i) => (
                       <text key={m} x={40 + i * 56} y="172" fontSize="9" fill="#94a3b8">{m}</text>
                     ))}
                     <circle cx="40" cy="188" r="3.5" fill="#ef4444" />
@@ -5740,47 +8895,94 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
           </section>
 
           <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="px-4 py-3 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900">Projects List</h3>
-              <button className="text-xs text-[#b28a44]">View All</button>
+            <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
+              <h3 className="text-xl leading-none font-bold text-primary">Projects List</h3>
+              <button
+                type="button"
+                className={`${enj.btn} ${enj.btnOutline} bg-amber-50/90 text-xs font-semibold hover:bg-amber-100/80`}
+                onClick={() => setShowAllProjectsScreen(true)}
+              >
+                View All
+              </button>
             </div>
             <table className="w-full">
-              <thead className="bg-gray-50 border-y border-gray-100">
-                <tr className="text-[10px] text-gray-400 uppercase text-left">
+              <thead className="bg-[#eaecf3] border-y border-gray-100">
+                <tr className="text-xs font-semibold text-[#6d7488] text-left">
                   <th className="px-3 py-2">Project Name</th>
-                  <th className="px-3 py-2">Strag. Obj</th>
+                  <th className="px-3 py-2">Strategic Objective</th>
                   <th className="px-3 py-2">Project Sponsor</th>
                   <th className="px-3 py-2">Budget</th>
                   <th className="px-3 py-2">Category</th>
-                  <th className="px-3 py-2">Schedule</th>
+                  <th className="px-3 py-2">Start Date</th>
                   <th className="px-3 py-2">Progress Level</th>
                   <th className="px-3 py-2">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {[
-                  ['Pinnacle', 'Time Bound', 'Sales', '$42', 'Support', '40%', 'IN WORK'],
-                  ['Road Map', 'Time Bound', 'Sales', '$18', 'Infrastructure', '42%', 'IN WORK'],
-                  ['Growth', 'Time Bound', 'Sales', '$42', 'Application', '40%', 'SLIGHTLY DELAYED'],
-                  ['Primate', 'Time Bound', 'Sales', '$42', 'Support', '40%', 'IN WORK'],
-                  ['Road Map', 'Time Bound', 'Sales', '$42', 'Infrastructure', '40%', 'DELAYED'],
-                ].map((row, i) => (
-                  <tr key={i} className="border-b border-gray-100 text-xs text-gray-700">
-                    <td className="px-3 py-2 text-indigo-700 underline">{row[0]}</td>
-                    <td className="px-3 py-2">{row[1]}</td>
-                    <td className="px-3 py-2">{row[2]}</td>
-                    <td className="px-3 py-2 text-rose-500 font-semibold">{row[3]}</td>
-                    <td className="px-3 py-2">{row[4]}</td>
-                    <td className="px-3 py-2">{row[5]}</td>
-                    <td className="px-3 py-2"><div className="w-20 h-1.5 bg-gray-200 rounded-full"><div className="h-full bg-blue-500 rounded-full w-2/5" /></div></td>
-                    <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-[9px] bg-emerald-100 text-emerald-700">{row[6]}</span></td>
+                {dashboardProjectsLoading && (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-6 text-center text-xs text-gray-500">Loading projects...</td>
                   </tr>
-                ))}
+                )}
+                {!dashboardProjectsLoading && latestFiveProjects.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-6 text-center text-xs text-gray-500">No projects found.</td>
+                  </tr>
+                )}
+                {!dashboardProjectsLoading && latestFiveProjects.map((row) => {
+                  const name = String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
+                  const status = projectStatusLabel(row);
+                  const progress = projectProgressPct(row);
+                  return (
+                    <tr key={String(row.new_projectid ?? row.createdon ?? name)} className="border-b border-[#ececf3] text-sm text-[#4c556d]">
+                      <td className="px-3 py-3">
+                        <span className="block max-w-[220px] truncate">{name}</span>
+                      </td>
+                      <td className="px-3 py-3">{projectObjectiveLabel(row)}</td>
+                      <td className="px-3 py-3">{projectSponsorLabel(row)}</td>
+                      <td className="px-3 py-3">{projectBudgetLabel(row)}</td>
+                      <td className="px-3 py-3">{projectCategoryLabel(row)}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <p className="text-[10px] text-[#40475d]">Start Date</p>
+                            <p className="text-[10px] text-[#7b8193] flex items-center gap-1">
+                              <Calendar size={12} className="text-[#9aa1b4]" />
+                              {projectDateLabel(row.new_startdate)}
+                            </p>
+                          </div>
+                          <div className="w-px h-8 bg-[#d9dbe5]" />
+                          <div>
+                            <p className="text-[10px] text-[#40475d]">End Date</p>
+                            <p className="text-[10px] text-[#7b8193] flex items-center gap-1">
+                              <Calendar size={12} className="text-[#9aa1b4]" />
+                              {projectDateLabel(row.new_enddate)}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="w-[180px]">
+                          <p className="text-[12px] text-[#8c93a6] text-right mb-1">{progress}%</p>
+                          <div className="h-4 rounded-full bg-[#e5e7eb] overflow-hidden">
+                            <div className="h-full rounded-full bg-blue-600 enj-progress-fill" style={{ width: `${progress}%` }} />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-block min-w-[90px] text-center px-2 py-1 rounded-md text-[11px] font-semibold ${projectStatusClass(status)}`}>
+                          {status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </section>
             </>
           )}
+          </div>
         </main>
       </div>
     </div>
@@ -5821,17 +9023,59 @@ function RoleDashboard({ role, onLogout }: { role: AppRole; onLogout: () => void
 
 // ─── App (login page — unchanged) ─────────────────────────────────────────────
 export default function App() {
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginRole, setLoginRole] = useState<AppRole>('business');
+
+  useEffect(() => {
+    const getPickerInput = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return null;
+      const direct = target instanceof HTMLInputElement ? target : null;
+      const resolved =
+        direct?.matches('input[type="date"], input[type="datetime-local"]')
+          ? direct
+          : (target.closest('input[type="date"], input[type="datetime-local"]') as HTMLInputElement | null);
+      if (!resolved || resolved.disabled || resolved.readOnly) return null;
+      return resolved as HTMLInputElement & { showPicker?: () => void };
+    };
+
+    const openNativePicker = (target: EventTarget | null) => {
+      const pickerInput = getPickerInput(target);
+      if (!pickerInput) return;
+      if (typeof pickerInput.showPicker !== 'function') return;
+      try {
+        pickerInput.focus();
+        pickerInput.showPicker();
+      } catch {
+        // Ignore browser restrictions and fallback behavior.
+      }
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      openNativePicker(event.target);
+    };
+    const onClick = (event: MouseEvent) => {
+      openNativePicker(event.target);
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      openNativePicker(event.target);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('focusin', onFocusIn, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('click', onClick, true);
+      document.removeEventListener('focusin', onFocusIn, true);
+    };
+  }, []);
 
   if (isLoggedIn) {
     return (
       <div className="relative h-screen">
         <RoleDashboard role={loginRole} onLogout={() => setIsLoggedIn(false)} />
         <p className="fixed inset-x-0 bottom-0 z-50 bg-white/90 py-2 text-center text-[11px] text-gray-500 backdrop-blur-sm">
-          Copyright c2026 Enjaz Management Tool. All rights reserved.
+          Copyright @2026 Enjaz Management Tool. All rights reserved.
         </p>
       </div>
     );
@@ -5890,82 +9134,16 @@ export default function App() {
               </select>
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="space-y-2"
-            >
-              <label className="text-[10px] font-headline font-bold uppercase tracking-widest text-primary" htmlFor="email">
-                Email
-              </label>
-              <input
-                className="w-full px-3 py-2.5 bg-surface-container-low border border-outline-variant/15 rounded-lg focus:outline-none focus:border-primary focus:ring-0 text-primary transition-all duration-200 placeholder:text-on-surface-variant/50"
-                id="email"
-                name="email"
-                placeholder="name@example.com"
-                type="email"
-              />
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="space-y-2"
-            >
-              <label className="text-[10px] font-headline font-bold uppercase tracking-widest text-primary" htmlFor="password">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  className="w-full px-3 py-2.5 bg-surface-container-low border border-outline-variant/15 rounded-lg focus:outline-none focus:border-primary focus:ring-0 text-primary transition-all duration-200 placeholder:text-on-surface-variant/50"
-                  id="password"
-                  name="password"
-                  placeholder="••••••••"
-                  type={showPassword ? 'text' : 'password'}
-                />
-                <button
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-primary transition-colors"
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4 }}
-              className="flex items-center justify-between py-2"
-            >
-              <label className="flex items-center space-x-3 cursor-pointer group">
-                <div className="relative" onClick={() => setRememberMe(!rememberMe)}>
-                  <input className="peer hidden" type="checkbox" checked={rememberMe} readOnly />
-                  <div className={`w-5 h-5 border-2 rounded transition-all ${rememberMe ? 'bg-primary border-primary' : 'border-outline-variant/30 bg-transparent'}`}></div>
-                  {rememberMe && (
-                    <Check className="absolute inset-0 text-white p-0.5" />
-                  )}
-                </div>
-                <span className="text-sm font-sans text-on-surface-variant group-hover:text-primary transition-colors">Remember me</span>
-              </label>
-              <a className="text-sm font-headline font-semibold text-error hover:opacity-80 transition-opacity" href="#">
-                Forgot Password
-              </a>
-            </motion.div>
-
             <motion.button
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
+              transition={{ delay: 0.25 }}
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               className="w-full py-2.5 bg-secondary text-white font-headline font-bold text-base rounded-lg shadow-lg hover:brightness-110 transition-all duration-200 flex items-center justify-center gap-2"
               type="submit"
             >
-              Login
+              Get Started
               <ArrowRight size={16} />
             </motion.button>
           </form>
@@ -5992,8 +9170,7 @@ export default function App() {
               <img
                 alt="Man and woman in traditional Saudi clothing looking forward"
                 className="w-full h-full object-cover object-center grayscale group-hover:grayscale-0 transition-all duration-1000 ease-in-out"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuADnKpfYEMWHZPSnjmOga49jDPPaAFq3HUIpaRuktPOt07szMnsMDVc_0R3R1PNjqYwgp7-15fqC01Wu9MfGut_Y26tWS6mvMFzgT_-NkLbb28lzUAwNzjPqw4FsmFS5iHW8VFx3q5VM2u2D2AGKfsk2pjqr4yorXydQEstErw7ur4xesMqliJy09RntosX9hrAHJe8UFkCUbAiNUTK9e_fARd1y8Sa9NYBFqJiHfAOU3zI2pDI9gORWjIhWT6poQvoNtG_gwNyc9Y"
-                referrerPolicy="no-referrer"
+                src={saudiHeroImage}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/20 to-transparent"></div>
 
@@ -6034,7 +9211,7 @@ export default function App() {
         </section>
       </main>
       <p className="fixed inset-x-0 bottom-0 z-50 bg-white/90 py-2 text-center text-[11px] text-gray-500 backdrop-blur-sm">
-        Copyright c2026 Enjaz Management Tool. All rights reserved.
+        Copyright @2026 Enjaz Management Tool. All rights reserved.
       </p>
     </div>
   );

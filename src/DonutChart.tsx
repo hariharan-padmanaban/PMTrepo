@@ -1,4 +1,6 @@
 import type { CSSProperties } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'motion/react';
 
 export type DonutSlice = {
   label: string;
@@ -16,6 +18,28 @@ type DonutChartProps = {
   labelColor?: string;
   showOuterLabels?: boolean;
 };
+
+function AnimatedNumber({ value }: { value: number }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  useEffect(() => {
+    const from = displayValue;
+    const to = value;
+    if (from === to) return;
+    const start = performance.now();
+    const duration = 320;
+    let raf = 0;
+    const step = (t: number) => {
+      const p = Math.min(1, (t - start) / duration);
+      // Ease-out curve for subtle value transition.
+      const eased = 1 - (1 - p) * (1 - p);
+      setDisplayValue(Math.round(from + (to - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, displayValue]);
+  return <>{displayValue}</>;
+}
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = (Math.PI / 180) * angleDeg;
@@ -59,6 +83,11 @@ export function DonutChart({
   const rOuter = size * 0.32;
   const rInner = rOuter - ringWidth * 0.5;
   const total = slices.reduce((sum, s) => sum + s.value, 0) || 1;
+  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
+  const clipId = useMemo(
+    () => `donut-reveal-${Math.random().toString(36).slice(2, 10)}`,
+    [],
+  );
 
   let angle = -90;
   const segments = slices.map((slice) => {
@@ -67,21 +96,48 @@ export function DonutChart({
     const end = angle + sweep;
     angle = end;
     const mid = (start + end) / 2;
-    return { ...slice, start, end, mid };
+    const offset = hoveredLabel === slice.label ? 4 : 0;
+    const hoverDx = offset * Math.cos((Math.PI / 180) * mid);
+    const hoverDy = offset * Math.sin((Math.PI / 180) * mid);
+    return { ...slice, start, end, mid, hoverDx, hoverDy };
   });
 
   return (
     <svg viewBox={`0 0 ${size} ${size}`} className={className}>
-      {segments.map((seg) => (
-        <path
-          key={seg.label}
-          d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
-          fill={seg.color}
-          stroke="#ffffff"
-          strokeWidth={2}
-          className="chart-bar"
-        />
-      ))}
+      <defs>
+        <clipPath id={clipId}>
+          <motion.circle
+            cx={cx}
+            cy={cy}
+            initial={{ r: 0 }}
+            animate={{ r: size * 0.52 }}
+            transition={{ duration: 0.7, ease: 'easeOut' }}
+          />
+        </clipPath>
+      </defs>
+      <g clipPath={`url(#${clipId})`}>
+        {segments.map((seg) => (
+          <motion.path
+            key={seg.label}
+            d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
+            fill={seg.color}
+            stroke="#ffffff"
+            strokeWidth={2}
+            className="chart-bar"
+            onHoverStart={() => setHoveredLabel(seg.label)}
+            onHoverEnd={() => setHoveredLabel(null)}
+            animate={{
+              x: seg.hoverDx,
+              y: seg.hoverDy,
+              opacity: hoveredLabel && hoveredLabel !== seg.label ? 0.5 : 1,
+            }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+          >
+            <title>{`${seg.label}: ${seg.value}`}</title>
+          </motion.path>
+        ))}
+      </g>
 
       {showOuterLabels &&
         segments.map((seg) => {
@@ -91,10 +147,15 @@ export function DonutChart({
           const tx = b.x + (right ? 10 : -10);
           const anchor: CSSProperties['textAnchor'] = right ? 'start' : 'end';
           return (
-            <g key={`${seg.label}-label`}>
+            <g
+              key={`${seg.label}-label`}
+              onMouseEnter={() => setHoveredLabel(seg.label)}
+              onMouseLeave={() => setHoveredLabel(null)}
+              style={{ cursor: 'default' }}
+            >
               <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={labelColor} strokeWidth={1.3} />
               <text x={tx} y={b.y - 4} fill={labelColor} fontSize={13} fontWeight={500} textAnchor={anchor}>
-                {seg.value}
+                <AnimatedNumber value={seg.value} />
               </text>
               <text x={tx} y={b.y + 12} fill={labelColor} fontSize={8.5} textAnchor={anchor}>
                 {seg.label}
@@ -104,7 +165,7 @@ export function DonutChart({
         })}
 
       {centerText && (
-        <text x={cx} y={cy - 2} fill="#2f3150" fontSize={15} fontWeight={700} textAnchor="middle">
+        <text x={cx} y={cy - 2} fill="#151d5d" fontSize={15} fontWeight={700} textAnchor="middle">
           {centerText}
         </text>
       )}
