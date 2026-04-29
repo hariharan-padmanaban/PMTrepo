@@ -4,7 +4,6 @@ import { NotificationToast, type ToastType } from './NotificationToast';
 import { enj } from './ui/enjForm';
 
 export const SPONSOR_FORM_ACCENT = '#A08149';
-const ACCENT = SPONSOR_FORM_ACCENT;
 
 type FormState = {
   sponsorName: string;

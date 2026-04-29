@@ -35,7 +35,6 @@ const EMPTY: FormState = {
 };
 
 export const CLIENT_FORM_ACCENT = '#A08149';
-const ACCENT = CLIENT_FORM_ACCENT;
 
 function validate(f: FormState): Partial<Record<keyof FormState, string>> {
   const e: Partial<Record<keyof FormState, string>> = {};

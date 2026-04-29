@@ -5,7 +5,6 @@ import { NotificationToast, type ToastType } from './NotificationToast';
 import { enj } from './ui/enjForm';
 
 export const VENDOR_FORM_ACCENT = '#A08149';
-const ACCENT = VENDOR_FORM_ACCENT;
 
 /** Dataverse `new_BusinessType` option set. */
 export const VENDOR_BUSINESS_OPTIONS = [

@@ -257,7 +257,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     @apply h-2 min-h-2 overflow-hidden rounded-full bg-[#E5E7EB];
   }
   .enj-table-progress-fill {
-    @apply h-full rounded-full bg-[#2563EB] enj-progress-fill;
+    @apply h-full rounded-full bg-[#2563EB];
+    transform-origin: left center;
+    animation: progress-slide-in 500ms ease-out both;
   }
 
   /* Status pills (TableDesign.md) */
