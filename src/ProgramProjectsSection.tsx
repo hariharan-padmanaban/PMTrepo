@@ -782,25 +782,31 @@ export function ProgramProjectsSection({
   };
 
   const openProjectFilesModal = async (row: Record<string, unknown>) => {
-    const projectId = String(row.new_projectid ?? row.crcf8_attachmentid ?? '').trim();
+    // Prioritize crcf8_attachmentid (the attachment ID we stored during project creation)
+    const attachmentId = String(row.crcf8_attachmentid ?? '').trim();
     const projectName = String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
-    console.log('🔍 Opening files modal for project:', { projectId, projectName, rowData: row });
 
-    if (!projectId) {
-      onToast({ type: 'info', message: 'Project ID is not available for this record.' });
-      console.warn('⚠️ No projectId found in row data');
+    console.log('🔍 Opening files modal for project:', { attachmentId, projectName, rowData: row });
+
+    if (!attachmentId) {
+      onToast({ type: 'info', message: 'No attachments found for this project.' });
+      console.warn('⚠️ No attachmentId (crcf8_attachmentid) found in row data');
       return;
     }
 
-    setProjectFilesModal({ projectId, projectName });
+    setProjectFilesModal({ projectId: attachmentId, projectName });
     setProjectFilesRows([]);
     setProjectFilesLoading(true);
 
     try {
-      console.log('📞 Calling fetchAttachments with ID:', projectId);
-      const files = await fetchAttachments(projectId);
-      console.log('✅ Files received:', files);
+      console.log('📞 Calling PMTDocumentFetchService with Attachment ID:', attachmentId);
+      const files = await fetchAttachments(attachmentId);
+      console.log('✅ Files received:', files.length, files);
       setProjectFilesRows(files);
+
+      if (files.length === 0) {
+        onToast({ type: 'info', message: 'No files uploaded for this project yet.' });
+      }
     } catch (error) {
       console.error('❌ Error in openProjectFilesModal:', error);
       onToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load project files' });
