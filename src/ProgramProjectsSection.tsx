@@ -782,15 +782,11 @@ export function ProgramProjectsSection({
   };
 
   const openProjectFilesModal = async (row: Record<string, unknown>) => {
-    // Prioritize crcf8_attachmentid (the attachment ID we stored during project creation)
     const attachmentId = String(row.crcf8_attachmentid ?? '').trim();
     const projectName = String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
 
-    console.log('🔍 Opening files modal for project:', { attachmentId, projectName, rowData: row });
-
     if (!attachmentId) {
       onToast({ type: 'info', message: 'No attachments found for this project.' });
-      console.warn('⚠️ No attachmentId (crcf8_attachmentid) found in row data');
       return;
     }
 
@@ -799,16 +795,13 @@ export function ProgramProjectsSection({
     setProjectFilesLoading(true);
 
     try {
-      console.log('📞 Calling PMTDocumentFetchService with Attachment ID:', attachmentId);
       const files = await fetchAttachments(attachmentId);
-      console.log('✅ Files received:', files.length, files);
       setProjectFilesRows(files);
 
       if (files.length === 0) {
         onToast({ type: 'info', message: 'No files uploaded for this project yet.' });
       }
     } catch (error) {
-      console.error('❌ Error in openProjectFilesModal:', error);
       onToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load project files' });
     } finally {
       setProjectFilesLoading(false);
