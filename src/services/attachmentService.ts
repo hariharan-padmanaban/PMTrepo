@@ -56,15 +56,29 @@ export async function uploadAttachments(
 
 export async function fetchAttachments(attachmentId: string): Promise<AttachmentFile[]> {
   try {
+    console.log('📥 Fetching attachments for ID:', attachmentId);
     const response = await PMTDocumentFetchService.Run({
       text_1: attachmentId,
     });
 
-    if (!response?.success || !response?.data?.body?.value) {
+    console.log('📨 PMTDocumentFetch Response:', response);
+
+    if (!response?.success) {
+      console.warn('❌ Response not successful:', response?.error);
       return [];
     }
 
-    const files = response.data.body.value as Array<Record<string, unknown>>;
+    const bodyValue = response?.data?.body?.value;
+    console.log('📋 Body value:', bodyValue);
+
+    if (!bodyValue) {
+      console.warn('⚠️ No body.value in response');
+      return [];
+    }
+
+    const files = Array.isArray(bodyValue) ? bodyValue : [];
+    console.log('✅ Files found:', files.length);
+
     return files.map((file) => ({
       id: String(file.UniqueId ?? file.ID ?? file.id ?? ''),
       name: String(file.Name ?? file.FileLeafRef ?? file.name ?? 'Unknown'),
@@ -72,7 +86,7 @@ export async function fetchAttachments(attachmentId: string): Promise<Attachment
       modified: String(file.Modified ?? file.TimeCreated ?? file.modified ?? ''),
     }));
   } catch (error) {
-    console.error('Error fetching attachments:', error);
+    console.error('❌ Error fetching attachments:', error);
     return [];
   }
 }

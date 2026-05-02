@@ -784,17 +784,25 @@ export function ProgramProjectsSection({
   const openProjectFilesModal = async (row: Record<string, unknown>) => {
     const projectId = String(row.new_projectid ?? row.crcf8_attachmentid ?? '').trim();
     const projectName = String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
+    console.log('🔍 Opening files modal for project:', { projectId, projectName, rowData: row });
+
     if (!projectId) {
       onToast({ type: 'info', message: 'Project ID is not available for this record.' });
+      console.warn('⚠️ No projectId found in row data');
       return;
     }
+
     setProjectFilesModal({ projectId, projectName });
     setProjectFilesRows([]);
     setProjectFilesLoading(true);
+
     try {
+      console.log('📞 Calling fetchAttachments with ID:', projectId);
       const files = await fetchAttachments(projectId);
+      console.log('✅ Files received:', files);
       setProjectFilesRows(files);
     } catch (error) {
+      console.error('❌ Error in openProjectFilesModal:', error);
       onToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load project files' });
     } finally {
       setProjectFilesLoading(false);
