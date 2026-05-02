@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Calendar, ChevronDown, Paperclip, RefreshCw } from 'lucide-react';
+import { Paperclip, RefreshCw } from 'lucide-react';
 import { enj } from './ui/enjForm';
 import { New_issuesnew_issuestatus } from './generated/models/New_issuesModel';
 import { New_issuesService } from './generated/services/New_issuesService';
@@ -22,8 +22,6 @@ const areaCls = `${enj.textarea} min-h-[6.5rem] resize-y`;
 
 const ISSUE_STATUS_ORDER: { value: New_issuesnew_issuestatus; label: string }[] = [
   { value: 100000000, label: 'Open' },
-  { value: 100000001, label: 'In Progress' },
-  { value: 100000002, label: 'Solved' },
   { value: 100000003, label: 'Closed' },
 ];
 
@@ -166,8 +164,8 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
       {saving && <ScreenLoader overlay className="rounded-xl" />}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">
-          <button type="button" className="font-semibold text-primary underline" onClick={onBack}>
+        <p className="text-[16px] font-bold text-primary">
+          <button type="button" className="font-bold text-primary underline" onClick={onBack}>
             Issues
           </button>
           <span className="text-gray-300"> / </span>
@@ -230,26 +228,21 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
               <label className={labelGold}>
                 Issue Status <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <select
-                  className={`${inputBase} appearance-none pr-10 [color-scheme:light] ${form.status === 100000002 || form.status === 100000003 ? 'bg-amber-50/50' : ''}`}
-                  value={String(form.status)}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, status: Number(e.target.value) as New_issuesnew_issuestatus }));
-                    setErrors((e0) => ({ ...e0, status: '' }));
-                  }}
-                  disabled={saving}
-                >
-                  {ISSUE_STATUS_ORDER.map((o) => (
-                    <option key={o.value} value={String(o.value)}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <span className="pointer-events-none absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-r-md border-l border-secondary/20 bg-amber-50/90">
-                  <ChevronDown className="h-3.5 w-3.5 text-[#b28a44]" />
-                </span>
-              </div>
+              <select
+                className={inputBase}
+                value={String(form.status)}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, status: Number(e.target.value) as New_issuesnew_issuestatus }));
+                  setErrors((e0) => ({ ...e0, status: '' }));
+                }}
+                disabled={saving}
+              >
+                {ISSUE_STATUS_ORDER.map((o) => (
+                  <option key={o.value} value={String(o.value)}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className={labelGold}>
@@ -286,21 +279,16 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
               <label className={labelGold}>
                 Issue Raised Date <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  className={`${inputBase} pr-10 [color-scheme:light]`}
-                  value={form.issueDate}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, issueDate: e.target.value }));
-                    setErrors((e0) => ({ ...e0, issueDate: '' }));
-                  }}
-                  disabled={saving}
-                />
-                <span className="pointer-events-none absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-r-md border-l border-secondary/30 bg-amber-50/90">
-                  <Calendar className="h-3.5 w-3.5 text-[#b28a44]" />
-                </span>
-              </div>
+              <input
+                type="date"
+                className={`${inputBase} [color-scheme:light]`}
+                value={form.issueDate}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, issueDate: e.target.value }));
+                  setErrors((e0) => ({ ...e0, issueDate: '' }));
+                }}
+                disabled={saving}
+              />
               {errors.issueDate && <p className="mt-1 text-[11px] text-rose-600">{errors.issueDate}</p>}
             </div>
           </div>

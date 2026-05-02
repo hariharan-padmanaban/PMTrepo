@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, ChevronDown, ClipboardList, FileSpreadsheet, HelpCircle, Inbox, LayoutDashboard, LogOut, UserCircle } from 'lucide-react';
+import { Activity, ChevronDown, ClipboardList, FileSpreadsheet, HelpCircle, Inbox, LayoutGrid, LogOut, UserCircle } from 'lucide-react';
 import { enj } from './ui/enjForm';
 import { NewUsersService, type NewUserRow } from './services/NewUsersService';
 import { SponsorsService } from './services/SponsorsService';
@@ -287,6 +287,7 @@ function StatCard({ value, label, color }: { value: number; label: string; color
 }
 
 function UsersByRoleChart({ rows }: { rows: NewUserRow[] }) {
+  const [selected, setSelected] = useState<string | null>(null);
   const categories = ['Business', 'Program', 'Project', 'Team'] as const;
   const activeCounts = categories.map((cat) =>
     rows.filter((r) => (r.new_rolename ?? roleLabel[String(r.new_role) as OnboardingForm['department']] ?? '-') === cat && String(r.new_status) === '100000000').length,
@@ -298,60 +299,93 @@ function UsersByRoleChart({ rows }: { rows: NewUserRow[] }) {
   const scale = 170 / max;
 
   return (
-    <svg viewBox="0 0 520 260" className={enj.chartSvgLg}>
+    <svg viewBox="0 0 520 270" className={enj.chartSvgLg} role="img" aria-label="Users by role chart">
       {[0, 2, 4, 6, 8, 10, 12].map((v) => (
         <g key={v}>
           <line x1="46" x2="500" y1={210 - v * (170 / 12)} y2={210 - v * (170 / 12)} stroke="#edf2f7" />
           <text x="30" y={214 - v * (170 / 12)} fontSize="9" fill="#94a3b8">{v}</text>
         </g>
       ))}
-      <polyline
-        fill="none"
-        stroke="#1f9d55"
-        strokeWidth="2"
-        points={activeCounts.map((v, i) => `${70 + i * 120},${210 - v * scale}`).join(' ')}
-      />
-      <polyline
-        fill="none"
-        stroke="#e11d48"
-        strokeWidth="2"
-        points={inactiveCounts.map((v, i) => `${70 + i * 120},${210 - v * scale}`).join(' ')}
-      />
-      {categories.map((c, i) => (
-        <text key={c} x={70 + i * 120} y="230" textAnchor="middle" fontSize="9" fill="#64748b">
-          {c}
-        </text>
-      ))}
-      <circle cx="188" cy="246" r="5" fill="#1f9d55" /><text x="197" y="250" fontSize="9" fill="#64748b">Active Users</text>
-      <circle cx="286" cy="246" r="5" fill="#e11d48" /><text x="295" y="250" fontSize="9" fill="#64748b">Inactive Users</text>
+      <polyline fill="none" stroke="#1f9d55" strokeWidth="2"
+        points={activeCounts.map((v, i) => `${70 + i * 120},${210 - v * scale}`).join(' ')} />
+      <polyline fill="none" stroke="#e11d48" strokeWidth="2"
+        points={inactiveCounts.map((v, i) => `${70 + i * 120},${210 - v * scale}`).join(' ')} />
+      {categories.map((c, i) => {
+        const isSel = selected === c;
+        const ax = 70 + i * 120; const ay = 210 - activeCounts[i] * scale;
+        const ix = 70 + i * 120; const iy = 210 - inactiveCounts[i] * scale;
+        return (
+          <g key={c} style={{ cursor: 'pointer' }} onClick={() => setSelected(isSel ? null : c)}>
+            {isSel && <rect x={ax - 20} y="30" width="40" height="185" rx="4" fill={`${c === selected ? '#6366f1' : '#1f9d55'}08`} />}
+            <circle cx={ax} cy={ay} r={isSel ? 6 : 4} fill="#1f9d55" stroke="white" strokeWidth="1.5" style={{ transition: 'r 200ms' }}>
+              <title>{c} — Active: {activeCounts[i]}</title>
+            </circle>
+            <circle cx={ix} cy={iy} r={isSel ? 6 : 4} fill="#e11d48" stroke="white" strokeWidth="1.5" style={{ transition: 'r 200ms' }}>
+              <title>{c} — Inactive: {inactiveCounts[i]}</title>
+            </circle>
+            {isSel && (
+              <g>
+                <rect x={ax - 28} y={Math.min(ay, iy) - 28} width="56" height="24" rx="4" fill="#1e293b" opacity="0.88" />
+                <text x={ax} y={Math.min(ay, iy) - 12} textAnchor="middle" fontSize="8" fill="white">
+                  A:{activeCounts[i]} / I:{inactiveCounts[i]}
+                </text>
+              </g>
+            )}
+            <text x={ax} y="230" textAnchor="middle" fontSize="9" fill={isSel ? '#4f46e5' : '#64748b'} fontWeight={isSel ? 'bold' : 'normal'}>{c}</text>
+          </g>
+        );
+      })}
+      <circle cx="188" cy="252" r="5" fill="#1f9d55" /><text x="197" y="256" fontSize="9" fill="#64748b">Active</text>
+      <circle cx="248" cy="252" r="5" fill="#e11d48" /><text x="257" y="256" fontSize="9" fill="#64748b">Inactive</text>
+      {selected && <text x="380" y="256" fontSize="8" fill="#6366f1">Showing: {selected} — click again to reset</text>}
     </svg>
   );
 }
 
 function OnboardingByMonthChart({ rows }: { rows: NewUserRow[] }) {
+  const [selected, setSelected] = useState<number | null>(null);
   const months = ['Feb 2026', 'Mar 2026', 'Apr 2026'];
+  const colors = ['#22c55e', '#f59e0b', '#38bdf8'];
   const monthly = months.map((_, idx) => rows.filter((r) => {
     const d = r.new_onboardeddate ? new Date(r.new_onboardeddate) : null;
     return d ? d.getMonth() === idx + 1 : false;
   }).length);
 
   return (
-    <svg viewBox="0 0 420 260" className={enj.chartSvgLg}>
+    <svg viewBox="0 0 420 270" className={enj.chartSvgLg} role="img" aria-label="Monthly onboarding chart">
       {[0, 1, 2, 3, 4].map((v) => (
         <g key={v}>
           <line x1="46" x2="392" y1={210 - v * 40} y2={210 - v * 40} stroke="#edf2f7" />
           <text x="30" y={214 - v * 40} fontSize="9" fill="#94a3b8">{v}</text>
         </g>
       ))}
-      {monthly.map((v, i) => (
-        <rect key={i} x={88 + i * 100} y={210 - v * 35} width="26" height={v * 35} rx="4" fill={['#22c55e', '#f59e0b', '#38bdf8'][i]} />
-      ))}
-      {months.map((m, i) => (
-        <text key={m} x={101 + i * 100} y="232" textAnchor="middle" fontSize="9" fill="#64748b">{m}</text>
-      ))}
-      <circle cx="126" cy="246" r="5" fill="#22c55e" /><text x="136" y="250" fontSize="9" fill="#64748b">Clients</text>
-      <circle cx="208" cy="246" r="5" fill="#f59e0b" /><text x="218" y="250" fontSize="9" fill="#64748b">Vendors</text>
-      <circle cx="292" cy="246" r="5" fill="#38bdf8" /><text x="302" y="250" fontSize="9" fill="#64748b">Sponsors</text>
+      {monthly.map((v, i) => {
+        const isSel = selected === i;
+        const h = Math.max(v * 35, v > 0 ? 4 : 0);
+        return (
+          <g key={i} style={{ cursor: 'pointer' }} onClick={() => setSelected(isSel ? null : i)}>
+            <rect
+              x={88 + i * 100} y={210 - h} width="26" height={h} rx="4"
+              fill={colors[i]}
+              opacity={selected !== null && !isSel ? 0.35 : 1}
+              style={{ transition: 'opacity 250ms, filter 250ms' }}
+              filter={isSel ? 'brightness(1.15)' : undefined}
+            >
+              <title>{months[i]}: {v} users</title>
+            </rect>
+            {isSel && (
+              <g>
+                <rect x={88 + i * 100 - 10} y={210 - h - 26} width="46" height="20" rx="3" fill="#1e293b" opacity="0.9" />
+                <text x={101 + i * 100} y={210 - h - 12} textAnchor="middle" fontSize="9" fill="white">{v} users</text>
+              </g>
+            )}
+            <text x={101 + i * 100} y="232" textAnchor="middle" fontSize="9" fill={isSel ? colors[i] : '#64748b'} fontWeight={isSel ? 'bold' : 'normal'}>{months[i]}</text>
+          </g>
+        );
+      })}
+      <circle cx="126" cy="252" r="5" fill="#22c55e" /><text x="136" y="256" fontSize="9" fill="#64748b">Feb</text>
+      <circle cx="196" cy="252" r="5" fill="#f59e0b" /><text x="206" y="256" fontSize="9" fill="#64748b">Mar</text>
+      <circle cx="266" cy="252" r="5" fill="#38bdf8" /><text x="276" y="256" fontSize="9" fill="#64748b">Apr</text>
     </svg>
   );
 }
@@ -426,10 +460,10 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
             type="button"
             onClick={() => setActiveNav('Dashboard')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              activeNav === 'Dashboard' ? 'bg-white text-[#151d5d]' : 'text-gray-500 hover:bg-white hover:text-gray-700'
+              activeNav === 'Dashboard' ? 'bg-white text-[#151d5d]' : 'text-[#344054] hover:bg-white hover:text-[#344054]'
             }`}
           >
-            <LayoutDashboard size={16} />
+            <LayoutGrid size={16} />
             Dashboard
           </button>
           {REFERENCE_DATA_SUB.map(({ id, label, icon }) => (
@@ -438,7 +472,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
               type="button"
               onClick={() => setActiveNav(id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeNav === id ? 'bg-white text-[#151d5d]' : 'text-gray-500 hover:bg-white hover:text-gray-700'
+                activeNav === id ? 'bg-white text-[#151d5d]' : 'text-[#344054] hover:bg-white hover:text-[#344054]'
               }`}
             >
               {icon}

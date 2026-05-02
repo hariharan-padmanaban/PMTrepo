@@ -19,7 +19,7 @@ type ProjectRow = Record<string, unknown>;
 type UserRow = Record<string, unknown>;
 
 const ISSUE_SEVERITIES = ['High', 'Medium', 'Low'] as const;
-const ISSUE_STATUSES = ['Open', 'Solved'] as const;
+const ISSUE_STATUSES = ['Open', 'Closed'] as const;
 const PROJECT_SPONSOR_OPTIONS = ['Sales', 'HR', 'Development', 'Marketing', 'Legal Affairs'] as const;
 const ISSUE_SEVERITY_TO_CHOICE: Record<(typeof ISSUE_SEVERITIES)[number], number> = {
   High: 100000002,
@@ -28,7 +28,7 @@ const ISSUE_SEVERITY_TO_CHOICE: Record<(typeof ISSUE_SEVERITIES)[number], number
 };
 const ISSUE_STATUS_TO_CHOICE: Record<(typeof ISSUE_STATUSES)[number], number> = {
   Open: 100000000,
-  Solved: 100000002, // Dataverse label is "Resolved"
+  Closed: 100000003,
 };
 
 function uniqueSorted(values: string[]): string[] {
@@ -157,7 +157,7 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
     setIssueSeverity(sevRaw === 100000002 ? 'High' : sevRaw === 100000001 ? 'Medium' : 'Low');
     setAssignTeamMember(String(issueToEdit.new_assigntoteammember ?? ''));
     const stRaw = Number(issueToEdit.new_issuestatus ?? NaN);
-    setIssueStatus(stRaw === 100000002 ? 'Solved' : 'Open');
+    setIssueStatus(stRaw === 100000003 ? 'Closed' : 'Open');
     setProjectSponsor(String(issueToEdit.new_projectsponsor ?? ''));
     setProgress(String(issueToEdit.new_progress ?? ''));
     setRaisedIssue(String(issueToEdit.new_raisedissue ?? ''));
@@ -244,149 +244,105 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
     }
   };
 
-  const req = (label: string) => (
-    <span className="text-[11px] text-gray-600 mb-1 block">
-      {label} <span className="text-rose-500">*</span>
-    </span>
-  );
-
-  const opt = (label: string) => <span className="text-[11px] text-gray-600 mb-1 block">{label}</span>;
-  const controlCls = enj.control;
-  const inputCls = enj.control;
-  const areaCls = `${enj.textarea} h-20 min-h-[4.5rem] resize-none`;
+  const areaCls = `mt-1 ${enj.textarea} h-20 min-h-[4.5rem] resize-none`;
 
   return (
     <section className="relative bg-white rounded-xl p-5 shadow-sm max-w-6xl mx-auto">
       {loading && <ScreenLoader overlay />}
-      <p className="text-sm font-semibold text-primary mb-4">
+      <p className="text-[16px] font-bold text-primary mb-5">
         <button className="underline text-primary font-semibold" onClick={onClose} type="button">
           Issue
         </button>
         {' > '}{issueToEdit ? 'Edit Issue' : 'Add New Issue'}
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
-        <label>
-          {req('Project Name')}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-x-5 gap-y-4">
+        <div>
+          <label className={enj.label}>Project Name *</label>
           <select
-            className={controlCls}
+            className={`mt-1 ${enj.control}`}
             value={projectName}
-            onChange={(e) => {
-              setProjectName(e.target.value);
-              setAssignTeamMember('');
-              setErrors((prev) => ({ ...prev, projectName: '' }));
-            }}
+            onChange={(e) => { setProjectName(e.target.value); setAssignTeamMember(''); setErrors((prev) => ({ ...prev, projectName: '' })); }}
             disabled={loading || saving}
           >
             <option value="">Select project</option>
-            {projectNameOptions.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
+            {projectNameOptions.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
-          {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
-        </label>
-        <label>
-          {req('Issue Title')}
-          <input className={inputCls} value={issueTitle} onChange={(e) => { setIssueTitle(e.target.value); setErrors((prev) => ({ ...prev, issueTitle: '' })); }} disabled={saving} />
-          {errors.issueTitle && <p className="mt-1 text-[11px] text-rose-600">{errors.issueTitle}</p>}
-        </label>
-        <label>
-          {req('Issue Owner')}
-          <select className={controlCls} value={issueOwner} onChange={(e) => { setIssueOwner(e.target.value); setErrors((prev) => ({ ...prev, issueOwner: '' })); }} disabled={loading || saving}>
+          {errors.projectName && <p className={`mt-1 ${enj.fieldError}`}>{errors.projectName}</p>}
+        </div>
+        <div>
+          <label className={enj.label}>Issue Title *</label>
+          <input className={`mt-1 ${enj.control}`} value={issueTitle} onChange={(e) => { setIssueTitle(e.target.value); setErrors((prev) => ({ ...prev, issueTitle: '' })); }} disabled={saving} />
+          {errors.issueTitle && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueTitle}</p>}
+        </div>
+        <div>
+          <label className={enj.label}>Issue Owner *</label>
+          <select className={`mt-1 ${enj.control}`} value={issueOwner} onChange={(e) => { setIssueOwner(e.target.value); setErrors((prev) => ({ ...prev, issueOwner: '' })); }} disabled={loading || saving}>
             <option value="">Select owner</option>
-            {ownerOptions.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
+            {ownerOptions.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
-          {errors.issueOwner && <p className="mt-1 text-[11px] text-rose-600">{errors.issueOwner}</p>}
-        </label>
-
-        <label>
-          {req('Issue Severity')}
-          <select className={controlCls} value={issueSeverity} onChange={(e) => { setIssueSeverity(e.target.value); setErrors((prev) => ({ ...prev, issueSeverity: '' })); }} disabled={saving}>
+          {errors.issueOwner && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueOwner}</p>}
+        </div>
+        <div>
+          <label className={enj.label}>Issue Severity *</label>
+          <select className={`mt-1 ${enj.control}`} value={issueSeverity} onChange={(e) => { setIssueSeverity(e.target.value); setErrors((prev) => ({ ...prev, issueSeverity: '' })); }} disabled={saving}>
             <option value="">Select severity</option>
-            {ISSUE_SEVERITIES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
+            {ISSUE_SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          {errors.issueSeverity && <p className="mt-1 text-[11px] text-rose-600">{errors.issueSeverity}</p>}
-        </label>
-        <label>
-          {req('Assign To TeamMember')}
-          <select className={controlCls} value={assignTeamMember} onChange={(e) => { setAssignTeamMember(e.target.value); setErrors((prev) => ({ ...prev, assignTeamMember: '' })); }} disabled={loading || saving}>
+          {errors.issueSeverity && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueSeverity}</p>}
+        </div>
+        <div>
+          <label className={enj.label}>Assign To Team Member *</label>
+          <select className={`mt-1 ${enj.control}`} value={assignTeamMember} onChange={(e) => { setAssignTeamMember(e.target.value); setErrors((prev) => ({ ...prev, assignTeamMember: '' })); }} disabled={loading || saving}>
             <option value="">Select team member</option>
-            {teamMemberOptions.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
+            {teamMemberOptions.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-          {errors.assignTeamMember && <p className="mt-1 text-[11px] text-rose-600">{errors.assignTeamMember}</p>}
-        </label>
-        <label>
-          {req('Issue Status')}
-          <select className={controlCls} value={issueStatus} onChange={(e) => { setIssueStatus(e.target.value); setErrors((prev) => ({ ...prev, issueStatus: '' })); }} disabled={saving}>
+          {errors.assignTeamMember && <p className={`mt-1 ${enj.fieldError}`}>{errors.assignTeamMember}</p>}
+        </div>
+        <div>
+          <label className={enj.label}>Issue Status *</label>
+          <select className={`mt-1 ${enj.control}`} value={issueStatus} onChange={(e) => { setIssueStatus(e.target.value); setErrors((prev) => ({ ...prev, issueStatus: '' })); }} disabled={saving}>
             <option value="">Select status</option>
-            {ISSUE_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
+            {ISSUE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          {errors.issueStatus && <p className="mt-1 text-[11px] text-rose-600">{errors.issueStatus}</p>}
-        </label>
-
-        <label>
-          {opt('Project sponsor')}
-          <select className={controlCls} value={projectSponsor} onChange={(e) => setProjectSponsor(e.target.value)} disabled={saving}>
+          {errors.issueStatus && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueStatus}</p>}
+        </div>
+        <div>
+          <label className={enj.label}>Project Sponsor</label>
+          <select className={`mt-1 ${enj.control}`} value={projectSponsor} onChange={(e) => setProjectSponsor(e.target.value)} disabled={saving}>
             <option value="">Select sponsor</option>
-            {PROJECT_SPONSOR_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
+            {PROJECT_SPONSOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-        </label>
-        <label>
-          {opt('Progress')}
+        </div>
+        <div>
+          <label className={enj.label}>Progress</label>
           <input
-            className={inputCls}
+            className={`mt-1 ${enj.control}`}
             inputMode="numeric"
             maxLength={3}
             value={progress}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (/^\d{0,3}$/.test(next)) setProgress(next);
-            }}
+            onChange={(e) => { const next = e.target.value; if (/^\d{0,3}$/.test(next)) setProgress(next); }}
             disabled={saving}
           />
-        </label>
-        <label>
-          {opt('RaisedIssue')}
-          <input className={inputCls} value={raisedIssue} onChange={(e) => setRaisedIssue(e.target.value)} disabled={saving} />
-        </label>
-
-        <label className="md:col-span-2">
-          {req('Issue Response')}
+        </div>
+        <div>
+          <label className={enj.label}>Raised Issue</label>
+          <input className={`mt-1 ${enj.control}`} value={raisedIssue} onChange={(e) => setRaisedIssue(e.target.value)} disabled={saving} />
+        </div>
+        <div className="md:col-span-2">
+          <label className={enj.label}>Issue Response *</label>
           <textarea className={areaCls} value={issueResponse} onChange={(e) => { setIssueResponse(e.target.value); setErrors((prev) => ({ ...prev, issueResponse: '' })); }} disabled={saving} />
-          {errors.issueResponse && <p className="mt-1 text-[11px] text-rose-600">{errors.issueResponse}</p>}
-        </label>
-        <label>
-          {req('Issue Impacted Area')}
+          {errors.issueResponse && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueResponse}</p>}
+        </div>
+        <div>
+          <label className={enj.label}>Issue Impacted Area *</label>
           <textarea className={areaCls} value={issueImpactedArea} onChange={(e) => { setIssueImpactedArea(e.target.value); setErrors((prev) => ({ ...prev, issueImpactedArea: '' })); }} disabled={saving} />
-          {errors.issueImpactedArea && <p className="mt-1 text-[11px] text-rose-600">{errors.issueImpactedArea}</p>}
-        </label>
-
-        <label className="md:col-span-3">
-          {opt('Issue Description')}
+          {errors.issueImpactedArea && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueImpactedArea}</p>}
+        </div>
+        <div className="md:col-span-3">
+          <label className={enj.label}>Issue Description</label>
           <textarea className={areaCls} value={issueDescription} onChange={(e) => setIssueDescription(e.target.value)} disabled={saving} />
-        </label>
+        </div>
       </div>
 
       <div className="mt-4 flex justify-end gap-3">

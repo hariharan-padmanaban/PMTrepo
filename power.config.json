@@ -17,6 +17,36 @@
         "sharepointonline"
       ],
       "dataSets": {}
+    },
+    "dd524c86-cad6-44ab-beed-2ad334e8e9db": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "pmtdocumentupload"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "9eb04dc9-1646-f111-bec6-70a8a51df0bb",
+        "workflowDisplayName": "PMTDocumentUpload",
+        "workflowName": "169bd3e7-82ca-4dcd-2c1b-043bf1d2aee2",
+        "dependencies": {
+          "shared_sharepointonline": "b1ed723b-6173-458c-9dff-bef7329deee4"
+        }
+      }
+    },
+    "84956c0b-fdc3-4927-802a-4e802ce85905": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "pmtdocumentfetch"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "155f68d7-1946-f111-bec6-70a8a51df0bb",
+        "workflowDisplayName": "PMTDocumentFetch",
+        "workflowName": "d89b7623-1716-0cda-c74d-11d3e56e89bd",
+        "dependencies": {
+          "shared_sharepointonline": "b1ed723b-6173-458c-9dff-bef7329deee4"
+        }
+      }
     }
   },
   "databaseReferences": {

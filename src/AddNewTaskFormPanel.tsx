@@ -445,7 +445,7 @@ export function AddNewTaskFormPanel({
   return (
     <section className={`${sectionClassName} relative`}>
       {loading && <ScreenLoader overlay />}
-      <p className="text-sm font-semibold text-primary mb-4">
+      <p className="text-[16px] font-bold text-primary mb-4">
         <button type="button" className="underline text-primary font-semibold" onClick={onClose}>
           Tasks
         </button>

@@ -363,7 +363,7 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
 
   return (
     <section className="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto">
-      <p className="text-sm font-semibold text-primary mb-4">
+      <p className="text-[16px] font-bold text-primary mb-4">
         <button className="underline text-primary font-semibold" onClick={onCancel}>
           {parentLabel}
         </button>

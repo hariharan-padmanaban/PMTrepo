@@ -91,7 +91,8 @@ export function DonutChart({
 
   let angle = -90;
   const segments = slices.map((slice) => {
-    const sweep = (slice.value / total) * 360;
+    // Cap at 359.9999 — a full 360° arc has identical start/end points and renders nothing.
+    const sweep = Math.min((slice.value / total) * 360, 359.9999);
     const start = angle;
     const end = angle + sweep;
     angle = end;
@@ -106,13 +107,7 @@ export function DonutChart({
     <svg viewBox={`0 0 ${size} ${size}`} className={className}>
       <defs>
         <clipPath id={clipId}>
-          <motion.circle
-            cx={cx}
-            cy={cy}
-            initial={{ r: 0 }}
-            animate={{ r: size * 0.52 }}
-            transition={{ duration: 0.7, ease: 'easeOut' }}
-          />
+          <circle cx={cx} cy={cy} r={size * 0.52} />
         </clipPath>
       </defs>
       <g clipPath={`url(#${clipId})`}>

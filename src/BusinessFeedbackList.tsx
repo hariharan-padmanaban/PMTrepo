@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { ChevronDown, Pencil, RefreshCw } from 'lucide-react';
 import { DonutChart } from './DonutChart';
+import { PagerBar } from './PagerBar';
 import { New_feedbacksService } from './generated/services/New_feedbacksService';
 import { New_projectsService } from './generated/services/New_projectsService';
 import { New_projectsnew_projectsponsor } from './generated/models/New_projectsModel';
@@ -549,6 +550,13 @@ export default function BusinessFeedbackList() {
   const maxY = 10;
   const barScale = (chartH - 16) / maxY;
 
+  const [feedbackPage, setFeedbackPage] = useState(1);
+  const FEEDBACK_PAGE_SIZE = 6;
+  const feedbackTotalPages = Math.max(1, Math.ceil(rows.length / FEEDBACK_PAGE_SIZE));
+  const pagedRows = rows.slice((feedbackPage - 1) * FEEDBACK_PAGE_SIZE, feedbackPage * FEEDBACK_PAGE_SIZE);
+
+  useEffect(() => { setFeedbackPage(1); }, [rows]);
+
   const isFormScreen = screen === 'add' || screen === 'edit';
   const isBusy = listLoading || projectsLoading;
 
@@ -831,152 +839,54 @@ export default function BusinessFeedbackList() {
   }
 
   return (
-    <div className="grid grid-cols-1 items-start gap-3 min-w-0 max-w-full text-[12px] leading-normal text-gray-700 xl:grid-cols-3">
+    <div className="flex flex-col gap-3 min-w-0 max-w-full text-[12px] leading-normal text-gray-700">
       {isBusy && <ScreenLoader overlay className="min-h-[200px] rounded-xl" />}
-      <div className="xl:col-span-2 min-w-0 space-y-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className={enj.sectionTitle}>Feedback list</h2>
-          <div className="flex flex-shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={openAddFeedback}
-              className={`${enj.btn} ${enj.btnPrimary} px-3 text-xs font-medium shadow-sm transition-colors hover:bg-[#9a7638]`}
-              disabled={listLoading}
-            >
-              Add New Feedback
-            </button>
-            <button
-              type="button"
-              onClick={onRefresh}
-              className={`${enj.btn} ${enj.btnDefault} gap-1.5 px-2.5 text-xs font-medium`}
-              disabled={listLoading}
-            >
-              <RefreshCw size={14} className="text-gray-500" />
-              Refresh
-            </button>
-          </div>
-        </div>
 
-        {banner && (
-          <div
-            className={`rounded-md px-2.5 py-1.5 text-xs ${
-              banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
-            }`}
+      {/* Header */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className={enj.sectionTitle}>Feedback list</h2>
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={openAddFeedback}
+            className={`${enj.btn} ${enj.btnPrimary} px-3 text-xs font-medium shadow-sm transition-colors hover:bg-[#9a7638]`}
+            disabled={listLoading}
           >
-            {banner.message}
-          </div>
-        )}
-
-        <div className={`${enj.card} min-w-0`}>
-          <table className={`${enj.tableBrand} table-fixed text-[11px]`}>
-            <thead>
-              <tr>
-                <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Project Name</span></th>
-                <th className="min-w-0 w-[8%]"><span className="inline-block leading-tight">Sponsor</span></th>
-                <th className="min-w-0 w-[20%]"><span className="inline-block leading-tight">Project Manager</span></th>
-                <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Business owner</span></th>
-                <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Satisfaction</span></th>
-                <th className="min-w-0 w-[9%]"><span className="inline-block leading-tight">Date</span></th>
-                <th className="min-w-0 w-[8%]"><span className="inline-block leading-tight">Phase</span></th>
-                <th className="min-w-0 w-[9%] text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {rows.length === 0 && !listLoading && (
-                <tr>
-                  <td colSpan={8} className="px-3 py-5 text-center text-xs text-gray-500">
-                    No feedback yet. Add new feedback to get started.
-                  </td>
-                </tr>
-              )}
-              {rows.map((row) => (
-                <tr key={row.id} className="text-gray-700 hover:bg-gray-50/80">
-                  <td className="min-w-0 break-words px-2 py-2 align-top font-medium text-primary sm:px-2.5">
-                    {row.projectName}
-                  </td>
-                  <td className="min-w-0 break-words px-2 py-2 align-top text-gray-600 sm:px-2.5">{row.sponsor}</td>
-                  <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
-                    <div className="flex min-w-0 items-start gap-1.5">
-                      <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-[8px] font-semibold text-gray-600">
-                        {row.pmInitials}
-                      </span>
-                      <span className="min-w-0 break-words text-[10px] text-gray-600 leading-snug">{row.pmEmail}</span>
-                    </div>
-                  </td>
-                  <td className="min-w-0 break-words px-2 py-2 align-top text-gray-700 sm:px-2.5">
-                    {row.businessOwnerName}
-                  </td>
-                  <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
-                    <span className={`${satisfactionClass(row.satisfaction)} max-w-full`}>
-                      {row.satisfaction}
-                    </span>
-                  </td>
-                  <td className="min-w-0 break-words px-2 py-2 align-top text-gray-600 sm:px-2.5">{row.date}</td>
-                  <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
-                    <span className={phaseClass(row.phase)}>
-                      {row.phase}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2 text-center align-top sm:px-2.5">
-                    <button
-                      type="button"
-                      onClick={() => openEditFeedback(row)}
-                      className="inline-flex rounded-md p-0.5 text-gray-400 hover:bg-gray-100 hover:text-primary"
-                      aria-label="Edit"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            Add New Feedback
+          </button>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className={`${enj.btn} ${enj.btnDefault} gap-1.5 px-2.5 text-xs font-medium`}
+            disabled={listLoading}
+          >
+            <RefreshCw size={14} className="text-gray-500" />
+            Refresh
+          </button>
         </div>
       </div>
 
-      <div className="space-y-3 xl:sticky xl:top-4">
+      {banner && (
+        <div className={`rounded-md px-2.5 py-1.5 text-xs ${banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
+          {banner.message}
+        </div>
+      )}
+
+      {/* Charts — side by side like reports screen */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className={`${enj.card} p-3 chart-card`}>
           <h3 className={`${enj.subhead} mb-2 uppercase tracking-wide`}>Project phase</h3>
           <svg viewBox="0 0 220 130" className={enj.chartSvgSm}>
             {[0, 2, 4, 6, 8, 10].map((v) => (
               <g key={v}>
-                <line
-                  x1="36"
-                  x2="200"
-                  y1={chartBottom - v * barScale}
-                  y2={chartBottom - v * barScale}
-                  stroke="#f1f5f9"
-                  strokeWidth="1"
-                />
-                <text x="30" y={4 + chartBottom - v * barScale} textAnchor="end" fontSize="9" fill="#94a3b8">
-                  {v}
-                </text>
+                <line x1="36" x2="200" y1={chartBottom - v * barScale} y2={chartBottom - v * barScale} stroke="#f1f5f9" strokeWidth="1" />
+                <text x="30" y={4 + chartBottom - v * barScale} textAnchor="end" fontSize="9" fill="#94a3b8">{v}</text>
               </g>
             ))}
-            <rect
-              x="72"
-              y={chartBottom - analytics.uat * barScale}
-              width="36"
-              height={analytics.uat * barScale}
-              rx="4"
-              fill="#2563eb"
-              className="chart-bar"
-            />
-            <rect
-              x="132"
-              y={chartBottom - analytics.live * barScale}
-              width="36"
-              height={analytics.live * barScale}
-              rx="4"
-              fill="#14b8a6"
-              className="chart-bar"
-            />
-            <text x="90" y="126" textAnchor="middle" fontSize="10" fill="#64748b">
-              UAT
-            </text>
-            <text x="150" y="126" textAnchor="middle" fontSize="10" fill="#64748b">
-              Live
-            </text>
+            <rect x="72" y={chartBottom - analytics.uat * barScale} width="36" height={analytics.uat * barScale} rx="4" fill="#2563eb" className="chart-bar" />
+            <rect x="132" y={chartBottom - analytics.live * barScale} width="36" height={analytics.live * barScale} rx="4" fill="#14b8a6" className="chart-bar" />
+            <text x="90" y="126" textAnchor="middle" fontSize="10" fill="#64748b">UAT</text>
+            <text x="150" y="126" textAnchor="middle" fontSize="10" fill="#64748b">Live</text>
           </svg>
         </div>
 
@@ -994,6 +904,67 @@ export default function BusinessFeedbackList() {
               centerText={`${rows.length}`}
             />
           </div>
+        </div>
+      </div>
+
+      {/* Table — full width with pagination */}
+      <div className={`${enj.card} min-w-0`}>
+        <table className={`${enj.tableBrand} table-fixed text-[11px]`}>
+          <thead>
+            <tr>
+              <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Project Name</span></th>
+              <th className="min-w-0 w-[8%]"><span className="inline-block leading-tight">Sponsor</span></th>
+              <th className="min-w-0 w-[20%]"><span className="inline-block leading-tight">Project Manager</span></th>
+              <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Business owner</span></th>
+              <th className="min-w-0 w-[12%]"><span className="inline-block leading-tight">Satisfaction</span></th>
+              <th className="min-w-0 w-[9%]"><span className="inline-block leading-tight">Date</span></th>
+              <th className="min-w-0 w-[8%]"><span className="inline-block leading-tight">Phase</span></th>
+              <th className="min-w-0 w-[9%] text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {pagedRows.length === 0 && !listLoading && (
+              <tr>
+                <td colSpan={8} className="px-3 py-5 text-center text-xs text-gray-500">
+                  No feedback yet. Add new feedback to get started.
+                </td>
+              </tr>
+            )}
+            {pagedRows.map((row) => (
+              <tr key={row.id} className="text-gray-700 hover:bg-gray-50/80">
+                <td className="min-w-0 break-words px-2 py-2 align-top font-medium text-primary sm:px-2.5">{row.projectName}</td>
+                <td className="min-w-0 break-words px-2 py-2 align-top text-gray-600 sm:px-2.5">{row.sponsor}</td>
+                <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
+                  <div className="flex min-w-0 items-start gap-1.5">
+                    <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-[8px] font-semibold text-gray-600">{row.pmInitials}</span>
+                    <span className="min-w-0 break-words text-[10px] text-gray-600 leading-snug">{row.pmEmail}</span>
+                  </div>
+                </td>
+                <td className="min-w-0 break-words px-2 py-2 align-top text-gray-700 sm:px-2.5">{row.businessOwnerName}</td>
+                <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
+                  <span className={`${satisfactionClass(row.satisfaction)} max-w-full`}>{row.satisfaction}</span>
+                </td>
+                <td className="min-w-0 break-words px-2 py-2 align-top text-gray-600 sm:px-2.5">{row.date}</td>
+                <td className="min-w-0 px-2 py-2 align-top sm:px-2.5">
+                  <span className={phaseClass(row.phase)}>{row.phase}</span>
+                </td>
+                <td className="px-2 py-2 text-center align-top sm:px-2.5">
+                  <button type="button" onClick={() => openEditFeedback(row)} className="inline-flex rounded-md p-0.5 text-gray-400 hover:bg-gray-100 hover:text-primary" aria-label="Edit">
+                    <Pencil size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="border-t border-gray-100 px-4 py-3">
+          <PagerBar
+            page={feedbackPage}
+            pageSize={FEEDBACK_PAGE_SIZE}
+            total={rows.length}
+            onPrev={() => setFeedbackPage((p) => Math.max(1, p - 1))}
+            onNext={() => setFeedbackPage((p) => Math.min(feedbackTotalPages, p + 1))}
+          />
         </div>
       </div>
     </div>

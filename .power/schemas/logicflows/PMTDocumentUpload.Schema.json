@@ -1,0 +1,100 @@
+{
+  "name": "PMTDocumentUpload",
+  "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+  "type": "Microsoft.PowerApps/apis",
+  "properties": {
+    "displayName": "PMTDocumentUpload",
+    "isCustom": false,
+    "swagger": {
+      "swagger": "2.0",
+      "info": {
+        "title": "PMTDocumentUpload",
+        "version": "2015-02-01-preview"
+      },
+      "host": "uae-001.azure-apihub.net",
+      "schemes": [
+        "https"
+      ],
+      "consumes": [
+        "application/json"
+      ],
+      "produces": [
+        "application/json"
+      ],
+      "paths": {
+        "/{connectionId}/triggers/manual/run": {
+          "post": {
+            "operationId": "Run",
+            "description": "Runs a logic flow trigger.",
+            "parameters": [
+              {
+                "name": "connectionId",
+                "in": "path",
+                "required": true,
+                "type": "string",
+                "x-ms-visibility": "internal"
+              },
+              {
+                "name": "input",
+                "description": "The trigger's input",
+                "in": "body",
+                "required": true,
+                "schema": {
+                  "$ref": "#/definitions/ManualTriggerInput"
+                }
+              },
+              {
+                "name": "api-version",
+                "description": "The api version",
+                "in": "query",
+                "required": true,
+                "default": "2015-02-01-preview",
+                "x-ms-visibility": "internal",
+                "type": "string"
+              }
+            ],
+            "responses": {
+              "202": {
+                "description": "Accepted"
+              }
+            }
+          }
+        }
+      },
+      "definitions": {
+        "ManualTriggerInput": {
+          "type": "object",
+          "properties": {
+            "text_1": {
+              "title": "AttachmentID",
+              "type": "string",
+              "x-ms-dynamically-added": true,
+              "description": "Please enter your input",
+              "x-ms-content-hint": "TEXT"
+            },
+            "file": {
+              "title": "File Content",
+              "type": "object",
+              "x-ms-dynamically-added": true,
+              "description": "Please select file or image",
+              "x-ms-content-hint": "FILE",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "contentBytes": {
+                  "type": "string",
+                  "format": "byte"
+                }
+              }
+            }
+          },
+          "required": [
+            "text_1"
+          ]
+        }
+      },
+      "basePath": "/apim/logicflows"
+    }
+  }
+}

@@ -16,7 +16,7 @@ import { type ToastType } from './NotificationToast';
 import { AllocateTeamMemberModal } from './AllocateTeamMemberModal';
 import { AgileSprintPanel } from './AgileSprintPanel';
 import { WaterfallSprintPanel } from './WaterfallSprintPanel';
-import { listProjectFiles, uploadProjectFiles, type ProjectStoredFile } from './services/projectFileStorage';
+import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
 import { enj } from './ui/enjForm';
 
 const projectBoardColumns = [
@@ -291,6 +291,7 @@ export function ProgramProjectsSection({
   onExternalDataInvalidate,
   hideNewProject,
   hideSprintAndMembers,
+  hideEdit,
 }: {
   todayIso: string;
   onToast: (p: { type: ToastType; message: string }) => void;
@@ -302,6 +303,8 @@ export function ProgramProjectsSection({
   hideNewProject?: boolean;
   /** Team workspace: hide Sprint and Members actions on project cards. */
   hideSprintAndMembers?: boolean;
+  /** Team workspace: disable project edit (title click opens edit form). */
+  hideEdit?: boolean;
 }) {
   const isExternal = externalProjectRows !== undefined;
   const [showAddProjectForm, setShowAddProjectForm] = useState(false);
@@ -312,7 +315,7 @@ export function ProgramProjectsSection({
   const [projectFormErrors, setProjectFormErrors] = useState<Record<string, string>>({});
   const [projectMetaLoading, setProjectMetaLoading] = useState(false);
   const [projectFilesModal, setProjectFilesModal] = useState<{ projectId: string; projectName: string } | null>(null);
-  const [projectFilesRows, setProjectFilesRows] = useState<ProjectStoredFile[]>([]);
+  const [projectFilesRows, setProjectFilesRows] = useState<AttachmentFile[]>([]);
   const [projectFilesLoading, setProjectFilesLoading] = useState(false);
   const [editProjectRow, setEditProjectRow] = useState<Record<string, unknown> | null>(null);
   const [editProjectForm, setEditProjectForm] = useState<EditProjectFormState>(createEmptyEditProjectForm);
@@ -663,8 +666,6 @@ export function ProgramProjectsSection({
                 if (Number.isFinite(stateCode) && stateCode === 1) return false;
                 const statusCode = Number(p.statuscode ?? NaN);
                 if (Number.isFinite(statusCode) && statusCode === 2) return false;
-                const appStatus = Number(p.new_status ?? NaN);
-                if (Number.isFinite(appStatus)) return appStatus === 100000001;
                 const statusText = String(p.new_statusname ?? '').toLowerCase();
                 return !statusText.includes('inactive') && statusText !== 'completed';
               })
@@ -781,7 +782,7 @@ export function ProgramProjectsSection({
   };
 
   const openProjectFilesModal = async (row: Record<string, unknown>) => {
-    const projectId = String(row.new_projectid ?? '').trim();
+    const projectId = String(row.new_projectid ?? row.crcf8_attachmentid ?? '').trim();
     const projectName = String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
     if (!projectId) {
       onToast({ type: 'info', message: 'Project ID is not available for this record.' });
@@ -791,7 +792,7 @@ export function ProgramProjectsSection({
     setProjectFilesRows([]);
     setProjectFilesLoading(true);
     try {
-      const files = await listProjectFiles(projectId);
+      const files = await fetchAttachments(projectId);
       setProjectFilesRows(files);
     } catch (error) {
       onToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load project files' });
@@ -894,6 +895,7 @@ export function ProgramProjectsSection({
       // Dataverse schema: new_name => "Project ID" (text), new_projectid => "ID" (Guid).
       new_name: generatedProjectId,
       new_projectid: generatedRowGuid,
+      crcf8_attachmentid: generatedRowGuid,
       [projectTextColumns.projectName]: projectForm.projectName.trim(),
       [projectTextColumns.vendor]: projectForm.vendorName.trim(),
       [projectTextColumns.budget]: Number(projectForm.budget.trim()),
@@ -920,19 +922,22 @@ export function ProgramProjectsSection({
 
     setProjectFormBusy(true);
     try {
+      // Create project with attachment ID
       const res = await New_projectsService.create(payload as Parameters<typeof New_projectsService.create>[0]);
       if (!res.success) throw new Error(res.error?.message ?? 'Failed to create project');
 
+      // Upload attachments if any
       let uploadMessage = '';
       if (projectForm.attachments.length > 0) {
-        const uploadRes = await uploadProjectFiles(generatedRowGuid, projectForm.attachments);
+        const uploadRes = await uploadAttachments(generatedRowGuid, projectForm.attachments);
+
         if (uploadRes.uploaded.length > 0) {
           uploadMessage = `${uploadRes.uploaded.length} file(s) uploaded.`;
         }
         if (uploadRes.errors.length > 0) {
           onToast({
-            type: 'error',
-            message: `Project saved, but upload failed: ${uploadRes.errors.slice(0, 2).join(' | ')}`,
+            type: 'info',
+            message: `Project saved. ${uploadRes.errors[0] || 'Attachment issue'}`,
           });
         }
       }
@@ -1270,16 +1275,18 @@ export function ProgramProjectsSection({
       );
       if (!res.success) throw new Error(res.error?.message ?? 'Update failed');
 
+      // Upload attachments if any
       let uploadMessage = '';
       if (editProjectForm.attachments.length > 0) {
-        const uploadRes = await uploadProjectFiles(id, editProjectForm.attachments);
+        const uploadRes = await uploadAttachments(id, editProjectForm.attachments);
+
         if (uploadRes.uploaded.length > 0) {
           uploadMessage = `${uploadRes.uploaded.length} file(s) uploaded.`;
         }
         if (uploadRes.errors.length > 0) {
           onToast({
-            type: 'error',
-            message: `Project saved, but upload failed: ${uploadRes.errors.slice(0, 2).join(' | ')}`,
+            type: 'info',
+            message: `Project saved. ${uploadRes.errors[0] || 'Attachment issue'}`,
           });
         }
       }
@@ -1314,7 +1321,7 @@ export function ProgramProjectsSection({
     />
   ) : showAddProjectForm ? (
     <section className="bg-white rounded-xl p-6 shadow-sm max-w-5xl mx-auto w-full max-h-[min(calc(100dvh-7rem),56rem)] overflow-y-auto">
-      <p className="text-sm font-semibold text-primary mb-5">
+      <p className="text-[16px] font-bold text-primary mb-5">
         <button type="button" className="underline text-primary font-semibold" onClick={() => setShowAddProjectForm(false)}>Projects</button>
         {' > '}Add New Project
       </p>
@@ -1567,17 +1574,27 @@ export function ProgramProjectsSection({
                         className="flex h-[8.75rem] w-full shrink-0 flex-col overflow-hidden rounded-lg border border-gray-100 bg-white px-2 py-1.5 shadow-sm"
                       >
                         <div className="grid min-h-0 grid-cols-[1fr_auto] items-start gap-2">
-                          <button
-                            type="button"
-                            className="line-clamp-2 min-w-0 text-left text-[13px] font-bold leading-snug hover:underline break-words"
-                            style={{ color: column.color }}
-                            title={title}
-                            onClick={() => {
-                              void openProjectQuickEdit(row);
-                            }}
-                          >
-                            {title}
-                          </button>
+                          {hideEdit ? (
+                            <p
+                              className="line-clamp-2 min-w-0 text-left text-[13px] font-bold leading-snug break-words"
+                              style={{ color: column.color }}
+                              title={title}
+                            >
+                              {title}
+                            </p>
+                          ) : (
+                            <button
+                              type="button"
+                              className="line-clamp-2 min-w-0 text-left text-[13px] font-bold leading-snug hover:underline break-words"
+                              style={{ color: column.color }}
+                              title={title}
+                              onClick={() => {
+                                void openProjectQuickEdit(row);
+                              }}
+                            >
+                              {title}
+                            </button>
+                          )}
                           <div className="flex w-12 shrink-0 flex-col items-end">
                             <span className="text-[10px] text-gray-500 tabular-nums leading-none">{progress}%</span>
                             <div className="mt-0.5 h-1 w-12 overflow-hidden rounded-full bg-gray-200">
@@ -1588,7 +1605,7 @@ export function ProgramProjectsSection({
                             </div>
                           </div>
                         </div>
-                        <p className="mt-2 min-h-[2rem] line-clamp-2 text-[10px] font-medium leading-snug text-primary break-words pr-1" title={desc}>
+                        <p className="mt-4 min-h-[2rem] line-clamp-2 text-[10px] font-medium leading-snug text-primary break-words pr-1" title={desc}>
                           {desc}
                         </p>
 
@@ -1738,14 +1755,19 @@ export function ProgramProjectsSection({
                     <p className="truncate text-sm font-medium text-primary">{file.name}</p>
                     <p className={enj.label}>{file.modified || '—'}</p>
                   </div>
-                  <a
-                    href={file.url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await downloadFile(file);
+                      } catch (error) {
+                        onToast({ type: 'error', message: 'Failed to download file' });
+                      }
+                    }}
                     className={`${enj.btnOutline} !h-auto py-1 px-3 text-xs`}
                   >
-                    View / Download
-                  </a>
+                    Download
+                  </button>
                 </li>
               ))}
             </ul>

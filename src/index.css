@@ -85,8 +85,9 @@ input[type="datetime-local"] {
 /* Keep a visible native calendar icon and pointer feedback. */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-  opacity: 1;
+  opacity: 0.5;
   cursor: pointer;
+  filter: grayscale(1);
 }
 
 @keyframes chart-grow {
@@ -184,7 +185,8 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
   /* ── Enjaz layout + typography scale (all roles / screens) ── */
   .enj-app-main {
-    @apply px-4 py-4 sm:px-5 sm:py-5 md:px-6;
+    /* Extra bottom space prevents last section from being clipped near page end. */
+    @apply px-4 pt-4 pb-16 sm:px-5 sm:pt-5 sm:pb-20 md:px-6;
   }
   .enj-stack {
     @apply space-y-4 sm:space-y-5;
@@ -220,41 +222,46 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   .enj-chart-svg {
     @apply h-44 min-h-44 w-full sm:h-48 sm:min-h-48;
   }
-  /* ── Tables (TableDesign.md / Figma) — sizes inherit from parent; tokens for colors ── */
+  /* ── Tables (Unified: Dummy style applied app-wide) ── */
   .enj-table {
-    @apply w-full min-w-0 table-auto border-collapse text-left text-sm font-normal text-[#374151];
+    border-collapse: separate;
+    border-spacing: 0 8px;
+    @apply w-full min-w-0 table-auto text-left;
   }
   .enj-table thead th {
-    @apply border-b border-[#E5E7EB] bg-[#F3F4F6] px-3 py-2.5 text-left font-semibold tracking-[0.03em] text-[#6B7280] first:pl-3 last:pr-3 sm:px-4;
+    height: 40.99082565307617px;
+    @apply border-0 bg-[rgba(225,227,236,1)] px-3 py-2 text-left text-[13px] font-bold normal-case tracking-normal text-[rgba(92,104,124,1)] first:pl-3 last:pr-3 sm:px-4;
   }
   .enj-table tbody td {
-    @apply border-b border-[#E5E7EB] px-3 py-2.5 align-middle font-normal text-[#374151] first:pl-3 last:pr-3 sm:px-4;
+    height: 61.48624038696289px;
+    @apply border-0 bg-white px-3 py-2 align-middle text-[12px] font-medium text-[rgba(35,35,96,1)] first:pl-3 last:pr-3 sm:px-4;
   }
-  .enj-table tbody > tr:nth-child(odd) > td {
-    @apply bg-white;
+  .enj-table tbody tr td:first-child {
+    border-radius: 10.44px 0 0 10.44px;
   }
-  .enj-table tbody > tr:nth-child(even) > td {
-    @apply bg-[#F9FAFB];
+  .enj-table tbody tr td:last-child {
+    border-radius: 0 10.44px 10.44px 0;
   }
   .enj-table tbody > tr:hover > td {
-    background-color: #f3f4f6;
+    background-color: #f8fafc;
   }
-  /* Legacy “brand” alias — same look as base for consistency */
+
+  /* brand alias follows same unified table spec */
   .enj-table--brand thead th {
-    @apply border-b border-[#E5E7EB] bg-[#F3F4F6] font-semibold tracking-[0.03em] text-[#6B7280];
+    @apply bg-[rgba(225,227,236,1)] text-[13px] font-bold normal-case tracking-normal text-[rgba(92,104,124,1)];
   }
   .enj-table--brand tbody td {
-    @apply border-b border-[#E5E7EB] py-2.5 sm:py-3;
+    @apply bg-white py-2 text-[12px] font-medium text-[rgba(35,35,96,1)] sm:py-2;
   }
   .enj-table--brand tbody > tr:hover > td {
-    background-color: #f3f4f6;
+    background-color: #f8fafc;
   }
 
   .enj-table-link {
     @apply font-medium text-[#2563EB] hover:underline;
   }
   .enj-table-progress-track {
-    @apply h-2 min-h-2 overflow-hidden rounded-full bg-[#E5E7EB];
+    @apply h-1.5 min-h-1.5 overflow-hidden rounded-full bg-[#E5E7EB];
   }
   .enj-table-progress-fill {
     @apply h-full rounded-full bg-[#2563EB];
@@ -262,9 +269,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     animation: progress-slide-in 500ms ease-out both;
   }
 
-  /* Status pills (TableDesign.md) */
+  /* Status boxes — match Project dashboard Projects List */
   .enj-table-status {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 font-semibold leading-tight;
+    @apply inline-block min-w-[90px] rounded-md px-2 py-1 text-center text-[11px] font-semibold leading-tight;
   }
   .enj-table-status--completed {
     background-color: #dbeafe;
@@ -343,13 +350,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     @apply max-w-[min(280px,30vw)] cursor-pointer truncate text-left font-medium;
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
   }
-  .enj-program-screen-table .enj-table-status {
-    @apply px-2.5 py-1 text-[12px] font-medium;
-    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-  }
   .enj-program-screen-table .enj-program-screen-table__pct {
     @apply min-w-[2.25rem] text-right tabular-nums;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 500;
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
     color: rgba(118, 131, 150, 1);
@@ -422,11 +425,11 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   .enj-dummy-projects-table.enj-table thead th {
     @apply h-[40.99px] border-0 px-3 py-2 text-left align-middle text-[13px] font-bold normal-case tracking-normal;
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-    color: rgba(118, 131, 150, 1);
+    color: rgba(92, 104, 124, 1);
     background-color: rgba(225, 227, 236, 1);
   }
   .enj-dummy-projects-table.enj-table tbody tr.enj-dummy-projects-table__row td {
-    @apply h-[61.49px] border-0 px-3 py-2 align-middle text-[12px] leading-tight;
+    @apply h-[54px] border-0 px-3 py-2 align-middle text-[12px] leading-tight;
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
     color: rgba(35, 35, 96, 1);
     font-weight: 500;

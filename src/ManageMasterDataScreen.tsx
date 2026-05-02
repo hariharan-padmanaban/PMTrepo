@@ -139,25 +139,31 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 9;
   const [categoryOptions, setCategoryOptions] = useState<Array<{ label: string; value: number }>>([]);
-  const sortedCategories = useMemo(
-    () => (categoryOptions.length > 0 ? categoryOptions.map((o) => o.label) : [...CATEGORIES]).sort((a, b) => a.localeCompare(b)),
-    [categoryOptions],
-  );
   const categoryValueByLabel = useMemo(() => new Map(categoryOptions.map((o) => [o.label, o.value] as const)), [categoryOptions]);
   const categoryLabelByValue = useMemo(() => new Map(categoryOptions.map((o) => [o.value, o.label] as const)), [categoryOptions]);
-  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
 
   const categoryTextForRow = useCallback((row: EnjazMasterDataRow): string => {
     const named = String(row.new_categoryname ?? '').trim();
     if (named) return named;
+    const typed = String(row.new_categorytype ?? '').trim();
+    if (typed) return typed;
     const raw = row.new_category;
     const num = typeof raw === 'number' ? raw : Number(raw);
-    if (!Number.isNaN(num)) {
-      if (categoryLabelByValue.has(num)) return categoryLabelByValue.get(num)!;
-      if (CATEGORY_BY_VALUE.has(num)) return CATEGORY_BY_VALUE.get(num)!;
-    }
+    if (!Number.isNaN(num) && categoryLabelByValue.has(num)) return categoryLabelByValue.get(num)!;
     return String(raw ?? '');
   }, [categoryLabelByValue]);
+
+  const sortedCategories = useMemo(() => {
+    if (rows.length > 0) {
+      const fromData = Array.from(
+        new Set(rows.map((r) => categoryTextForRow(r)).filter((v) => Boolean(v) && !/^\d+$/.test(v)))
+      ).sort((a, b) => a.localeCompare(b));
+      if (fromData.length > 0) return fromData;
+    }
+    if (categoryOptions.length > 0) return categoryOptions.map((o) => o.label).sort((a, b) => a.localeCompare(b));
+    return [...CATEGORIES].sort((a, b) => a.localeCompare(b));
+  }, [rows, categoryOptions, categoryTextForRow]);
+  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -201,7 +207,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
 
   const filtered = useMemo(() => {
     return rows
-      .filter((r) => categoryTextForRow(r) === selectedCategory)
+      .filter((r) => categoryTextForRow(r).toLowerCase() === selectedCategory.toLowerCase())
       .filter((r) => (r.new_enjazmasterdata1 ?? '').toString().toLowerCase().includes(searchText.trim().toLowerCase()))
       .sort((a, b) => codeNumber(a) - codeNumber(b));
   }, [rows, selectedCategory, searchText, categoryTextForRow]);

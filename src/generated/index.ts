@@ -30,6 +30,8 @@ export * as New_tasksModel from './models/New_tasksModel';
 export * as New_teammembersModel from './models/New_teammembersModel';
 export * as New_usersesModel from './models/New_usersesModel';
 export * as New_vendorsModel from './models/New_vendorsModel';
+export * as PMTDocumentFetchModel from './models/PMTDocumentFetchModel';
+export * as PMTDocumentUploadModel from './models/PMTDocumentUploadModel';
 export * as SharePointModel from './models/SharePointModel';
 
 // Services
@@ -58,4 +60,6 @@ export * from './services/New_tasksService';
 export * from './services/New_teammembersService';
 export * from './services/New_usersesService';
 export * from './services/New_vendorsService';
+export * from './services/PMTDocumentFetchService';
+export * from './services/PMTDocumentUploadService';
 export * from './services/SharePointService';

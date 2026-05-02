@@ -124,8 +124,12 @@ export function AgileSprintPanel({
     endDate: '',
     sprintStatus: '100000000',
   });
+  const [sprintPage, setSprintPage] = useState(1);
+  const [issuePage, setIssuePage] = useState(1);
   const [backlogSprintName, setBacklogSprintName] = useState('');
   const [backlogSearch, setBacklogSearch] = useState('');
+  const SPRINT_PAGE_SIZE = 3;
+  const ISSUE_PAGE_SIZE = 3;
   const [showCreateActivity, setShowCreateActivity] = useState(false);
   const [activityBusy, setActivityBusy] = useState(false);
   const [activityErr, setActivityErr] = useState<Record<string, string>>({});
@@ -364,6 +368,15 @@ export function AgileSprintPanel({
     setActivityErr({});
   }, [showCreateActivity, backlogSprintName, selectedSprintName]);
 
+  const sprintTotalPages = Math.max(1, Math.ceil(visibleSprints.length / SPRINT_PAGE_SIZE));
+  const pagedSprints = visibleSprints.slice((sprintPage - 1) * SPRINT_PAGE_SIZE, sprintPage * SPRINT_PAGE_SIZE);
+
+  const issueTotalPages = Math.max(1, Math.ceil(visibleIssues.length / ISSUE_PAGE_SIZE));
+  const pagedIssues = visibleIssues.slice((issuePage - 1) * ISSUE_PAGE_SIZE, issuePage * ISSUE_PAGE_SIZE);
+
+  useEffect(() => { setSprintPage(1); }, [searchSprint]);
+  useEffect(() => { setIssuePage(1); }, [issueStatusFilter, issueTypeFilter, searchIssue, selectedSprintName]);
+
   const statusOptions = useMemo(
     () => ['All Status', ...Array.from(new Set(issues.map(issueStatusLabel).filter((s) => s && s !== '—')))],
     [issues],
@@ -579,7 +592,7 @@ export function AgileSprintPanel({
             </div>
           </div>
 
-          <div className="min-h-[12rem] rounded-lg border border-[#d8dff5] overflow-hidden bg-white">
+          <div className="rounded-lg border border-[#d8dff5] overflow-hidden bg-white">
             <table className={`${enj.tableBrand} text-xs`}>
               <thead>
                 <tr>
@@ -594,22 +607,22 @@ export function AgileSprintPanel({
               <tbody>
                 {visibleSprints.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-8 text-center text-gray-400" colSpan={6}>No sprints found.</td>
+                    <td className="px-3 py-6 text-center text-gray-400" colSpan={6}>No sprints found.</td>
                   </tr>
                 ) : (
-                  visibleSprints.map((s, idx) => {
+                  pagedSprints.map((s, idx) => {
                     const sprintName = String(s.new_sprintname ?? '').trim() || `Sprint ${idx + 1}`;
                     const selected = sprintName === selectedSprintName;
                     const pct = sprintProgressPct(s);
                     return (
                       <tr key={`${sprintName}-${idx}`} className={selected ? 'bg-indigo-50/20' : ''}>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-1.5">
                           <button type="button" className="underline decoration-primary/30 underline-offset-2" onClick={() => setSelectedSprintName(sprintName)}>
                             {sprintName}
                           </button>
                         </td>
-                        <td className="px-3 py-3 text-primary">{String(s.new_sprintgoal ?? '—')}</td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-1.5 text-primary">{String(s.new_sprintgoal ?? '—')}</td>
+                        <td className="px-3 py-1.5">
                           <div className="flex items-center gap-2 text-[11px]">
                             <div>
                               <p className="text-[10px] text-gray-500">Start Date</p>
@@ -621,16 +634,16 @@ export function AgileSprintPanel({
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-1.5">
                           <div className="text-[10px] text-right text-gray-500">{pct} %</div>
-                          <div className="h-3 w-32 overflow-hidden rounded-full bg-gray-200">
+                          <div className="h-2.5 w-32 overflow-hidden rounded-full bg-gray-200">
                             <div className="h-full rounded-full bg-[#1b67e0]" style={{ width: `${pct}%` }} />
                           </div>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-1.5">
                           <span className={`${enj.pillSuccess} min-w-[44px]`}>{sprintStatusLabel(s)}</span>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-1.5">
                           <div className="flex items-center gap-1 text-gray-600">
                             <button
                               type="button"
@@ -657,6 +670,27 @@ export function AgileSprintPanel({
               </tbody>
             </table>
           </div>
+          {sprintTotalPages > 1 && (
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                className="h-6 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                disabled={sprintPage <= 1}
+                onClick={() => setSprintPage((p) => p - 1)}
+              >
+                &lsaquo; Prev
+              </button>
+              <span className="text-[11px] text-gray-500">{sprintPage} / {sprintTotalPages}</span>
+              <button
+                type="button"
+                className="h-6 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                disabled={sprintPage >= sprintTotalPages}
+                onClick={() => setSprintPage((p) => p + 1)}
+              >
+                Next &rsaquo;
+              </button>
+            </div>
+          )}
 
           <div className="rounded-xl border border-[#dfe3f2] p-3 min-h-0 flex-1 overflow-hidden">
             <div className="mb-2 flex items-center justify-between gap-3">
@@ -693,24 +727,45 @@ export function AgileSprintPanel({
                 <tbody>
                   {visibleIssues.length === 0 ? (
                     <tr>
-                      <td className="px-3 py-12 text-center text-gray-500" colSpan={5}>
+                      <td className="px-3 py-8 text-center text-gray-500" colSpan={5}>
                         {selectedSprintName ? 'No activity in selected sprint' : 'Select sprint to view activity'}
                       </td>
                     </tr>
                   ) : (
-                    visibleIssues.map((i, idx) => (
+                    pagedIssues.map((i, idx) => (
                       <tr key={`${String(i.new_sprintissueid ?? idx)}`}>
-                        <td className="px-3 py-2">{issueTypeLabel(i)}</td>
-                        <td className="px-3 py-2">{String(i.new_issuedescription ?? '—')}</td>
-                        <td className="px-3 py-2">{String(i.new_progress ?? '—')}</td>
-                        <td className="px-3 py-2">{issueStatusLabel(i)}</td>
-                        <td className="px-3 py-2">—</td>
+                        <td className="px-3 py-1">{issueTypeLabel(i)}</td>
+                        <td className="px-3 py-1">{String(i.new_issuedescription ?? '—')}</td>
+                        <td className="px-3 py-1">{String(i.new_progress ?? '—')}</td>
+                        <td className="px-3 py-1">{issueStatusLabel(i)}</td>
+                        <td className="px-3 py-1">—</td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
             </div>
+            {issueTotalPages > 1 && (
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  className="h-6 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                  disabled={issuePage <= 1}
+                  onClick={() => setIssuePage((p) => p - 1)}
+                >
+                  &lsaquo; Prev
+                </button>
+                <span className="text-[11px] text-gray-500">{issuePage} / {issueTotalPages}</span>
+                <button
+                  type="button"
+                  className="h-6 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                  disabled={issuePage >= issueTotalPages}
+                  onClick={() => setIssuePage((p) => p + 1)}
+                >
+                  Next &rsaquo;
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

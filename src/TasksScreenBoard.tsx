@@ -114,7 +114,6 @@ type Props = {
   onTaskOpen?: (row: TaskBoardRow) => void;
   onTaskEdit?: (row: TaskBoardRow) => void;
   onTaskDelete?: (row: TaskBoardRow) => void;
-  onTimeSheet?: (row: TaskBoardRow) => void;
   className?: string;
 };
 
@@ -124,7 +123,6 @@ export function TasksScreenBoard({
   onTaskOpen,
   onTaskEdit,
   onTaskDelete,
-  onTimeSheet,
   className = '',
 }: Props) {
   const columns = variant === 'team' ? TEAM_COLUMNS : PROJECT_COLUMNS;
@@ -186,20 +184,11 @@ export function TasksScreenBoard({
                           </p>
                         )}
                       </div>
-                      <div className="flex max-w-[48%] shrink-0 items-center gap-1">
-                        {project ? (
-                          <span className="truncate text-[8px] text-gray-500" title={project}>
-                            {clipText(project, 20)}
-                          </span>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => onTimeSheet?.(row)}
-                          className="shrink-0 rounded border border-amber-300/80 bg-white px-1.5 py-0.5 text-[8px] font-semibold text-amber-900 hover:bg-amber-50/80"
-                        >
-                          Time Sheet
-                        </button>
-                      </div>
+                      {project ? (
+                        <span className="truncate text-[8px] text-gray-500 max-w-[48%]" title={project}>
+                          {clipText(project, 20)}
+                        </span>
+                      ) : null}
                     </div>
 
                     {desc ? (
@@ -231,24 +220,28 @@ export function TasksScreenBoard({
                         >
                           {initialsFromText(assign || '?')}
                         </div>
-                        <button
-                          type="button"
-                          onClick={edit}
-                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[#b28a44] disabled:opacity-30"
-                          disabled={!onTaskEdit && !onTaskOpen}
-                          title="Edit"
-                        >
-                          <Pencil className="h-3 w-3" strokeWidth={2} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={del}
-                          className="rounded p-1 text-gray-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
-                          disabled={!onTaskDelete}
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3 w-3" strokeWidth={2} />
-                        </button>
+                        {variant === 'project' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={edit}
+                              className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-[#b28a44] disabled:opacity-30"
+                              disabled={!onTaskEdit && !onTaskOpen}
+                              title="Edit"
+                            >
+                              <Pencil className="h-3 w-3" strokeWidth={2} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={del}
+                              className="rounded p-1 text-gray-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+                              disabled={!onTaskDelete}
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3 w-3" strokeWidth={2} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>

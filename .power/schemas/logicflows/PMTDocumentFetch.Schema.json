@@ -1,0 +1,230 @@
+{
+  "name": "PMTDocumentFetch",
+  "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+  "type": "Microsoft.PowerApps/apis",
+  "properties": {
+    "displayName": "PMTDocumentFetch",
+    "isCustom": false,
+    "swagger": {
+      "swagger": "2.0",
+      "info": {
+        "title": "PMTDocumentFetch",
+        "version": "2015-02-01-preview"
+      },
+      "host": "uae-001.azure-apihub.net",
+      "schemes": [
+        "https"
+      ],
+      "consumes": [
+        "application/json"
+      ],
+      "produces": [
+        "application/json"
+      ],
+      "paths": {
+        "/{connectionId}/triggers/manual/run": {
+          "post": {
+            "operationId": "Run",
+            "description": "Runs a logic flow trigger.",
+            "parameters": [
+              {
+                "name": "connectionId",
+                "in": "path",
+                "required": true,
+                "type": "string",
+                "x-ms-visibility": "internal"
+              },
+              {
+                "name": "input",
+                "description": "The trigger's input",
+                "in": "body",
+                "required": true,
+                "schema": {
+                  "$ref": "#/definitions/ManualTriggerInput"
+                }
+              },
+              {
+                "name": "api-version",
+                "description": "The api version",
+                "in": "query",
+                "required": true,
+                "default": "2015-02-01-preview",
+                "x-ms-visibility": "internal",
+                "type": "string"
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Ok",
+                "schema": {
+                  "$ref": "#/definitions/ResponseActionOutput"
+                }
+              },
+              "default": {
+                "description": "The Flow Response.",
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "definitions": {
+        "ManualTriggerInput": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        },
+        "ResponseActionOutput": {
+          "type": "object",
+          "properties": {
+            "statusCode": {
+              "type": "integer"
+            },
+            "headers": {
+              "type": "object",
+              "properties": {
+                "Cache-Control": {
+                  "type": "string"
+                },
+                "Transfer-Encoding": {
+                  "type": "string"
+                },
+                "Vary": {
+                  "type": "string"
+                },
+                "X-NetworkStatistics": {
+                  "type": "string"
+                },
+                "X-SharePointHealthScore": {
+                  "type": "string"
+                },
+                "X-MS-SPConnector": {
+                  "type": "string"
+                },
+                "X-SP-SERVERSTATE": {
+                  "type": "string"
+                },
+                "DATASERVICEVERSION": {
+                  "type": "string"
+                },
+                "SPClientServiceRequestDuration": {
+                  "type": "string"
+                },
+                "IsOCDI": {
+                  "type": "string"
+                },
+                "X-DataBoundary": {
+                  "type": "string"
+                },
+                "X-1DSCollectorUrl": {
+                  "type": "string"
+                },
+                "X-AriaCollectorURL": {
+                  "type": "string"
+                },
+                "SPRequestGuid": {
+                  "type": "string"
+                },
+                "request-id": {
+                  "type": "string"
+                },
+                "MS-CV": {
+                  "type": "string"
+                },
+                "SPLogId": {
+                  "type": "string"
+                },
+                "Strict-Transport-Security": {
+                  "type": "string"
+                },
+                "X-Frame-Options": {
+                  "type": "string"
+                },
+                "Content-Security-Policy": {
+                  "type": "string"
+                },
+                "MicrosoftSharePointTeamServices": {
+                  "type": "string"
+                },
+                "X-Content-Type-Options": {
+                  "type": "string"
+                },
+                "X-MS-InvokeApp": {
+                  "type": "string"
+                },
+                "P3P": {
+                  "type": "string"
+                },
+                "X-AspNet-Version": {
+                  "type": "string"
+                },
+                "X-Powered-By": {
+                  "type": "string"
+                },
+                "x-ms-environment-id": {
+                  "type": "string"
+                },
+                "x-ms-tenant-id": {
+                  "type": "string"
+                },
+                "x-ms-subscription-id": {
+                  "type": "string"
+                },
+                "x-ms-dlp-re": {
+                  "type": "string"
+                },
+                "x-ms-dlp-gu": {
+                  "type": "string"
+                },
+                "x-ms-dlp-ef": {
+                  "type": "string"
+                },
+                "x-ms-mip-sl": {
+                  "type": "string"
+                },
+                "x-ms-au-creator-id": {
+                  "type": "string"
+                },
+                "Timing-Allow-Origin": {
+                  "type": "string"
+                },
+                "x-ms-apihub-cached-response": {
+                  "type": "string"
+                },
+                "x-ms-apihub-obo": {
+                  "type": "string"
+                },
+                "Date": {
+                  "type": "string"
+                },
+                "Content-Type": {
+                  "type": "string"
+                },
+                "Expires": {
+                  "type": "string"
+                },
+                "Last-Modified": {
+                  "type": "string"
+                },
+                "Content-Length": {
+                  "type": "string"
+                }
+              }
+            },
+            "body": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "array"
+                }
+              }
+            }
+          }
+        }
+      },
+      "basePath": "/apim/logicflows"
+    }
+  }
+}

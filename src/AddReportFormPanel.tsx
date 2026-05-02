@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { enj } from './ui/enjForm';
 import { New_programsService } from './generated/services/New_programsService';
 import { New_projectsService } from './generated/services/New_projectsService';
@@ -366,7 +367,7 @@ export function AddReportFormPanel({
 
   return (
     <section className={sectionClassName}>
-      <p className="text-sm font-semibold text-primary mb-5">
+      <p className="text-[16px] font-bold text-primary mb-5">
         <button type="button" className="underline text-primary font-semibold" onClick={onClose}>
           Reports
         </button>
@@ -587,11 +588,12 @@ export function AddReportFormPanel({
       <div className="mt-4 flex items-center justify-end gap-3">
         <button
           type="button"
-          className={enj.btnOutline}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 hover:border-rose-400 hover:text-rose-500 transition-colors"
           onClick={onClose}
           disabled={saving}
+          title="Close"
         >
-          Cancel
+          <X size={15} />
         </button>
         <button
           type="button"

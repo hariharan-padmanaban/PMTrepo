@@ -107,26 +107,41 @@ export async function uploadProjectFiles(
   const uploaded: string[] = [];
   const errors: string[] = [];
 
+  console.log('📤 uploadProjectFiles started', { uniqueId, fileCount: files.length, siteUrl, library });
+
   if (!files.length) return { uploaded, errors };
   if (!siteUrl) {
-    for (const file of files) errors.push(`${file.name}: set VITE_ATTACHMENTS_SITE_URL in environment`);
+    const msg = 'set VITE_ATTACHMENTS_SITE_URL in environment';
+    console.error('❌ Missing SharePoint URL:', msg);
+    for (const file of files) errors.push(`${file.name}: ${msg}`);
     return { uploaded, errors };
   }
 
   const folderPath = buildFolderPath(uniqueId, library);
+  console.log('📁 Folder path:', folderPath);
+
   for (const file of files) {
     try {
+      console.log(`📦 Uploading file: ${file.name}`);
       const body = await toBase64(file);
       const res = await SharePointService.CreateFile(siteUrl, folderPath, file.name, body);
+      console.log(`Response for ${file.name}:`, res);
+
       if (!res.success) {
-        errors.push(`${file.name}: ${res.error?.message ?? 'upload failed'}`);
+        const errMsg = res.error?.message ?? 'upload failed';
+        console.error(`❌ Upload failed for ${file.name}: ${errMsg}`);
+        errors.push(`${file.name}: ${errMsg}`);
       } else {
+        console.log(`✅ Uploaded: ${file.name}`);
         uploaded.push(file.name);
       }
     } catch (error) {
-      errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`❌ Exception for ${file.name}:`, errMsg);
+      errors.push(`${file.name}: ${errMsg}`);
     }
   }
+  console.log('📤 Upload complete:', { uploaded, errors });
   return { uploaded, errors };
 }
 

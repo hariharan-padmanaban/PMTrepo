@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import BusinessFeedbackList from './BusinessFeedbackList';
 import BusinessPipelineScreen from './BusinessPipelineScreen';
-import { AttachmentTestScreen } from './AttachmentTestScreen';
 import { newPipelineToTableRow, type BusinessPipelineTableRow } from './pipelineMappers';
 import type { New_clients } from './generated/models/New_clientsModel';
 import type { New_pipelines } from './generated/models/New_pipelinesModel';
@@ -3276,7 +3275,6 @@ function BusinessDashboardStyleDonut({
 // ─── Business dashboard (stakeholder / portfolio view) ─────────────────────────
 function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeNav, setActiveNav] = useState('Dashboard');
-  const [showAttachmentTest, setShowAttachmentTest] = useState(false);
   const [businessReportToast, setBusinessReportToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [timelineYear, setTimelineYear] = useState(() => new Date().getFullYear());
   const programPickerRef = useRef<HTMLDivElement>(null);
@@ -3406,7 +3404,6 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
     { name: 'Reports', icon: <TrendingUp size={16} /> },
     { name: 'Timeline', icon: <Calendar size={16} /> },
     { name: 'Feedback', icon: <MessageSquare size={16} /> },
-    { name: 'Test Upload', icon: <FileText size={16} /> },
   ];
   const readTimelineProgramName = useCallback(
     (row: Record<string, unknown>) => resolveProjectProgramName(row, programIdToName),
@@ -3588,16 +3585,9 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             <button
               key={name}
               type="button"
-              onClick={() => {
-                if (name === 'Test Upload') {
-                  setShowAttachmentTest(true);
-                } else {
-                  setShowAttachmentTest(false);
-                  setActiveNav(name);
-                }
-              }}
+              onClick={() => setActiveNav(name)}
               className={`group relative mx-auto flex h-10 w-10 items-center justify-center rounded-xl text-sm font-medium transition-colors ${
-                name === 'Test Upload' ? (showAttachmentTest ? 'bg-[#A08149] text-white shadow-md' : 'text-[#344054] hover:bg-gray-200 hover:text-[#344054]') : (activeNav === name ? 'bg-[#A08149] text-white shadow-md' : 'text-[#344054] hover:bg-gray-200 hover:text-[#344054]')
+                activeNav === name ? 'bg-[#A08149] text-white shadow-md' : 'text-[#344054] hover:bg-gray-200 hover:text-[#344054]'
               }`}
               aria-label={name}
               title={name}
@@ -6131,16 +6121,6 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                 </>
               )}
             </>
-          ) : showAttachmentTest ? (
-            <div className="p-8">
-              <button
-                onClick={() => setShowAttachmentTest(false)}
-                className={`${enj.btn} ${enj.btnOutline} mb-4`}
-              >
-                ← Back to Dashboard
-              </button>
-              <AttachmentTestScreen />
-            </div>
           ) : activeNav === 'Reports' ? (
             <ProgramReportsPanel
               isActive={activeNav === 'Reports'}
