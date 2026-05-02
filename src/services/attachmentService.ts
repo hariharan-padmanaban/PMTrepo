@@ -64,7 +64,6 @@ export async function fetchAttachments(attachmentId: string): Promise<Attachment
 
     console.log('📨 Full Response:', response);
     console.log('📊 Response Success:', response?.success);
-    console.log('📋 Response Data:', response?.data);
 
     if (!response?.success) {
       console.warn('❌ Response not successful:', response?.error);
@@ -100,19 +99,33 @@ export async function fetchAttachments(attachmentId: string): Promise<Attachment
       return [];
     }
 
-    console.log('📦 Total files found:', filesArray.length);
+    console.log('📦 Total files in response:', filesArray.length);
+    console.log('🔍 Filtering files by Attachment ID:', attachmentId);
 
-    const mappedFiles = filesArray.map((file, index) => {
-      console.log(`  File ${index}:`, file);
+    // Filter files by Attachment ID - look for matching files
+    const filteredFiles = filesArray.filter((file) => {
+      // Check various possible property names for Attachment ID
+      const fileAttachmentId =
+        String(file.crcf8_attachmentid ?? file.AttachmentID ?? file.attachment_id ?? file['Attachment ID'] ?? '').trim();
+
+      console.log(`  📄 File: "${file.Name ?? file.FileLeafRef ?? 'Unknown'}" | AttachmentID: "${fileAttachmentId}"`);
+
+      // Return true if this file's attachment ID matches the one we're looking for
+      return fileAttachmentId === attachmentId;
+    });
+
+    console.log(`✅ Filtered files: ${filteredFiles.length} matching out of ${filesArray.length} total`);
+
+    const mappedFiles = filteredFiles.map((file) => {
       return {
-        id: String(file.UniqueId ?? file.ID ?? file.id ?? file['@odata.id'] ?? `file-${index}`),
+        id: String(file.UniqueId ?? file.ID ?? file.id ?? file['@odata.id'] ?? ''),
         name: String(file.Name ?? file.FileLeafRef ?? file.name ?? file.Title ?? 'Unknown'),
-        url: String(file.ServerRelativeUrl ?? file.Url ?? file.url ?? file['@odata.id'] ?? ''),
+        url: String(file.ServerRelativeUrl ?? file.Url ?? file.url ?? ''),
         modified: String(file.Modified ?? file.TimeCreated ?? file.modified ?? file.Created ?? ''),
       };
     });
 
-    console.log('✅ Mapped files:', mappedFiles);
+    console.log('✅ Mapped files for display:', mappedFiles);
     return mappedFiles;
   } catch (error) {
     console.error('❌ Error fetching attachments:', error);
