@@ -117,15 +117,22 @@ export async function fetchAttachments(attachmentId: string): Promise<Attachment
     console.log(`✅ Filtered files: ${filteredFiles.length} matching out of ${filesArray.length} total`);
 
     const mappedFiles = filteredFiles.map((file) => {
+      // SharePoint returns file properties with curly braces like {FilenameWithExtension}, {Link}, etc.
+      const filename = String(file['{FilenameWithExtension}'] ?? file.Name ?? file.FileLeafRef ?? 'Unknown');
+      const downloadUrl = String(file['{Link}'] ?? file.ServerRelativeUrl ?? file.Url ?? '');
+      const modified = String(file.Modified ?? file.Created ?? '');
+
+      console.log(`  ✅ Mapped: "${filename}" | URL: "${downloadUrl}"`);
+
       return {
-        id: String(file.UniqueId ?? file.ID ?? file.id ?? file['@odata.id'] ?? ''),
-        name: String(file.Name ?? file.FileLeafRef ?? file.name ?? file.Title ?? 'Unknown'),
-        url: String(file.ServerRelativeUrl ?? file.Url ?? file.url ?? ''),
-        modified: String(file.Modified ?? file.TimeCreated ?? file.modified ?? file.Created ?? ''),
+        id: String(file.ID ?? file.ItemInternalId ?? ''),
+        name: filename,
+        url: downloadUrl,
+        modified: modified,
       };
     });
 
-    console.log('✅ Mapped files for display:', mappedFiles);
+    console.log('✅ Ready to display:', mappedFiles);
     return mappedFiles;
   } catch (error) {
     console.error('❌ Error fetching attachments:', error);
@@ -135,22 +142,26 @@ export async function fetchAttachments(attachmentId: string): Promise<Attachment
 
 export async function downloadFile(file: AttachmentFile): Promise<void> {
   try {
-    const response = await fetch(file.url);
-    if (!response.ok) {
-      throw new Error(`Failed to download: ${response.statusText}`);
+    console.log('⬇️ Starting download for:', file.name);
+
+    if (!file.url) {
+      throw new Error('No download URL available');
     }
 
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Open the SharePoint link directly - SharePoint will handle the download
+    // This is the simplest and most reliable method
+    const link = document.createElement('a');
+    link.href = file.url;
+    link.download = file.name;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    console.log('✅ Download started for:', file.name);
   } catch (error) {
-    console.error('Error downloading file:', error);
+    console.error('❌ Error downloading file:', error);
     throw error;
   }
 }
