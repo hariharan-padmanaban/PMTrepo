@@ -7,11 +7,12 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { motion } from 'motion/react';
 import {
   Activity, AlertCircle, ArrowRight, Briefcase, Calendar, CheckCircle, CheckSquare,
-  ChevronDown, Clock, FileText, FolderOpen, HelpCircle, Inbox, LayoutDashboard, ListTree, Pencil, RefreshCw,
+  ChevronDown, Clock, FileText, FolderOpen, HelpCircle, Inbox, LayoutGrid, ListTree, Pencil, RefreshCw,
   LogOut, MessageSquare, ShieldCheck, Trash2, TrendingUp, UserCircle, Users,
 } from 'lucide-react';
 import BusinessFeedbackList from './BusinessFeedbackList';
 import BusinessPipelineScreen from './BusinessPipelineScreen';
+import { AttachmentTestScreen } from './AttachmentTestScreen';
 import { newPipelineToTableRow, type BusinessPipelineTableRow } from './pipelineMappers';
 import type { New_clients } from './generated/models/New_clientsModel';
 import type { New_pipelines } from './generated/models/New_pipelinesModel';
@@ -213,6 +214,7 @@ const PROJECT_CATEGORY_DONUT_COLORS = [
   '#2563eb', '#f59e0b', '#4f46e5', '#60a5fa', '#10b981', '#d3525a',
 ] as const;
 const COUNTS_BAR_COLORS = ['#4f46e5', '#d4a759', '#8b5e34', '#60a5fa', '#dc2626'] as const;
+
 
 /** Static sine-style wave for business KPI summary cards (not data-driven). */
 const BUSINESS_SUMMARY_STATIC_WAVE_D =
@@ -837,8 +839,8 @@ function AddDeliverableFormPanel({
 
   return (
     <section className={sectionClassName}>
-      <p className="text-sm font-semibold text-primary mb-5">
-        <button type="button" className="underline text-primary font-semibold" onClick={onClose}>
+      <p className="text-[16px] font-bold text-primary mb-5">
+        <button type="button" className="underline text-primary font-bold" onClick={onClose}>
           Deliverables
         </button>
         {' > '}Add New Deliverables
@@ -988,6 +990,272 @@ function AddDeliverableFormPanel({
           disabled={loading || saveBusy}
         >
           {saveBusy ? 'Saving…' : '+ Save'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ─── Edit Deliverable Form ────────────────────────────────────────────────────
+type EditDeliverableFormPanelProps = {
+  row: import('./generated/models/New_deliverablesModel').New_deliverables;
+  onClose: () => void;
+  onNotify?: (type: ToastType, message: string) => void;
+  onSaved?: () => void;
+};
+
+function EditDeliverableFormPanel({ row, onClose, onNotify, onSaved }: EditDeliverableFormPanelProps) {
+  const rowId = String(
+    (row as unknown as Record<string, unknown>).new_deliverableid ??
+    (row as unknown as Record<string, unknown>).new_deliverablesid ?? '',
+  );
+
+  const [projectName, setProjectName] = useState(String(row.new_projectname ?? ''));
+  const [projectManager, setProjectManager] = useState(String(row.new_projectmanager ?? ''));
+  const [projectGoal, setProjectGoal] = useState(String(row.new_projectgoal ?? ''));
+  const [projectCategory, setProjectCategory] = useState('');
+  const [deliverableStatus, setDeliverableStatus] = useState('');
+  const [notes, setNotes] = useState(String(row.new_notes ?? ''));
+  const [includeByRowId, setIncludeByRowId] = useState<Record<string, boolean>>({});
+
+  const [projectNameOptions, setProjectNameOptions] = useState<string[]>([]);
+  const [pmOptions, setPmOptions] = useState<string[]>([]);
+  const [deliverableMasterRows, setDeliverableMasterRows] = useState<EnjazMasterDataRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [projectsRes, usersRes, masterRes] = await Promise.all([
+          New_projectsService.getAll({ top: 500, orderBy: ['createdon desc'] }),
+          NewUsersService.getAll({ top: 500, orderBy: ['createdon desc'] }),
+          EnjazMasterDataService.getActiveDeliverableMasterRows(),
+        ]);
+        if (cancelled) return;
+
+        const projectRows = (projectsRes.success ? projectsRes.data : []) as unknown as Array<Record<string, unknown>>;
+        const names = distinctSortedStrings(
+          projectRows.map((r) => String(r.new_projectname ?? r.new_name ?? '').trim()).filter(Boolean),
+        );
+        const userRows = (usersRes.success ? usersRes.data : []) as Array<Record<string, unknown>>;
+        const pms = distinctSortedStrings(
+          userRows.filter(isUserProjectDepartment).map((u) => String(u.new_newcolumn ?? u.new_userid ?? '').trim()).filter(Boolean),
+        );
+        const masterRows = masterRes.success ? (masterRes.data ?? []) : [];
+
+        // Pre-select category: match stored string against enum options
+        const existingCat = String(row.new_projectcategory ?? '').trim();
+        const matchedCat = PROJECT_CATEGORY_OPTIONS.find(
+          (o) => o.label.toLowerCase() === existingCat.toLowerCase() || o.value === existingCat,
+        );
+        setProjectCategory(matchedCat?.value ?? existingCat);
+
+        // Pre-select status label
+        const existingStatusCode = row.new_status as number | undefined;
+        const matchedStatus = DELIVERABLE_STATUS_OPTIONS.find(
+          (s) => DELIVERABLE_STATUS_LABEL_TO_CHOICE[s] === existingStatusCode,
+        );
+        setDeliverableStatus(matchedStatus ?? DELIVERABLE_STATUS_OPTIONS[1]);
+
+        // Pre-check checkboxes: match stored comma-separated labels against master data
+        const existingLabels = new Set(
+          String(row.new_thedeliverablesinclude ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+        );
+        const checked: Record<string, boolean> = {};
+        masterRows.forEach((mr) => {
+          const id = String(mr.new_enjazmasterdataid ?? '');
+          const label = String(mr.new_enjazmasterdata1 ?? '').trim().toLowerCase();
+          if (id && label && existingLabels.has(label)) checked[id] = true;
+        });
+
+        setProjectNameOptions(names);
+        setPmOptions(pms);
+        setDeliverableMasterRows(masterRows);
+        setIncludeByRowId(checked);
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Failed to load form data');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [row]);
+
+  const toggleInclude = (id: string) => setIncludeByRowId((prev) => ({ ...prev, [id]: !prev[id] }));
+  const clip = (s: string, max: number) => (s.length <= max ? s : s.slice(0, Math.max(0, max - 1)) + '…');
+
+  const handleSave = async () => {
+    const nextErrors: Record<string, string> = {};
+    if (!projectName.trim()) nextErrors.projectName = 'Project Name is required';
+    if (!projectCategory) nextErrors.projectCategory = 'Project Category is required';
+    if (!deliverableStatus || !DELIVERABLE_STATUS_LABEL_TO_CHOICE[deliverableStatus as (typeof DELIVERABLE_STATUS_OPTIONS)[number]]) {
+      nextErrors.deliverableStatus = 'Deliverable Status is required';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      onNotify?.('error', 'Please fill all required fields.');
+      return;
+    }
+    if (!rowId) { onNotify?.('error', 'Cannot identify record to update.'); return; }
+    setErrors({});
+    setSaveBusy(true);
+    try {
+      const statusValue = DELIVERABLE_STATUS_LABEL_TO_CHOICE[deliverableStatus as (typeof DELIVERABLE_STATUS_OPTIONS)[number]];
+      const categoryLabel = PROJECT_CATEGORY_OPTIONS.find((o) => o.value === projectCategory)?.label?.replace(/_/g, ' ') ?? projectCategory;
+      const includeText = buildDeliverableIncludeString(deliverableMasterRows, includeByRowId);
+      const payload: Record<string, unknown> = {
+        new_projectname: clip(projectName.trim(), 850),
+        new_projectcategory: clip(String(categoryLabel), 100),
+        new_status: statusValue,
+      };
+      const pm = projectManager.trim();
+      if (pm) payload.new_projectmanager = clip(pm, 100);
+      const goal = projectGoal.trim();
+      if (goal) payload.new_projectgoal = goal;
+      payload.new_thedeliverablesinclude = includeText.trim() || '';
+      const note = notes.trim();
+      if (note) payload.new_notes = note;
+
+      const res = await New_deliverablesService.update(rowId, payload as Parameters<typeof New_deliverablesService.update>[1]);
+      if (!res.success) throw new Error(res.error?.message ?? 'Failed to update deliverable');
+      onNotify?.('success', 'Deliverable updated successfully.');
+      onSaved?.();
+      onClose();
+    } catch (e) {
+      onNotify?.('error', e instanceof Error ? e.message : 'Failed to update deliverable');
+    } finally {
+      setSaveBusy(false);
+    }
+  };
+
+  return (
+    <section className="bg-white rounded-xl p-6 shadow-sm max-w-4xl mx-auto w-full">
+      <p className="text-[16px] font-bold text-primary mb-5">
+        <button type="button" className="underline text-primary font-bold" onClick={onClose}>
+          Deliverables
+        </button>
+        {' > '}Edit Deliverable
+      </p>
+      {loadError && <p className="text-sm text-rose-600 mb-3">{loadError}</p>}
+      {loading && <p className="text-sm text-gray-500 mb-3">Loading options…</p>}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 max-w-3xl">
+        <label>
+          <span className="text-[11px] text-gray-500">Project Name *</span>
+          <select
+            className={`${enj.control} mt-1`}
+            value={projectName}
+            onChange={(e) => { setProjectName(e.target.value); setErrors((p) => ({ ...p, projectName: '' })); }}
+            disabled={loading || saveBusy}
+          >
+            <option value="">Select project name</option>
+            {projectNameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+            {projectName && !projectNameOptions.includes(projectName) && (
+              <option value={projectName}>{projectName}</option>
+            )}
+          </select>
+          {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
+        </label>
+        <label>
+          <span className="text-[11px] text-gray-500">Project category *</span>
+          <select
+            className={`${enj.control} mt-1`}
+            value={projectCategory}
+            onChange={(e) => { setProjectCategory(e.target.value); setErrors((p) => ({ ...p, projectCategory: '' })); }}
+            disabled={loading || saveBusy}
+          >
+            <option value="">Select project category</option>
+            {PROJECT_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {errors.projectCategory && <p className="mt-1 text-[11px] text-rose-600">{errors.projectCategory}</p>}
+        </label>
+        <label>
+          <span className="text-[11px] text-gray-500">Project Manager</span>
+          <select
+            className={`${enj.control} mt-1`}
+            value={projectManager}
+            onChange={(e) => setProjectManager(e.target.value)}
+            disabled={loading || saveBusy}
+          >
+            <option value="">Select project manager</option>
+            {pmOptions.map((e) => <option key={e} value={e}>{e}</option>)}
+            {projectManager && !pmOptions.includes(projectManager) && (
+              <option value={projectManager}>{projectManager}</option>
+            )}
+          </select>
+        </label>
+        <label>
+          <span className="text-[11px] text-gray-500">Project Goal</span>
+          <input
+            className={`${enj.control} mt-1`}
+            placeholder="Enter project goal"
+            value={projectGoal}
+            onChange={(e) => setProjectGoal(e.target.value)}
+            disabled={loading || saveBusy}
+          />
+        </label>
+        <label>
+          <span className="text-[11px] text-gray-500">Deliverable Status *</span>
+          <select
+            className={`${enj.control} mt-1`}
+            value={deliverableStatus}
+            onChange={(e) => { setDeliverableStatus(e.target.value); setErrors((p) => ({ ...p, deliverableStatus: '' })); }}
+            disabled={loading || saveBusy}
+          >
+            <option value="">Select deliverable status</option>
+            {DELIVERABLE_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {errors.deliverableStatus && <p className="mt-1 text-[11px] text-rose-600">{errors.deliverableStatus}</p>}
+        </label>
+        <div className="hidden md:block" aria-hidden="true" />
+      </div>
+
+      <p className="text-[12px] font-semibold text-gray-700 mt-5 mb-3">Deliverables Include</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600 max-h-64 overflow-y-auto pr-1">
+        {deliverableMasterRows.length === 0 && !loading ? (
+          <p className="text-gray-500 text-xs md:col-span-2">No active deliverable rows in Enjaz Master Data.</p>
+        ) : (
+          deliverableMasterRows.map((mr) => {
+            const id = String(mr.new_enjazmasterdataid ?? '');
+            const label = String(mr.new_enjazmasterdata1 ?? '').trim();
+            if (!id || !label) return null;
+            return (
+              <label key={id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="accent-secondary rounded"
+                  checked={includeByRowId[id] ?? false}
+                  disabled={loading || saveBusy}
+                  onChange={() => toggleInclude(id)}
+                />
+                {label}
+              </label>
+            );
+          })
+        )}
+      </div>
+
+      <div className="mt-4">
+        <label className="text-[11px] text-gray-500">Notes</label>
+        <textarea
+          className="mt-1 w-full h-24 rounded-md border border-gray-200 px-3 py-2 text-sm resize-none"
+          placeholder="Notes…"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          disabled={loading || saveBusy}
+        />
+      </div>
+
+      <div className="mt-5 flex items-center justify-end gap-3">
+        <button type="button" className={enj.btnOutline} onClick={onClose} disabled={saveBusy}>Cancel</button>
+        <button type="button" className={enj.btnPrimary} onClick={() => void handleSave()} disabled={loading || saveBusy}>
+          {saveBusy ? 'Saving…' : 'Save Changes'}
         </button>
       </div>
     </section>
@@ -1150,6 +1418,7 @@ function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLa
   const [activityHistoryOpen, setActivityHistoryOpen] = useState(false);
   const [userProfileOpen, setUserProfileOpen] = useState(false);
   const [displayName, setDisplayName] = useState('pms');
+  const [profileEmail, setProfileEmail] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -1196,6 +1465,7 @@ function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLa
         const profile = await fetchSessionUserProfileFromUsers({ fallbackToFirstRow: true });
         if (cancelled || !profile) return;
         if (profile.displayName) setDisplayName(profile.displayName);
+        if (profile.email) setProfileEmail(profile.email);
       } catch {
         // keep fallback defaults
       }
@@ -1232,7 +1502,7 @@ function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLa
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          <div className="w-8 h-8 rounded-full bg-[#b28a44] text-white text-[10px] font-semibold flex items-center justify-center">{initials}</div>
+          <div className="w-8 h-8 rounded-full bg-[#b28a44] text-white text-[10px] font-semibold flex items-center justify-center" title={profileEmail || displayName}>{initials}</div>
           <ChevronDown size={13} className="text-gray-400" />
         </button>
         {open && (
@@ -1362,9 +1632,6 @@ function teamTaskIsBug(row: Record<string, unknown>) {
   const s = String(row.new_taskstatusname ?? '').toLowerCase();
   return t.includes('bug') || s.includes('bug');
 }
-function teamTaskIsUserStory(row: Record<string, unknown>) {
-  return String(row.new_tasktitle ?? '').toLowerCase().includes('story') || String(row.new_tasktitle ?? '').toLowerCase().includes('user story');
-}
 function teamTaskStatusDisplay(row: Record<string, unknown>) {
   const s = String(row.new_taskstatusname ?? '').toUpperCase();
   if (s) return s.replace(/\s+/g, ' ').slice(0, 18);
@@ -1460,7 +1727,7 @@ function MeetingsBoardPanel({
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
         {showMom ? (
           <section className="bg-white rounded-xl p-3">
-            <p className="text-sm font-semibold text-primary mb-2">Meetings {'>'} MOM</p>
+            <p className="text-[16px] font-bold text-primary mb-2">Meetings {'>'} MOM</p>
             <table className={`${enj.table} w-full text-[10px]`}><thead><tr><th>Meeting Title</th><th>Category</th><th>Project Name</th><th>Date</th><th className="text-right">Join</th></tr></thead><tbody>{filteredMeetings.length === 0 ? <tr><td colSpan={5} className="px-3 py-6 text-center text-xs text-gray-500">No meetings for selected project/date.</td></tr> : filteredMeetings.map((mrow) => { const join = String(mrow.new_meetinglink ?? '').trim(); const canOpen = /^https?:\/\//i.test(join); return <tr key={String(mrow.new_meetingdetailid ?? mrow.createdon)} className="border-b border-gray-100 text-[11px] text-gray-700"><td className="px-3 py-3 font-semibold">{canOpen ? <a href={join} target="_blank" rel="noopener noreferrer" className={enj.tableLink}>{String(mrow.new_meetingtitle ?? '—')}</a> : String(mrow.new_meetingtitle ?? '—')}</td><td className="px-3 py-3">{String(mrow.new_meetingcategory ?? '—')}</td><td className="px-3 py-3">{String(mrow.new_projectname ?? '—')}</td><td className="px-3 py-3 text-gray-500">{meetingShortDate(mrow.new_meetingdate)}</td><td className="px-3 py-3 text-right">{canOpen ? <a href={join} target="_blank" rel="noopener noreferrer" className={`${enj.tableLink} underline`}>Join</a> : <span className="text-gray-300">—</span>}</td></tr>; })}</tbody></table>
           </section>
         ) : (
@@ -1497,7 +1764,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
   const [workspaceRefreshKey, setWorkspaceRefreshKey] = useState(0);
 
   const navItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+    { name: 'Dashboard', icon: <LayoutGrid size={16} /> },
     { name: 'Projects',  icon: <FolderOpen size={16} /> },
     { name: 'Timeline',  icon: <Clock size={16} /> },
     { name: 'Tasks',     icon: <CheckSquare size={16} /> },
@@ -1566,7 +1833,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
     const m = new Map<string, string>();
     for (const p of teamAllProjects) {
       const n = String(p.new_projectname ?? p.new_name ?? '').trim();
-      if (n) m.set(n, String(p.new_projectsponsorname ?? p.new_projectsponsor ?? '—').trim() || '—');
+      if (n) m.set(n, String(p.crcf8_projectsponsorname ?? p.crcf8_projectsponsor ?? '—').trim() || '—');
     }
     return m;
   }, [teamAllProjects]);
@@ -1756,9 +2023,9 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
         key: String(row.new_taskid ?? row.createdon),
         project: pn,
         task: String(row.new_tasktitle ?? '—'),
-        priority: String(row.new_priorityname ?? 'MEDIUM').toUpperCase().slice(0, 12) || 'MEDIUM',
+        priority: String(row.new_priorityname ?? row.new_priority ?? 'MEDIUM').toUpperCase().slice(0, 12) || 'MEDIUM',
         status: teamTaskStatusDisplay(row),
-        pm: String(row.new_projectmanager ?? '—'),
+        pm: String((row as Record<string, unknown>).crcf8_projectmanagername ?? (row as Record<string, unknown>).crcf8_projectmanager ?? row.new_projectmanager ?? '—'),
         sponsor: projectSponsorByName.get(pn) ?? '—',
         milestone: String(row.new_subtaskname ?? (Number(row.new_subtask) === 100000001 ? 'Yes' : '—')),
         start: teamFormatShortDate(row.new_startdate),
@@ -1778,7 +2045,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
         { label: 'Bugs', value: n(myTasks.filter(teamTaskIsBug).length), border: 'border-red-400' },
         { label: 'Issues', value: n(myIssues.length), border: 'border-amber-500' },
         { label: 'Assigned Tasks', value: n(myTasks.length), border: 'border-green-400' },
-        { label: 'User Stories', value: n(myTasks.filter(teamTaskIsUserStory).length), border: 'border-slate-400' },
+        { label: 'Meetings', value: n(myMeetings.length), border: 'border-purple-400' },
       ];
     },
     [teamWorkspaceLoading, uniqueProjectCount, myTasks, myIssues],
@@ -1890,11 +2157,6 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
     };
   }, [workspaceRefreshKey, teamTaskListRefresh]);
 
-  const requestDeleteTeamTask = (row: Record<string, unknown>) => {
-    if (!String(row.new_taskid ?? '').trim()) return;
-    setTeamTaskDeleteCandidate(row);
-  };
-
   const confirmDeleteTeamTask = async () => {
     const row = teamTaskDeleteCandidate;
     if (!row) return;
@@ -1916,17 +2178,14 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const thCls =
-    'border-b border-[#E5E7EB] bg-[#F3F4F6] text-left text-[11px] font-semibold tracking-[0.03em] text-[#6B7280] py-3 px-3 whitespace-nowrap';
-  const tdCls = 'border-b border-[#E5E7EB] py-3 px-3 text-sm text-[#374151] whitespace-nowrap';
-
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
       {/* ── Sidebar ── */}
       <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
-        {/* Logo */}
-        <div className="px-5 py-5 border-b border-gray-100">
+        {/* Logo + wordmark */}
+        <div className="h-14 border-b border-gray-100 px-4 flex items-center gap-3">
           <LogoMark />
+          <span className="text-base sm:text-lg font-bold tracking-wide text-[#232360]">ENJAZ</span>
         </div>
 
         {/* Nav items */}
@@ -1951,12 +2210,15 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                   setViewingIssueRow(null);
                 }
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 activeNav === name
-                  ? 'bg-indigo-50 text-primary'
-                  : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                  ? 'text-[#A08149] font-semibold'
+                  : 'text-[#344054] hover:bg-gray-50 hover:text-[#344054]'
               }`}
             >
+              {activeNav === name && (
+                <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-[#A08149]" />
+              )}
               {icon}
               {name}
             </button>
@@ -1980,7 +2242,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
         </header>
 
         <main
-          className={`flex-1 min-h-0 min-w-0 flex flex-col px-6 pt-6 pb-4 ${
+          className={`flex-1 min-h-0 min-w-0 flex flex-col px-6 pt-6 pb-16 ${
             activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
               ? 'overflow-hidden'
               : 'overflow-y-auto'
@@ -1990,7 +2252,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
             className={
               activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
                 ? 'flex min-h-0 flex-1 flex-col gap-4 overflow-hidden'
-                : 'min-h-full flex flex-col gap-5'
+                : 'flex flex-col gap-5 pb-5'
             }
           >
           {activeNav === 'Projects' ? (
@@ -2009,6 +2271,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                 onExternalDataInvalidate={() => { setWorkspaceRefreshKey((k) => k + 1); }}
                 hideNewProject
                 hideSprintAndMembers
+                hideEdit
               />
             </div>
           ) : activeNav === 'Timeline' ? (
@@ -2189,7 +2452,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                         [
                           ['Task Title', String(viewingTaskRow?.new_tasktitle ?? '—')],
                           ['Project Name', String(viewingTaskRow?.new_projectname ?? '—')],
-                          ['Project Manager', String(viewingTaskRow?.new_projectmanager ?? '—')],
+                          ['Project Manager', String((viewingTaskRow as Record<string, unknown>)?.crcf8_projectmanagername ?? (viewingTaskRow as Record<string, unknown>)?.crcf8_projectmanager ?? viewingTaskRow?.new_projectmanager ?? '—')],
                           ['Start Date', teamFormatShortDate(viewingTaskRow?.new_startdate)],
                           ['End Date', teamFormatShortDate(viewingTaskRow?.new_enddate)],
                           ['Sub Task', String((viewingTaskRow as { new_subtaskname?: string })?.new_subtaskname ?? (Number(viewingTaskRow?.new_subtask) === 100000001 ? 'Yes' : '—'))],
@@ -2258,14 +2521,6 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                       onTaskOpen={(row) => {
                         setViewingTaskRow(row as Record<string, unknown>);
                         setShowTaskDetails(true);
-                      }}
-                      onTaskEdit={(row) => {
-                        setShowTaskDetails(false);
-                        setEditingTaskRow(row as Record<string, unknown>);
-                      }}
-                      onTaskDelete={requestDeleteTeamTask}
-                      onTimeSheet={() => {
-                        window.alert('Time Sheet: connect this action to your timesheet or Power Automate flow.');
                       }}
                     />
                   </div>
@@ -2560,7 +2815,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                   <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
                     {showCalendarMom ? (
                       <section className="bg-white rounded-xl p-3">
-                        <p className="text-sm font-semibold text-primary mb-2">Calendar {'>'} MOM</p>
+                        <p className="text-[16px] font-bold text-primary mb-2">Calendar {'>'} MOM</p>
                         <table className={`${enj.table} w-full text-[10px]`}>
                           <thead>
                             <tr>
@@ -2683,130 +2938,107 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </section>
           ) : (
-            <div className="relative min-h-0">
+            <div className="space-y-4">
               {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
-          {/* ── Overview ── */}
-          <section className="bg-white rounded-xl p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Overview</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-              {overviewCards.map(card => (
-                <div
-                  key={card.label}
-                  className={`rounded-xl border-2 ${card.border} bg-white px-4 py-4`}
-                >
-                  <p className="text-[11px] text-gray-400 mb-3 leading-tight">{card.label}</p>
-                  <p className="text-2xl font-extrabold text-primary">{card.value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
 
-          {/* ── Insights ── */}
-          <section className="bg-white rounded-xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-900">Insights</h2>
-              <div className="flex items-center gap-2">
-                {['Projects', 'All Status', 'This Month'].map(f => (
-                  <button
-                    key={f}
-                    className="flex items-center gap-1 text-xs text-gray-600 border border-gray-200 rounded-md px-3 py-1.5 hover:bg-gray-50 transition-colors"
-                  >
-                    {f} <ChevronDown size={11} />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-6">
-              <div>
-                <p className="text-xs font-semibold text-gray-500 mb-2">Assigned Tasks/Projects</p>
-                <AssignedTasksChart bars={teamDashboardAssignedChart.bars} maxValue={teamDashboardAssignedChart.max} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 mb-2">Tasks</p>
-                <TasksChart bars={teamDashboardTasksChart.bars} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 mb-2">Issues</p>
-                <IssuesDonut
-                  open={teamIssueDistribution.open}
-                  inProgress={teamIssueDistribution.inProgress}
-                  closed={teamIssueDistribution.closed}
-                  total={teamIssueDistribution.total}
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* ── Tasks table ── */}
-          <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h2 className="text-lg font-bold text-gray-900">Tasks</h2>
-              <button type="button" className="text-xs font-semibold text-indigo-600 hover:underline">View All</button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className={`${enj.table} w-full min-w-[900px] text-sm`}>
-                <thead>
-                  <tr>
-                    <th className={thCls}>Project<br />Name</th>
-                    <th className={thCls}>Task Name</th>
-                    <th className={thCls}>Priority</th>
-                    <th className={thCls}>Status</th>
-                    <th className={thCls}>Project<br />Man.</th>
-                    <th className={thCls}>Project<br />Sponsor</th>
-                    <th className={thCls}>Milestone</th>
-                    <th className={thCls}>Timeline</th>
-                    <th className={thCls}>Progress%</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {teamWorkspaceLoading && teamDashboardTasksTable.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-5 py-8 text-center text-sm text-gray-500">Loading tasks…</td>
-                    </tr>
-                  ) : teamDashboardTasksTable.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-5 py-8 text-center text-sm text-gray-500">No tasks assigned to your profile.</td>
-                    </tr>
-                  ) : teamDashboardTasksTable.map((row, i) => (
-                    <Fragment key={row.key}>
-                      {i === 2 && (
-                        <tr className="bg-gray-50 border-t border-b border-gray-100">
-                          <td className={`${thCls} text-gray-400`}>Project<br />Name</td>
-                          <td className={`${thCls} text-gray-400`}>Task Name</td>
-                          <td className={`${thCls} text-gray-400`}>Priority</td>
-                          <td className={`${thCls} text-gray-400`}>Status</td>
-                          <td className={`${thCls} text-gray-400`}>Project<br />Man.</td>
-                          <td className={`${thCls} text-gray-400`}>Project<br />Owner</td>
-                          <td className={`${thCls} text-gray-400`}>Sprint</td>
-                          <td className={`${thCls} text-gray-400`}>Timeline</td>
-                          <td className={`${thCls} text-gray-400`}>Progress%</td>
-                        </tr>
-                      )}
-                      <tr className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                        <td className={`${tdCls} text-gray-500`}>{row.project}</td>
-                        <td className={`${tdCls} font-medium`}>{row.task}</td>
-                        <td className={tdCls}><Badge label={row.priority} /></td>
-                        <td className={tdCls}><Badge label={row.status} /></td>
-                        <td className={tdCls}>{row.pm}</td>
-                        <td className={tdCls}>{row.sponsor}</td>
-                        <td className={tdCls}>{row.milestone}</td>
-                        <td className={tdCls}>
-                          <div className="text-[11px] leading-relaxed text-gray-500">
-                            <div><span className="text-gray-400">Start date</span><br />{row.start}</div>
-                            <div className="mt-1"><span className="text-gray-400">End date</span><br />{row.end}</div>
-                          </div>
-                        </td>
-                        <td className={tdCls}><ProgressBar pct={row.pct} /></td>
-                      </tr>
-                    </Fragment>
+              {/* ── Overview ── */}
+              <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">Overview</h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                  {overviewCards.map(card => (
+                    <div
+                      key={card.label}
+                      className={`rounded-xl border-2 ${card.border} bg-white px-4 py-4`}
+                    >
+                      <p className="text-sm text-gray-400 mb-3 leading-tight">{card.label}</p>
+                      <p className="text-3xl font-extrabold text-primary">{card.value}</p>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                </div>
+              </section>
+
+              {/* ── Insights ── */}
+              <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-lg font-bold text-gray-900">Insights</h2>
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 flex flex-col">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">Assigned Tasks / Projects</p>
+                    <AssignedTasksChart bars={teamDashboardAssignedChart.bars} maxValue={teamDashboardAssignedChart.max} />
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 flex flex-col">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">Tasks</p>
+                    <TasksChart bars={teamDashboardTasksChart.bars} />
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 flex flex-col">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">Issues</p>
+                    <IssuesDonut
+                      open={teamIssueDistribution.open}
+                      inProgress={teamIssueDistribution.inProgress}
+                      closed={teamIssueDistribution.closed}
+                      total={teamIssueDistribution.total}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* ── Tasks table ── */}
+              <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                  <h2 className="text-base font-bold text-gray-900">Tasks</h2>
+                  <button
+                    type="button"
+                    className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
+                    onClick={() => { setShowTaskDetails(false); setEditingTaskRow(null); setActiveNav('Tasks'); }}
+                  >
+                    View All
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className={`${enj.table} w-full min-w-[860px]`}>
+                    <thead>
+                      <tr>
+                        <th>Project Name</th>
+                        <th>Task Name</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Project Manager</th>
+                        <th>Milestone</th>
+                        <th>Timeline</th>
+                        <th>Progress</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamWorkspaceLoading && teamDashboardTasksTable.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-500">Loading tasks…</td>
+                        </tr>
+                      ) : teamDashboardTasksTable.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-500">No tasks assigned to you.</td>
+                        </tr>
+                      ) : teamDashboardTasksTable.slice(0, 6).map((row) => (
+                        <tr key={row.key}>
+                          <td className="px-3 py-2 text-gray-500">{row.project}</td>
+                          <td className="px-3 py-2 font-medium">{row.task}</td>
+                          <td className="px-3 py-2"><Badge label={row.priority} /></td>
+                          <td className="px-3 py-2"><Badge label={row.status} /></td>
+                          <td className="px-3 py-2">{row.pm}</td>
+                          <td className="px-3 py-2">{row.milestone}</td>
+                          <td className="px-3 py-2">
+                            <div className="text-[11px] leading-relaxed text-gray-500">
+                              <div><span className="text-gray-400">Start:</span> {row.start}</div>
+                              <div><span className="text-gray-400">End:</span> {row.end}</div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2"><ProgressBar pct={row.pct} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           )}
           </div>
@@ -3044,6 +3276,7 @@ function BusinessDashboardStyleDonut({
 // ─── Business dashboard (stakeholder / portfolio view) ─────────────────────────
 function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeNav, setActiveNav] = useState('Dashboard');
+  const [showAttachmentTest, setShowAttachmentTest] = useState(false);
   const [businessReportToast, setBusinessReportToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [timelineYear, setTimelineYear] = useState(() => new Date().getFullYear());
   const programPickerRef = useRef<HTMLDivElement>(null);
@@ -3115,21 +3348,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
       }),
     [businessDash.budgetData.segments],
   );
-  const budgetMonthBarMax = useMemo(
-    () => Math.max(1, ...businessDash.budgetVsPlanned.map((b) => Math.max(b.actual, b.planned))),
-    [businessDash.budgetVsPlanned],
-  );
-  const budgetDevMax = useMemo(
-    () => Math.max(1, ...businessDash.budgetDeviation.map((b) => Math.abs(b.val))),
-    [businessDash.budgetDeviation],
-  );
-  const sectorDevMax = useMemo(
-    () =>
-      businessDash.budgetingSectors.length > 0
-        ? Math.max(5, ...businessDash.budgetingSectors.map((s) => Math.abs(s.deviation)))
-        : 1,
-    [businessDash.budgetingSectors],
-  );
+
   const latestPortfolio = useMemo(() => portfolioPrograms.slice(0, 5), [portfolioPrograms]);
   const portfolioPageSize = 10;
   const portfolioTotalPages = useMemo(
@@ -3181,12 +3400,13 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
     [newClients],
   );
   const navItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+    { name: 'Dashboard', icon: <LayoutGrid size={16} /> },
     { name: 'Portfolio', icon: <FolderOpen size={16} /> },
     { name: 'Pipeline', icon: <Briefcase size={16} /> },
     { name: 'Reports', icon: <TrendingUp size={16} /> },
     { name: 'Timeline', icon: <Calendar size={16} /> },
     { name: 'Feedback', icon: <MessageSquare size={16} /> },
+    { name: 'Test Upload', icon: <FileText size={16} /> },
   ];
   const readTimelineProgramName = useCallback(
     (row: Record<string, unknown>) => resolveProjectProgramName(row, programIdToName),
@@ -3360,7 +3580,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="flex h-screen overflow-hidden bg-[#f4f7fe] text-gray-800 enjaz-business-ui">
       <aside className="z-[60] w-[86px] shrink-0 border-r border-gray-100 bg-[#f3f4f8] flex min-h-0 flex-col overflow-hidden">
-        <div className="px-5 py-5 border-b border-gray-100">
+        <div className="h-14 border-b border-gray-100 flex items-center justify-center">
           <LogoMark />
         </div>
         <nav className="min-h-0 flex-1 space-y-1 overflow-hidden px-2 py-4">
@@ -3369,10 +3589,15 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
               key={name}
               type="button"
               onClick={() => {
-                setActiveNav(name);
+                if (name === 'Test Upload') {
+                  setShowAttachmentTest(true);
+                } else {
+                  setShowAttachmentTest(false);
+                  setActiveNav(name);
+                }
               }}
-              className={`group relative mx-auto flex h-10 w-10 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
-                activeNav === name ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:bg-white hover:text-gray-700'
+              className={`group relative mx-auto flex h-10 w-10 items-center justify-center rounded-xl text-sm font-medium transition-colors ${
+                name === 'Test Upload' ? (showAttachmentTest ? 'bg-[#A08149] text-white shadow-md' : 'text-[#344054] hover:bg-gray-200 hover:text-[#344054]') : (activeNav === name ? 'bg-[#A08149] text-white shadow-md' : 'text-[#344054] hover:bg-gray-200 hover:text-[#344054]')
               }`}
               aria-label={name}
               title={name}
@@ -3637,7 +3862,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                               const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
                               return aStart - bStart;
                             });
-                          const pPct = programProgressById.get(normalizeDataverseId(pid)) ?? 0;
+                          const rawPrgPct = Number(row.new_progresslevel ?? NaN);
+                          const pPct = Number.isFinite(rawPrgPct) ? Math.max(0, Math.min(100, rawPrgPct)) : (programProgressById.get(normalizeDataverseId(pid)) ?? 0);
                           const start = parseTimelineDate(row.new_startdate);
                           const isExpanded = expandedPortfolioProgramKey === programKey;
                           const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
@@ -3700,34 +3926,35 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                     <tr className="border-t border-gray-100 bg-[#f9fafc]">
                                       <td colSpan={8} className="px-3 py-2.5">
                                         <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
-                                          <table className={`${enj.table} min-w-[1140px] text-left text-xs`}>
+                                          <table className={`${enj.table} min-w-[1140px] text-left text-[11px]`}>
                                             <thead>
                                               <tr>
-                                                <th className="px-3 py-2 font-semibold">Project</th>
-                                                <th className="px-3 py-2 font-semibold">Priority</th>
-                                                <th className="px-3 py-2 font-semibold">Sponsor</th>
-                                                <th className="px-3 py-2 font-semibold">Type</th>
-                                                <th className="px-3 py-2 font-semibold">Budget</th>
-                                                <th className="px-3 py-2 font-semibold">Starg.obj</th>
-                                                <th className="px-3 py-2 font-semibold">Project Manager</th>
-                                                <th className="px-3 py-2 font-semibold">Timeline</th>
-                                                <th className="px-3 py-2 font-semibold">Progress</th>
-                                                <th className="px-3 py-2 font-semibold">Status</th>
+                                                <th className="px-3 py-1.5 font-semibold">Project</th>
+                                                <th className="px-3 py-1.5 font-semibold">Priority</th>
+                                                <th className="px-3 py-1.5 font-semibold">Sponsor</th>
+                                                <th className="px-3 py-1.5 font-semibold">Type</th>
+                                                <th className="px-3 py-1.5 font-semibold">Budget</th>
+                                                <th className="px-3 py-1.5 font-semibold">Strat.goal</th>
+                                                <th className="px-3 py-1.5 font-semibold">Project Manager</th>
+                                                <th className="px-3 py-1.5 font-semibold">Timeline</th>
+                                                <th className="px-3 py-1.5 font-semibold">Progress</th>
+                                                <th className="px-3 py-1.5 font-semibold">Status</th>
                                               </tr>
                                             </thead>
                                             <tbody>
                                               {programProjects.map((project, i) => {
                                                 const projectName =
                                                   String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
-                                                const priority = readProjectField(project, ['new_priorityname', 'new_priority']);
-                                                const sponsor = readProjectField(project, ['new_sponsorname', 'new_sponsor']);
+                                                const PRIORITY_MAP: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+                                                const GOAL_MAP: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+                                                const priorityRaw = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                                const priority = PRIORITY_MAP[Number(priorityRaw)] ?? priorityRaw;
+                                                const sponsor = readProjectField(project, ['crcf8_projectsponsorname', 'crcf8_projectsponsor']);
                                                 const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
                                                 const budget = readProjectField(project, ['new_budget']);
-                                                const strategicObj = readProjectField(
-                                                  project,
-                                                  ['new_strategicobjective', 'new_strategicobjectivename', 'new_strategicplan'],
-                                                );
-                                                const manager = readProjectField(project, ['new_projectmanager', 'owneridname', 'new_ownername']);
+                                                const goalRaw = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
+                                                const strategicObj = GOAL_MAP[Number(goalRaw)] ?? goalRaw;
+                                                const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
                                                 const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
                                                 const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
                                                 const progressRaw = Number(project.new_progress ?? NaN);
@@ -3746,20 +3973,20 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                                 const statusKey = statusLabel.toLowerCase();
                                                 return (
                                                   <tr key={`${programKey}-${projectName}-${i}`} className="border-t border-gray-100 bg-white">
-                                                    <td className="px-3 py-2 font-medium text-[#374151]">{projectName}</td>
-                                                    <td className="px-3 py-2">{priority}</td>
-                                                    <td className="px-3 py-2">{sponsor}</td>
-                                                    <td className="px-3 py-2">{projectType}</td>
-                                                    <td className="px-3 py-2"><TableBudgetDisplay value={budget} /></td>
-                                                    <td className="px-3 py-2">{strategicObj}</td>
-                                                    <td className="px-3 py-2">{manager}</td>
-                                                    <td className="px-3 py-2 text-[10px]">
+                                                    <td className="px-3 py-1 font-medium text-[#374151]">{projectName}</td>
+                                                    <td className="px-3 py-1">{priority}</td>
+                                                    <td className="px-3 py-1">{sponsor}</td>
+                                                    <td className="px-3 py-1">{projectType}</td>
+                                                    <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
+                                                    <td className="px-3 py-1">{strategicObj}</td>
+                                                    <td className="px-3 py-1">{manager}</td>
+                                                    <td className="px-3 py-1 text-[10px]">
                                                       <div className="space-y-0.5">
                                                         <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
                                                         <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
                                                       </div>
                                                     </td>
-                                                    <td className="px-3 py-2 w-32">
+                                                    <td className="px-3 py-1 w-32">
                                                       <div className="flex items-center gap-2">
                                                         <div className="enj-table-progress-track flex-1">
                                                           <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
@@ -3769,7 +3996,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                                         </span>
                                                       </div>
                                                     </td>
-                                                    <td className="px-3 py-2">
+                                                    <td className="px-3 py-1">
                                                       <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
                                                         {statusLabel}
                                                       </span>
@@ -4040,21 +4267,65 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
           </section>
 
           <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[220px] border border-gray-100/90 chart-card">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">KPI</h3>
-              <div className="h-40 flex items-end justify-around gap-1.5">
-                {businessDash.kpiPinnacle.map((bar) => (
-                  <div key={bar.label} className="flex flex-col items-center gap-1">
-                    <span className="text-[10px] font-semibold text-gray-700 tabular-nums">{Math.round(bar.value)}</span>
-                    <div className="w-9 rounded-t-md chart-bar" style={{ height: `${bar.value * 1.3}px`, backgroundColor: bar.color }} />
-                    <span className="text-[10px] text-gray-500 text-center max-w-[4.5rem] leading-tight">{bar.label}</span>
-                  </div>
-                ))}
-              </div>
+            {/* ── KPI ── */}
+            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-[11px] font-semibold text-gray-600 mb-1 shrink-0">KPI</h3>
+              {(() => {
+                const bars = businessDash.kpiPinnacle;
+                const VW = 320, VH = 175;
+                const CL = 32, CR = 18, CT = 8, CB = 18;
+                const chartW = VW - CL - CR, chartH = VH - CT - CB;
+                const chartX = CL, chartY = CT, chartBottom = CT + chartH;
+                const maxV = 100;
+                const yTicks = [0, 20, 40, 60, 80, 100];
+                const yCoord = (v: number) => chartBottom - (v / maxV) * chartH;
+                const slotW = chartW / Math.max(1, bars.length);
+                const barW = Math.max(14, Math.min(28, slotW * 0.55));
+                return (
+                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
+                    {yTicks.map((tick) => {
+                      const y = yCoord(tick);
+                      return (
+                        <g key={tick}>
+                          <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" strokeDasharray="3 3" />
+                          <text x={chartX - 4} y={y + 3} fontSize="7.5" fill="#9ca3af" textAnchor="end">{tick}%</text>
+                        </g>
+                      );
+                    })}
+                    {bars.map((bar, i) => {
+                      const v = Math.max(0, Math.min(100, bar.value));
+                      const bH = Math.max(2, (v / maxV) * chartH);
+                      const bX = chartX + i * slotW + (slotW - barW) / 2;
+                      const bY = chartBottom - bH;
+                      const midBarY = bY + bH / 2;
+                      return (
+                        <g key={bar.label}>
+                          <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="3" className="chart-bar" />
+                          {bH >= 20 && (
+                            <text
+                              x={bX + barW / 2}
+                              y={midBarY}
+                              fontSize="7"
+                              fill="white"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              transform={`rotate(-90 ${bX + barW / 2} ${midBarY})`}
+                            >
+                              {bar.label}
+                            </text>
+                          )}
+                          <text x={bX + barW / 2} y={bY - 3} fontSize="7.5" fill="#6b7280" textAnchor="middle">{Math.round(v)}</text>
+                        </g>
+                      );
+                    })}
+                    <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>SECTORS</text>
+                  </svg>
+                );
+              })()}
             </div>
 
             {businessDash.has.category && (
-            <div className="min-h-0">
+            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
               <BusinessDashboardStyleDonut
                 title="Project categories"
                 layout="hero"
@@ -4066,129 +4337,172 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             )}
 
+            {/* ── Projects Count ── */}
             {businessDash.has.program && (
-            <div className="bg-white rounded-xl p-4 shadow-sm min-h-[220px] border border-gray-100/90 chart-card">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">Projects Count</h3>
-              <div className="h-40 flex items-end justify-around gap-1.5">
-                {businessDash.projectCounts.map((bar) => (
-                  <div key={bar.label} className="flex flex-col items-center gap-1 min-w-0">
-                    <span className="text-[10px] font-semibold text-gray-700 tabular-nums">{bar.value}</span>
-                    <div
-                      className="w-9 rounded-t-md chart-bar"
-                      style={{
-                        height: `${(bar.value / businessDash.projectCountMax) * 48 * 2.2}px`,
-                        backgroundColor: bar.color,
-                      }}
-                    />
-                    <span className="text-[10px] text-gray-500 text-center max-w-[3.5rem] truncate" title={bar.name}>
-                      {bar.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-[11px] font-semibold text-gray-600 mb-1 shrink-0">Projects Count</h3>
+              {(() => {
+                const bars = businessDash.projectCounts;
+                const VW = 320, VH = 160;
+                const CL = 28, CR = 18, CT = 8, CB = 18;
+                const chartW = VW - CL - CR, chartH = VH - CT - CB;
+                const chartX = CL, chartY = CT, chartBottom = CT + chartH;
+                const maxV = Math.max(1, businessDash.projectCountMax);
+                const tickStep = Math.max(1, Math.ceil(maxV / 5));
+                const niceMax = tickStep * 5;
+                const yTicks = [0, 1, 2, 3, 4, 5].map((t) => t * tickStep);
+                const yCoord = (v: number) => chartBottom - (v / niceMax) * chartH;
+                const slotW = chartW / Math.max(1, bars.length);
+                const barW = Math.max(14, Math.min(28, slotW * 0.55));
+                return (
+                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
+                    {yTicks.map((tick) => {
+                      const y = yCoord(tick);
+                      return (
+                        <g key={tick}>
+                          <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" strokeDasharray="3 3" />
+                          <text x={chartX - 4} y={y + 3} fontSize="7.5" fill="#9ca3af" textAnchor="end">{tick}</text>
+                        </g>
+                      );
+                    })}
+                    {bars.length === 0 && <text x={chartX + chartW / 2} y={chartY + chartH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No program data</text>}
+                    {bars.map((bar, i) => {
+                      const v = Math.max(0, bar.value);
+                      const bH = Math.max(2, (v / niceMax) * chartH);
+                      const bX = chartX + i * slotW + (slotW - barW) / 2;
+                      const bY = chartBottom - bH;
+                      const midBarY = bY + bH / 2;
+                      return (
+                        <g key={bar.label}>
+                          <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="3" className="chart-bar" />
+                          {bH >= 20 && (
+                            <text
+                              x={bX + barW / 2}
+                              y={midBarY}
+                              fontSize="7"
+                              fill="white"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              transform={`rotate(-90 ${bX + barW / 2} ${midBarY})`}
+                            >
+                              {bar.label}
+                            </text>
+                          )}
+                          <text x={bX + barW / 2} y={bY - 3} fontSize="7.5" fill="#6b7280" textAnchor="middle">{v}</text>
+                        </g>
+                      );
+                    })}
+                    <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>SECTORS</text>
+                  </svg>
+                );
+              })()}
             </div>
             )}
           </section>
 
           {businessDash.has.budgeting && (
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl p-4 shadow-sm chart-card">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">BUDGETING - Actual VS Planned</h3>
-              {businessDash.budgetingSectors.length > 0 ? (
-                <div className="h-48 overflow-x-auto pr-1">
-                  <div
-                    className="flex h-44 min-w-min items-end gap-2 border-b border-gray-100 pb-1"
-                    style={{ minWidth: `${Math.max(100, businessDash.budgetingSectors.length * 52)}px` }}
-                  >
-                    {businessDash.budgetingSectors.map((s) => (
-                      <div key={s.fullName} className="flex w-12 shrink-0 flex-col items-center justify-end gap-0.5" title={s.fullName}>
-                        <div className="flex h-36 items-end gap-0.5">
-                          <div
-                            className="w-2.5 rounded-t bg-[#d9bf89] chart-bar"
-                            style={{ height: `${(s.actualH / 120) * 132}px` }}
-                          />
-                          <div
-                            className="w-2.5 rounded-t bg-[#a07b3c] chart-bar"
-                            style={{ height: `${(s.plannedH / 120) * 132}px` }}
-                          />
-                        </div>
-                        <span className="mt-0.5 max-w-[3rem] truncate text-center text-[8px] text-gray-500" title={s.fullName}>
-                          {s.label}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="mt-1 text-[9px] text-gray-400">By sector (planned = brown, actual = gold)</p>
+            {/* ── Actual VS Planned ── */}
+            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <h3 className="text-[11px] font-semibold text-gray-600">Actual VS Planned</h3>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d9bf89]" />Actual</span>
+                  <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#a07b3c]" />Planned</span>
                 </div>
-              ) : (
-                <div className="h-44 flex min-h-0 items-end gap-0.5 overflow-x-auto">
-                  {businessDash.budgetVsPlanned.map((item) => (
-                    <div key={item.month} className="flex min-w-[28px] flex-1 flex-col items-center justify-end">
-                      <div className="flex h-36 items-end gap-px">
-                        <div
-                          className="chart-bar w-2 min-h-[2px] rounded-t bg-[#d9bf89]"
-                          style={{ height: `${(item.actual / budgetMonthBarMax) * 132}px` }}
-                        />
-                        <div
-                          className="chart-bar w-2 min-h-[2px] rounded-t bg-[#a07b3c]"
-                          style={{ height: `${(item.planned / budgetMonthBarMax) * 132}px` }}
-                        />
-                      </div>
-                      <span className="mt-1 text-[8px] text-gray-400">{item.month}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white rounded-xl p-4 shadow-sm chart-card min-w-0">
-              <h3 className="text-sm font-bold text-gray-900 mb-2">BUDGETING - Deviation</h3>
-              {businessDash.budgetingSectors.length > 0 ? (
-                <div className="h-48 overflow-x-auto pr-1">
-                  <svg
-                    className="chart-svg h-44 w-full"
-                    viewBox={`0 0 ${Math.max(400, 24 + businessDash.budgetingSectors.length * 44)} 200`}
-                    preserveAspectRatio="xMinYMid meet"
-                  >
-                    <line x1="8" y1="100" x2={Math.max(392, 16 + businessDash.budgetingSectors.length * 44)} y2="100" stroke="#d1d5db" />
-                    {businessDash.budgetingSectors.map((s, i) => {
-                      const h = (Math.abs(s.deviation) / sectorDevMax) * 75;
-                      const y = s.deviation >= 0 ? 100 - h : 100;
+              </div>
+              {(() => {
+                const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
+                const VW = 560, VH = 185;
+                const chartW = VW - CL - CR - TL, chartH = VH - CT - CB;
+                const chartX = CL, chartY = CT, chartBottom = CT + chartH;
+                const items = businessDash.budgetVsPlanned;
+                const maxV = Math.max(1, ...items.map((it) => Math.max(it.actual, it.planned)));
+                const tickStep = Math.max(1, Math.ceil(maxV / 5));
+                const niceMax = tickStep * 5;
+                const yTicks = [0, 1, 2, 3, 4, 5].map((t) => t * tickStep);
+                const yCoord = (v: number) => chartBottom - (v / niceMax) * chartH;
+                const slotW = chartW / 12;
+                const barW = Math.max(4, Math.min(10, slotW / 3));
+                const gap = 2;
+                const groupW = barW * 2 + gap;
+                const isEmpty = items.every((it) => it.actual === 0 && it.planned === 0);
+                return (
+                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
+                    {yTicks.map((tick) => {
+                      const y = yCoord(tick);
                       return (
-                        <g key={s.fullName}>
-                          <rect x={16 + i * 44} y={y} width="20" height={Math.max(2, h)} fill="#a07b3c" rx="2" />
-                          <text x={26 + i * 44} y="195" textAnchor="middle" fontSize="7" fill="#9ca3af">
-                            {s.label}
-                          </text>
+                        <g key={tick}>
+                          <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" />
+                          <text x={chartX - 4} y={y + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
                         </g>
                       );
                     })}
+                    {isEmpty && <text x={chartX + chartW / 2} y={chartY + chartH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No budget data available</text>}
+                    {items.map((item, i) => {
+                      const slotX = chartX + i * slotW + (slotW - groupW) / 2;
+                      const aH = Math.max(1, (item.actual / niceMax) * chartH);
+                      const pH = Math.max(1, (item.planned / niceMax) * chartH);
+                      return (
+                        <g key={item.month}>
+                          <rect x={slotX} y={chartBottom - aH} width={barW} height={aH} fill="#d9bf89" rx="1" className="chart-bar" />
+                          <rect x={slotX + barW + gap} y={chartBottom - pH} width={barW} height={pH} fill="#a07b3c" rx="1" className="chart-bar" />
+                          <text x={slotX + groupW / 2} y={chartBottom + 14} fontSize="7" fill="#9ca3af" textAnchor="middle">{String(item.month).toUpperCase().slice(0, 3)}</text>
+                        </g>
+                      );
+                    })}
+                    <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>TIMELINE</text>
                   </svg>
-                </div>
-              ) : (
-                <svg viewBox="0 0 600 200" className="h-44 w-full chart-svg">
-                  <line x1="20" y1="100" x2="580" y2="100" stroke="#d1d5db" />
-                  {businessDash.budgetDeviation.map((item, i) => {
-                    const barH = (Math.abs(item.val) / budgetDevMax) * 80;
-                    const y = item.val >= 0 ? 100 - barH : 100;
-                    return (
-                      <g key={item.month}>
-                        <rect
-                          x={26 + i * 46}
-                          y={y}
-                          width="18"
-                          height={Math.max(2, barH)}
-                          fill="#a07b3c"
-                          rx="2"
-                        />
-                        <text x={35 + i * 46} y="194" textAnchor="middle" fontSize="9" fill="#9ca3af">
-                          {item.month}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
-              )}
+                );
+              })()}
+            </div>
+
+            {/* ── Deviation ── */}
+            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4 min-w-0">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
+              <h3 className="text-[11px] font-semibold text-gray-600 mb-2 shrink-0">Deviation</h3>
+              {(() => {
+                const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
+                const VW = 560, VH = 185;
+                const chartW = VW - CL - CR - TL, chartH = VH - CT - CB;
+                const chartX = CL, chartY = CT;
+                const items = businessDash.budgetDeviation;
+                const maxAbs = Math.max(1, ...items.map((x) => Math.abs(x.val)));
+                const absStep = Math.max(1, Math.ceil(maxAbs / 3));
+                const niceAbs = absStep * 3;
+                const midY = chartY + chartH / 2;
+                const halfH = chartH / 2;
+                const yTicks = [-3, -2, -1, 0, 1, 2, 3].map((t) => t * absStep);
+                const yCoord = (v: number) => midY - (v / niceAbs) * halfH;
+                const slotW = chartW / 12;
+                const barW = Math.max(4, Math.min(10, slotW / 2.5));
+                return (
+                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
+                    {yTicks.map((tick) => {
+                      const y = yCoord(tick);
+                      return (
+                        <g key={tick}>
+                          <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke={tick === 0 ? '#9ca3af' : '#e5e7eb'} strokeWidth={tick === 0 ? '1' : '0.6'} />
+                          <text x={chartX - 4} y={y + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
+                        </g>
+                      );
+                    })}
+                    {items.map((item, i) => {
+                      const v = item.val;
+                      const h = Math.max(1, (Math.abs(v) / niceAbs) * halfH);
+                      const slotX = chartX + i * slotW + (slotW - barW) / 2;
+                      return (
+                        <g key={item.month}>
+                          <rect x={slotX} y={v >= 0 ? yCoord(v) : midY} width={barW} height={h} fill={v >= 0 ? '#d9bf89' : '#a07b3c'} rx="1" className="chart-bar" />
+                          <text x={slotX + barW / 2} y={chartY + chartH + 14} fontSize="7" fill="#9ca3af" textAnchor="middle">{String(item.month).toUpperCase().slice(0, 3)}</text>
+                        </g>
+                      );
+                    })}
+                    <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>TIMELINE</text>
+                  </svg>
+                );
+              })()}
             </div>
           </section>
           )}
@@ -4201,7 +4515,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                   <button
                     type="button"
                     onClick={() => setActiveNav('Portfolio')}
-                    className={`${enj.btn} ${enj.btnOutline} h-8 px-3 text-xs font-semibold`}
+                    className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
                   >
                     View All
                   </button>
@@ -4239,7 +4553,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                           const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
                           return aStart - bStart;
                         });
-                      const pPct = programProgressById.get(normalizeDataverseId(pid)) ?? 0;
+                      const rawPrgPct = Number(row.new_progresslevel ?? NaN);
+                      const pPct = Number.isFinite(rawPrgPct) ? Math.max(0, Math.min(100, rawPrgPct)) : (programProgressById.get(normalizeDataverseId(pid)) ?? 0);
                       const start = parseTimelineDate(row.new_startdate);
                       const isExpanded = expandedPortfolioProgramKey === programKey;
                       const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
@@ -4321,15 +4636,16 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                           {programProjects.map((project, i) => {
                                             const projectName =
                                               String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
-                                            const priority = readProjectField(project, ['new_priorityname', 'new_priority']);
-                                            const sponsor = readProjectField(project, ['new_sponsorname', 'new_sponsor']);
+                                            const PRIORITY_MAP_: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+                                            const GOAL_MAP_: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+                                            const priorityRaw_ = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                            const priority = PRIORITY_MAP_[Number(priorityRaw_)] ?? priorityRaw_;
+                                            const sponsor = readProjectField(project, ['crcf8_projectsponsorname', 'crcf8_projectsponsor']);
                                             const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
                                             const budget = readProjectField(project, ['new_budget']);
-                                            const strategicObj = readProjectField(
-                                              project,
-                                              ['new_strategicobjective', 'new_strategicobjectivename', 'new_strategicplan'],
-                                            );
-                                            const manager = readProjectField(project, ['new_projectmanager', 'owneridname', 'new_ownername']);
+                                            const goalRaw_ = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
+                                            const strategicObj = GOAL_MAP_[Number(goalRaw_)] ?? goalRaw_;
+                                            const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
                                             const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
                                             const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
                                             const progressRaw = Number(project.new_progress ?? NaN);
@@ -4348,20 +4664,20 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                             const statusKey = statusLabel.toLowerCase();
                                             return (
                                               <tr key={`${programKey}-${projectName}-${i}`} className="border-t border-gray-100 bg-white">
-                                                <td className="px-3 py-2 font-medium text-[#374151]">{projectName}</td>
-                                                <td className="px-3 py-2">{priority}</td>
-                                                <td className="px-3 py-2">{sponsor}</td>
-                                                <td className="px-3 py-2">{projectType}</td>
-                                                <td className="px-3 py-2"><TableBudgetDisplay value={budget} /></td>
-                                                <td className="px-3 py-2">{strategicObj}</td>
-                                                <td className="px-3 py-2">{manager}</td>
-                                                <td className="px-3 py-2 text-[10px]">
+                                                <td className="px-3 py-1 font-medium text-[#374151]">{projectName}</td>
+                                                <td className="px-3 py-1">{priority}</td>
+                                                <td className="px-3 py-1">{sponsor}</td>
+                                                <td className="px-3 py-1">{projectType}</td>
+                                                <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
+                                                <td className="px-3 py-1">{strategicObj}</td>
+                                                <td className="px-3 py-1">{manager}</td>
+                                                <td className="px-3 py-1 text-[10px]">
                                                   <div className="space-y-0.5">
                                                     <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
                                                     <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
                                                   </div>
                                                 </td>
-                                                <td className="px-3 py-2 w-32">
+                                                <td className="px-3 py-1 w-32">
                                                   <div className="flex items-center gap-2">
                                                     <div className="enj-table-progress-track flex-1">
                                                       <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
@@ -4371,7 +4687,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                                     </span>
                                                   </div>
                                                 </td>
-                                                <td className="px-3 py-2">
+                                                <td className="px-3 py-1">
                                                   <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
                                                     {statusLabel}
                                                   </span>
@@ -4396,9 +4712,6 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             </section>
           )}
 
-          <p className="pt-1 text-center text-[11px] text-gray-400">
-            Copyright © 2026 Enjaz Management Tool. All rights reserved.
-          </p>
             </div>
               )}
             </div>
@@ -4419,6 +4732,9 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   const [programMeetingsLoading, setProgramMeetingsLoading] = useState(false);
   const [showAddDeliverableForm, setShowAddDeliverableForm] = useState(false);
   const [deliverableListRefresh, setDeliverableListRefresh] = useState(0);
+  const [editingDeliverableRow, setEditingDeliverableRow] = useState<import('./generated/models/New_deliverablesModel').New_deliverables | null>(null);
+  const [deletingDeliverableRow, setDeletingDeliverableRow] = useState<import('./generated/models/New_deliverablesModel').New_deliverables | null>(null);
+  const [deletingDeliverableBusy, setDeletingDeliverableBusy] = useState(false);
   const [showAddProgramForm, setShowAddProgramForm] = useState(false);
   const [programFormMode, setProgramFormMode] = useState<'add' | 'edit'>('add');
   const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
@@ -4432,6 +4748,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     roi: '',
     kpi: '',
     status: '',
+    progress: '',
   });
   const [programFormBusy, setProgramFormBusy] = useState(false);
   const [programFormMsg, setProgramFormMsg] = useState('');
@@ -4451,6 +4768,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   ];
   const [statusOptions, setStatusOptions] = useState<Array<{ label: string; value: number }>>(fallbackStatusOptions);
   const [programRows, setProgramRows] = useState<Array<Record<string, unknown>>>([]);
+  const [programListPage, setProgramListPage] = useState(1);
+  const PROGRAM_LIST_PAGE_SIZE = 6;
   const [programLoading, setProgramLoading] = useState(false);
   const [programColumns, setProgramColumns] = useState<{
     benefits?: string;
@@ -4483,16 +4802,17 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   const [programInsightStatusFilter, setProgramInsightStatusFilter] = useState<'all' | 'onTrack' | 'completed' | 'delayed'>('all');
   const [programInsightPeriodFilter, setProgramInsightPeriodFilter] = useState<'allTime' | 'thisMonth' | 'last3' | 'last6' | 'thisYear'>('allTime');
   const [programInsightProjectBars, setProgramInsightProjectBars] = useState([
-    { label: 'On Track', val: 0, color: '#34d399' },
-    { label: 'Completed', val: 0, color: '#60a5fa' },
-    { label: 'Delayed', val: 0, color: '#ef4444' },
+    { label: 'To Start',  val: 0, color: '#6b7280', bg: '#f3f4f6' },
+    { label: 'On Track',  val: 0, color: '#059669', bg: '#d1fae5' },
+    { label: 'Completed', val: 0, color: '#1d4ed8', bg: '#dbeafe' },
+    { label: 'Delayed',   val: 0, color: '#dc2626', bg: '#fee2e2' },
   ]);
   const [programInsightBudgetSlices, setProgramInsightBudgetSlices] = useState([
     { label: 'No Data', value: 1, color: '#cbd5e1' },
   ]);
-  const [programMilestoneActual, setProgramMilestoneActual] = useState<number[]>([0, 0, 0, 0, 0]);
-  const [programMilestonePlanned, setProgramMilestonePlanned] = useState<number[]>([0, 0, 0, 0, 0]);
-  const [programMilestoneLabels, setProgramMilestoneLabels] = useState<string[]>(['Jan', 'Feb', 'Mar', 'Apr', 'May']);
+  const [programDeliverableDelayed, setProgramDeliverableDelayed] = useState<number[]>(Array(12).fill(0));
+  const [programDeliverableDelivered, setProgramDeliverableDelivered] = useState<number[]>(Array(12).fill(0));
+  const [programDeliverablePending, setProgramDeliverablePending] = useState<number[]>(Array(12).fill(0));
   const overviewCards = [
     { label: 'Program', value: programOverviewCounts.programs, color: '#b28a44' },
     { label: 'Projects', value: programOverviewCounts.projects, color: '#34d399' },
@@ -4503,25 +4823,14 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     { label: 'Meetings', value: programOverviewCounts.meetings, color: '#64748b' },
   ];
   const navItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+    { name: 'Dashboard', icon: <LayoutGrid size={16} /> },
     { name: 'Program', icon: <FolderOpen size={16} /> },
-    { name: 'Dummy', icon: <ListTree size={16} /> },
     { name: 'Projects', icon: <Briefcase size={16} /> },
     { name: 'Meetings', icon: <Calendar size={16} /> },
     { name: 'Deliverables', icon: <ShieldCheck size={16} /> },
     { name: 'Reports', icon: <FileText size={16} /> },
     { name: 'Project Pipeline', icon: <TrendingUp size={16} /> },
   ];
-  const dummyProjectRows = [
-    { projectName: 'DP Factor', priority: 'High', sponsor: 'Sales', type: 'New', budget: '$42', budgetTrend: 'up', strategicObj: 'Time Bound', pm: 'Ahmed Ali', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 100, status: 'Completed', statusClass: 'enj-table-status--completed' },
-    { projectName: 'Code.Tech', priority: 'Medium', sponsor: 'HR', type: 'Enhanc.', budget: '$25', budgetTrend: 'down', strategicObj: 'Time Bound', pm: 'Omar Sami', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 40, status: 'Slightly Delayed', statusClass: 'enj-table-status--neutral' },
-    { projectName: 'Ex.Process', priority: 'Medium', sponsor: 'IT', type: 'Change Request', budget: '$30', budgetTrend: 'none', strategicObj: 'Time Bound', pm: 'Waleed Ali', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 80, status: 'On Track', statusClass: 'enj-table-status--ontrack' },
-    { projectName: 'Scaling', priority: 'Low', sponsor: 'Legal Affairs', type: 'Change Request', budget: '$30', budgetTrend: 'none', strategicObj: 'Time Bound', pm: 'Amr Fahmy', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 20, status: 'Delayed', statusClass: 'enj-table-status--delayed' },
-  ] as const;
-  const dummyProgramRows = [
-    { programName: 'Road Map', category: 'Efficiency', budget: '$142', pm: 'Dalia Fahmy', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 40 },
-    { programName: 'Growth', category: 'Improvement', budget: '$142', pm: 'Tahir Ali', startDate: 'Feb 09, 2024', endDate: 'May 24, 2024', progress: 40 },
-  ] as const;
   const programPipelineTableRows = useMemo(
     (): BusinessPipelineTableRow[] => programPipelineData.map((r, i) => newPipelineToTableRow(r, i)),
     [programPipelineData],
@@ -4622,6 +4931,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       const res = await New_programsService.getAll({ top: 500, orderBy: ['createdon desc'] });
       if (!res.success) throw new Error(res.error?.message ?? 'Failed to load programs');
       setProgramRows((res.data ?? []) as unknown as Array<Record<string, unknown>>);
+      setProgramListPage(1);
     } catch (error) {
       setProgramFormMsg(error instanceof Error ? error.message : 'Failed to load programs');
     } finally {
@@ -4744,31 +5054,64 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       tasksRes && tasksRes.status === 'fulfilled' && tasksRes.value.success
         ? ((tasksRes.value.data ?? []) as unknown as Array<Record<string, unknown>>)
         : [];
-    const actual = Array(12).fill(0) as number[];
-    const planned = Array(12).fill(0) as number[];
+    const budgetActual = Array(12).fill(0) as number[];
+    const budgetPlanned = Array(12).fill(0) as number[];
     projectRows.forEach((r) => {
-      const idx = monthIdx(r.createdon ?? r.new_startdate);
-      if (idx >= 0) actual[idx] += 1;
+      const idx = monthIdx(r.new_startdate ?? r.createdon);
+      if (idx < 0) return;
+      const bu = Number(r.new_budget ?? 0);
+      const act = Number(r.new_actualamount ?? 0);
+      if (bu > 0) budgetPlanned[idx] += bu;
+      if (act > 0) budgetActual[idx] += act;
     });
-    taskRows.forEach((r) => {
-      const idx = monthIdx(r.createdon ?? r.new_startdate ?? r.new_enddate);
-      if (idx >= 0) planned[idx] += 1;
-    });
-    setProgramChartActual(actual);
-    setProgramChartPlanned(planned);
-    setProgramChartDeviation(planned.map((p, i) => p - actual[i]));
+    const bmax = Math.max(1, ...budgetPlanned, ...budgetActual);
+    const toScale = (v: number) => (v / bmax) * 600;
+    setProgramChartActual(budgetActual.map(toScale));
+    setProgramChartPlanned(budgetPlanned.map(toScale));
+    setProgramChartDeviation(budgetPlanned.map((p, i) => {
+      const a = budgetActual[i] ?? 0;
+      const val = p > 0 ? ((a - p) / p) * 100 : a > 0 ? 30 : 0;
+      return Math.max(-30, Math.min(30, val));
+    }));
     setProgramInsightProjectRows(projectRows);
     setProgramInsightTaskRows(taskRows);
+
+    const delivSettled = settled[5];
+    const delivRows: Array<Record<string, unknown>> =
+      delivSettled?.status === 'fulfilled' && (delivSettled.value as { success?: boolean }).success
+        ? (((delivSettled.value as { data?: unknown[] }).data ?? []) as Array<Record<string, unknown>>)
+        : [];
+    const currYear = new Date().getFullYear();
+    const delivTotal = Array(12).fill(0) as number[];
+    const delivDone = Array(12).fill(0) as number[];
+    const delivPending = Array(12).fill(0) as number[];
+    delivRows.forEach((row) => {
+      const d = new Date(String(row.new_duedate ?? row.new_deliverydate ?? row.createdon ?? ''));
+      if (Number.isNaN(d.getTime()) || d.getFullYear() !== currYear) return;
+      const mi = d.getMonth();
+      const statusNum = Number(row.new_status ?? row.new_deliverablestatus ?? NaN);
+      const statusName = String(row.new_statusname ?? row.new_deliverablestatusname ?? '').toLowerCase();
+      if (statusNum === 100000000 || statusName.includes('deliver') || statusName.includes('complet') || statusName.includes('done')) {
+        delivDone[mi] += 1;
+      } else if (statusNum === 100000002 || statusName.includes('delay')) {
+        delivTotal[mi] += 1; // reused for Delayed
+      } else {
+        delivPending[mi] += 1; // To Be Delivered
+      }
+    });
+    setProgramDeliverableDelayed(delivTotal);   // Delayed
+    setProgramDeliverableDelivered(delivDone); // Delivered
+    setProgramDeliverablePending(delivPending); // To Be Delivered
   };
 
   useEffect(() => {
-    const statusBucket = (r: Record<string, unknown>): 'onTrack' | 'completed' | 'delayed' | 'other' => {
+    const statusBucket = (r: Record<string, unknown>): 'toStart' | 'onTrack' | 'completed' | 'delayed' => {
       const statusNum = Number(r.new_projectstatus);
       const statusName = String(r.new_projectstatusname ?? '').toLowerCase();
       if (statusNum === 100000003 || statusName.includes('complet')) return 'completed';
       if (statusNum === 100000002 || statusName.includes('delay')) return 'delayed';
       if (statusNum === 100000001 || (statusName.includes('on') && statusName.includes('track'))) return 'onTrack';
-      return 'other';
+      return 'toStart';
     };
     const resolveDate = (r: Record<string, unknown>) =>
       new Date(String(r.new_enddate ?? r.new_startdate ?? r.createdon ?? ''));
@@ -4796,25 +5139,19 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     }
     const filteredTasks = programInsightTaskRows.filter((r) => isWithinPeriod(resolveDate(r)));
 
-    const buckets = { onTrack: 0, completed: 0, delayed: 0 };
+    const buckets = { toStart: 0, onTrack: 0, completed: 0, delayed: 0 };
     filteredProjects.forEach((r) => {
       const b = statusBucket(r);
-      if (b === 'onTrack' || b === 'completed' || b === 'delayed') buckets[b] += 1;
+      buckets[b] += 1;
     });
     const totalProjects = filteredProjects.length;
-    setProgramInsightProjectBars(
-      totalProjects > 0
-        ? [
-            { label: 'On Track', val: Math.round((buckets.onTrack / totalProjects) * 100), color: '#34d399' },
-            { label: 'Completed', val: Math.round((buckets.completed / totalProjects) * 100), color: '#60a5fa' },
-            { label: 'Delayed', val: Math.round((buckets.delayed / totalProjects) * 100), color: '#ef4444' },
-          ]
-        : [
-            { label: 'On Track', val: 0, color: '#34d399' },
-            { label: 'Completed', val: 0, color: '#60a5fa' },
-            { label: 'Delayed', val: 0, color: '#ef4444' },
-          ],
-    );
+    const pct = (n: number) => totalProjects > 0 ? Math.round((n / totalProjects) * 100) : 0;
+    setProgramInsightProjectBars([
+      { label: 'To Start',  val: pct(buckets.toStart),   color: '#6b7280', bg: '#f3f4f6' },
+      { label: 'On Track',  val: pct(buckets.onTrack),   color: '#059669', bg: '#d1fae5' },
+      { label: 'Completed', val: pct(buckets.completed), color: '#1d4ed8', bg: '#dbeafe' },
+      { label: 'Delayed',   val: pct(buckets.delayed),   color: '#dc2626', bg: '#fee2e2' },
+    ]);
 
     const budgetByCategory = new Map<string, number>();
     filteredProjects.forEach((r) => {
@@ -4836,7 +5173,6 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
     const now = new Date();
     const monthWindow = Array.from({ length: 5 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - (4 - i), 1));
-    const monthLabels = monthWindow.map((d) => d.toLocaleDateString(undefined, { month: 'short' }));
     const slotFor = (d: Date) => monthWindow.findIndex((m) => m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth());
     const milestoneActual = Array(5).fill(0) as number[];
     const milestonePlanned = Array(5).fill(0) as number[];
@@ -4852,9 +5188,6 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       const idx = slotFor(dt);
       if (idx >= 0) milestonePlanned[idx] += 1;
     });
-    setProgramMilestoneActual(milestoneActual);
-    setProgramMilestonePlanned(milestonePlanned);
-    setProgramMilestoneLabels(monthLabels);
   }, [programInsightProjectRows, programInsightTaskRows, programInsightStatusFilter, programInsightPeriodFilter]);
 
   useEffect(() => {
@@ -4942,7 +5275,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       budget: pick('budget') ?? 'crcf8_budget',
       roi: pick('roi') ?? 'new_roi',
       kpi: pick('kpi') ?? 'new_kpi',
-      progress: pick('progress'),
+      progress: pick('progress') ?? 'new_progresslevel',
     });
     setStatusOptions(finalStatusOptions);
     setProgramForm((f) => ({
@@ -4976,6 +5309,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
             setKpiOptions(Array.from(new Set(kpis)));
           }
           if (!cancelled) await loadProgramManagerEmails();
+          if (!cancelled) await loadPrograms();
+        } else if (activeNav === 'Dashboard') {
           if (!cancelled) await loadPrograms();
         }
       } catch (error) {
@@ -5052,6 +5387,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       roi: '',
       kpi: '',
       status: statusOptions[0] ? String(statusOptions[0].value) : '',
+      progress: '',
     });
     setProgramFormErrors({});
     setProgramFormMsg('');
@@ -5124,6 +5460,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       status: String(
         getValueFromRow(rowToUse, programColumns.status ?? 'new_programstatus') ?? rowToUse.new_programstatus ?? '',
       ),
+      progress: readProgramValue('new_progresslevel', []),
     });
     setShowAddProgramForm(true);
   };
@@ -5142,6 +5479,10 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     if (!programForm.roi.trim()) next.roi = 'ROI is required';
     if (!programForm.kpi) next.kpi = 'KPI is required';
     if (!programForm.status) next.status = 'Program Status is required';
+    if (programForm.progress.trim() !== '') {
+      const pv = Number(programForm.progress);
+      if (!Number.isFinite(pv) || pv < 0 || pv > 100) next.progress = 'Progress must be a number between 0 and 100';
+    }
     setProgramFormErrors(next);
     if (Object.keys(next).length > 0) return;
 
@@ -5158,6 +5499,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
         new_kpi: programForm.kpi,
         new_enddate: new Date(programForm.endDate).toISOString(),
         crcf8_budget: Number(programForm.budget),
+        ...(programForm.progress.trim() !== '' && { new_progresslevel: Number(programForm.progress) }),
       };
       if (programColumns.status && programColumns.status !== 'new_programstatus') {
         payload[programColumns.status] = Number(programForm.status);
@@ -5265,21 +5607,19 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   /** Program list screen — one bar per program (progress %), same rows as the grid, max 6 visible. */
   const programListProgressBarRows = useMemo((): { name: string; pct: number }[] => {
     try {
-      const col = programColumns.progress;
+      const col = programColumns.progress ?? 'new_progresslevel';
       return programRows.map((row) => {
         const name =
           String(getValueFromRow(row, programColumns.name ?? 'new_name') ?? getValueFromRow(row, 'new_name') ?? '—')
             .trim() || '—';
         let pct = 0;
-        if (col) {
-          const t = rowValueText(row, col);
-          if (t !== '-') {
-            const n = parseFloat(String(t).replace(/%/g, ''));
-            if (Number.isFinite(n)) pct = Math.min(100, Math.max(0, n));
-          }
+        const t = rowValueText(row, col);
+        if (t !== '-') {
+          const n = parseFloat(String(t).replace(/%/g, ''));
+          if (Number.isFinite(n)) pct = Math.min(100, Math.max(0, n));
         }
         if (pct === 0) {
-          const n = Number(getValueFromRow(row, 'new_progress') ?? getValueFromRow(row, 'crcf8_progress') ?? NaN);
+          const n = Number(getValueFromRow(row, 'new_progresslevel') ?? getValueFromRow(row, 'new_progress') ?? getValueFromRow(row, 'crcf8_progress') ?? NaN);
           if (Number.isFinite(n)) pct = Math.min(100, Math.max(0, n));
         }
         return { name, pct };
@@ -5293,8 +5633,9 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
       <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
-        <div className="px-5 py-5 border-b border-gray-100">
+        <div className="h-14 border-b border-gray-100 px-4 flex items-center gap-3">
           <LogoMark />
+          <span className="text-base sm:text-lg font-bold tracking-wide text-[#232360]">ENJAZ</span>
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-1">
           {navItems.map(({ name, icon }) => (
@@ -5303,22 +5644,21 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               type="button"
               onClick={() => {
                 setActiveNav(name);
-                if (name !== 'Meetings') {
-                  setShowAddMeetingForm(false);
-                }
-                if (name !== 'Deliverables') {
-                  setShowAddDeliverableForm(false);
-                }
-                if (name !== 'Program') {
-                  setShowAddProgramForm(false);
-                }
+                if (name === 'Project Pipeline') setProgramPipelineLoading(true);
+                if (name === 'Dashboard' || name === 'Program' || name === 'Portfolio') setProgramLoading(true);
+                if (name !== 'Meetings') setShowAddMeetingForm(false);
+                if (name !== 'Deliverables') setShowAddDeliverableForm(false);
+                if (name !== 'Program') setShowAddProgramForm(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 activeNav === name
-                  ? 'bg-indigo-50 text-primary'
-                  : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                  ? 'text-[#A08149] font-semibold'
+                  : 'text-[#344054] hover:bg-gray-50 hover:text-[#344054]'
               }`}
             >
+              {activeNav === name && (
+                <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-[#A08149]" />
+              )}
               {icon}
               {name}
             </button>
@@ -5339,7 +5679,9 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
         <main
           className={`enj-app-main flex-1 min-h-0 min-w-0 flex flex-col ${
-            activeNav === 'Projects' ? 'overflow-hidden' : 'overflow-y-auto'
+            activeNav === 'Projects' || activeNav === 'Program' || activeNav === 'Deliverables'
+              ? 'overflow-hidden !pb-0'
+              : 'overflow-y-auto'
           }`}
         >
           {programToast && (
@@ -5347,7 +5689,13 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               <NotificationToast type={programToast.type} message={programToast.message} onClose={() => setProgramToast(null)} />
             </div>
           )}
-          <div className={activeNav === 'Projects' ? 'flex min-h-0 flex-1 flex-col overflow-hidden min-w-0' : 'space-y-4'}>
+          <div className={
+            activeNav === 'Projects'
+              ? 'flex min-h-0 flex-1 flex-col overflow-hidden min-w-0'
+              : activeNav === 'Program' || activeNav === 'Deliverables'
+                ? 'flex min-h-0 flex-1 flex-col overflow-hidden min-w-0 pb-12'
+                : 'space-y-4'
+          }>
           {activeNav === 'Program' ? (
             <>
               {showAddProgramForm ? (
@@ -5485,6 +5833,31 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                       </select>
                       {programFormErrors.status && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.status}</p>}
                     </label>
+
+                    <label>
+                      <span className="text-sm text-[#353b57]">Progress (%)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        placeholder="0 – 100"
+                        className={`${enj.control} mt-2`}
+                        value={programForm.progress}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '' || /^\d{0,3}$/.test(raw)) {
+                            setProgramForm((f) => ({ ...f, progress: raw }));
+                          }
+                        }}
+                        onBlur={() => {
+                          const n = Number(programForm.progress);
+                          if (programForm.progress !== '' && (n < 0 || n > 100)) {
+                            setProgramForm((f) => ({ ...f, progress: String(Math.max(0, Math.min(100, n))) }));
+                          }
+                        }}
+                      />
+                      {programFormErrors.progress && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.progress}</p>}
+                    </label>
                   </div>
                   {programFormMsg && <p className="mt-4 text-sm text-gray-700">{programFormMsg}</p>}
 
@@ -5511,30 +5884,17 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                 <>
                   <section className="flex items-center justify-between">
                     <h2 className={enj.pageTitle}>Programs</h2>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className={`${enj.btn} ${enj.btnDefault} text-xs`}
-                        onClick={async () => {
-                          await loadProgramMetadata();
-                          await loadProgramManagerEmails();
-                          await loadPrograms();
-                        }}
-                        disabled={programLoading}
-                      >
-                        {programLoading ? 'Refreshing...' : 'Refresh'}
-                      </button>
-                      <button
-                        className={`${enj.btn} ${enj.btnPrimary} font-medium`}
-                        onClick={openAddProgram}
-                      >
-                        Add New Program
-                      </button>
-                    </div>
+                    <button
+                      className={`${enj.btn} ${enj.btnPrimary} font-medium`}
+                      onClick={openAddProgram}
+                    >
+                      Add New Program
+                    </button>
                   </section>
 
-                  <section className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-3">
-                    <div className="overflow-x-auto rounded-xl border border-[#E5E7EB] bg-[#eef2f9] px-2 py-3 shadow-sm sm:px-3">
-                      <table className={`${enj.table} enj-program-screen-table w-full min-w-[760px]`}>
+                  <section className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-3 mt-3">
+                    <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
+                      <table className={`${enj.tableBrand} w-full min-w-[760px] text-xs`}>
                         <thead>
                           <tr>
                             <th scope="col">Program Name</th>
@@ -5562,7 +5922,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                 No programs found.
                               </td>
                             </tr>
-                          ) : programRows.map((row) => {
+                          ) : programRows.slice((programListPage - 1) * PROGRAM_LIST_PAGE_SIZE, programListPage * PROGRAM_LIST_PAGE_SIZE).map((row) => {
                             const id = String(row.new_programid ?? row[programColumns.name ?? 'new_name'] ?? Math.random());
                             const displayText = (primary?: string, fallbacks: string[] = []) => {
                               const keys = [primary, ...fallbacks].filter(Boolean) as string[];
@@ -5582,11 +5942,11 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                             const programDisplayName = displayText(programColumns.name ?? 'new_name', ['new_name']);
 
                             return (
-                              <tr key={id} className="enj-program-screen-table__row">
+                              <tr key={id}>
                                 <td>
                                   <button
                                     type="button"
-                                    className={`enj-program-screen-table__name-btn ${enj.tableLink}`}
+                                    className={enj.tableLink}
                                     title={programDisplayName}
                                     onClick={() => void openEditProgram(row)}
                                   >
@@ -5613,7 +5973,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                           style={{ width: `${progressPct}%` }}
                                         />
                                       </div>
-                                      <span className="enj-program-screen-table__pct">{Math.round(progressPct)}%</span>
+                                      <span className="w-8 text-right text-[10px] tabular-nums text-gray-600">{Math.round(progressPct)}%</span>
                                     </div>
                                   ) : (
                                     '-'
@@ -5634,6 +5994,16 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                           })}
                         </tbody>
                       </table>
+                      <div className="border-t border-gray-100 px-3 py-2">
+                        <PagerBar
+                          page={programListPage}
+                          pageSize={PROGRAM_LIST_PAGE_SIZE}
+                          total={programRows.length}
+                          onPrev={() => setProgramListPage((p) => Math.max(1, p - 1))}
+                          onNext={() => setProgramListPage((p) => Math.min(Math.ceil(programRows.length / PROGRAM_LIST_PAGE_SIZE), p + 1))}
+                          disabled={programLoading}
+                        />
+                      </div>
                     </div>
 
                     <aside className="space-y-3">
@@ -5761,6 +6131,16 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                 </>
               )}
             </>
+          ) : showAttachmentTest ? (
+            <div className="p-8">
+              <button
+                onClick={() => setShowAttachmentTest(false)}
+                className={`${enj.btn} ${enj.btnOutline} mb-4`}
+              >
+                ← Back to Dashboard
+              </button>
+              <AttachmentTestScreen />
+            </div>
           ) : activeNav === 'Reports' ? (
             <ProgramReportsPanel
               isActive={activeNav === 'Reports'}
@@ -5775,131 +6155,6 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               screenTitle="Project Pipeline"
               onNotify={(type, message) => setProgramToast({ type, message })}
             />
-          ) : activeNav === 'Dummy' ? (
-            <section className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h1 className={enj.pageTitle}>Dummy</h1>
-              </div>
-              <div className="overflow-x-auto rounded-xl border border-[#E5E7EB] bg-[#eef2f9] px-2 py-2">
-                <table className={`${enj.table} enj-dummy-projects-table min-w-[1160px] text-left`}>
-                  <thead>
-                    <tr>
-                      <th>Project Name</th>
-                      <th>Priority</th>
-                      <th>Project Sponsor</th>
-                      <th>Type</th>
-                      <th>Budget</th>
-                      <th>Starg. Obj</th>
-                      <th>PM</th>
-                      <th>Schedule</th>
-                      <th>Progress Level</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dummyProjectRows.map((row) => (
-                      <tr key={row.projectName} className="enj-dummy-projects-table__row">
-                        <td className={enj.tableLink}>{row.projectName}</td>
-                        <td>{row.priority}</td>
-                        <td>{row.sponsor}</td>
-                        <td>{row.type}</td>
-                        <td>
-                          <span
-                            className={`inline-flex items-center gap-0.5 font-medium ${
-                              row.budgetTrend === 'up'
-                                ? 'text-[#DC2626]'
-                                : row.budgetTrend === 'down'
-                                  ? 'text-[#16A34A]'
-                                  : 'text-[#232360]'
-                            }`}
-                          >
-                            {row.budget}
-                            {row.budgetTrend === 'up' ? <span aria-hidden>↑</span> : null}
-                            {row.budgetTrend === 'down' ? <span aria-hidden>↓</span> : null}
-                          </span>
-                        </td>
-                        <td>{row.strategicObj}</td>
-                        <td>{row.pm}</td>
-                        <td>
-                          <div className="enj-dummy-projects-table__schedule">
-                            <div>
-                              <p className="enj-dummy-projects-table__label">Start date</p>
-                              <p className="enj-dummy-projects-table__value">
-                                <Calendar size={12} className="text-[#9CA3AF]" />
-                                {row.startDate}
-                              </p>
-                            </div>
-                            <div className="enj-dummy-projects-table__schedule-sep" />
-                            <div>
-                              <p className="enj-dummy-projects-table__label">End date</p>
-                              <p className="enj-dummy-projects-table__value">
-                                <Calendar size={12} className="text-[#9CA3AF]" />
-                                {row.endDate}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <div className="enj-table-progress-track w-28">
-                              <div className="enj-table-progress-fill" style={{ width: `${row.progress}%` }} />
-                            </div>
-                            <span className="w-8 text-right text-[10px] tabular-nums text-[#6B7280]">{row.progress}%</span>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`enj-table-status text-[10px] ${row.statusClass}`}>{row.status}</span>
-                        </td>
-                      </tr>
-                    ))}
-                    {dummyProgramRows.map((row) => (
-                      <tr key={row.programName} className="enj-dummy-projects-table__row">
-                        <td className={enj.tableLink}>{row.programName}</td>
-                        <td>{row.category}</td>
-                        <td />
-                        <td />
-                        <td>{row.budget}</td>
-                        <td />
-                        <td>{row.pm}</td>
-                        <td>
-                          <div className="enj-dummy-projects-table__schedule">
-                            <div>
-                              <p className="enj-dummy-projects-table__label">Start date</p>
-                              <p className="enj-dummy-projects-table__value">
-                                <Calendar size={12} className="text-[#9CA3AF]" />
-                                {row.startDate}
-                              </p>
-                            </div>
-                            <div className="enj-dummy-projects-table__schedule-sep" />
-                            <div>
-                              <p className="enj-dummy-projects-table__label">End date</p>
-                              <p className="enj-dummy-projects-table__value">
-                                <Calendar size={12} className="text-[#9CA3AF]" />
-                                {row.endDate}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <div className="enj-table-progress-track w-28">
-                              <div className="enj-table-progress-fill" style={{ width: `${row.progress}%` }} />
-                            </div>
-                            <span className="w-8 text-right text-[10px] tabular-nums text-[#6B7280]">{row.progress}%</span>
-                          </div>
-                        </td>
-                        <td>
-                          <button type="button" className="inline-flex items-center gap-1 text-[12px] font-medium text-[#6B7280]">
-                            PROJECTS
-                            <ChevronDown size={12} className="text-[#6B7280]" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
           ) : activeNav === 'Portfolio' ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
@@ -5945,7 +6200,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                             const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
                             return aStart - bStart;
                           });
-                        const pPct = portfolioProgramProgressById.get(normalizedPid) ?? 0;
+                        const rawPrgPct = Number(row.new_progresslevel ?? NaN);
+                        const pPct = Number.isFinite(rawPrgPct) ? Math.max(0, Math.min(100, rawPrgPct)) : (portfolioProgramProgressById.get(normalizedPid) ?? 0);
                         const start = parseTimelineDate(row.new_startdate);
                         const isExpanded = programPortfolioExpandedKey === programKey;
                         const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
@@ -6026,15 +6282,16 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                             {programProjects.map((project, i) => {
                                               const projectName =
                                                 String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
-                                              const priority = readProjectField(project, ['new_priorityname', 'new_priority']);
-                                              const sponsor = readProjectField(project, ['new_sponsorname', 'new_sponsor']);
+                                              const PRIORITY_MAP_: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+                                              const GOAL_MAP_: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+                                              const priorityRaw_ = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                              const priority = PRIORITY_MAP_[Number(priorityRaw_)] ?? priorityRaw_;
+                                              const sponsor = readProjectField(project, ['crcf8_projectsponsorname', 'crcf8_projectsponsor']);
                                               const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
                                               const budget = readProjectField(project, ['new_budget']);
-                                              const strategicObj = readProjectField(
-                                                project,
-                                                ['new_strategicobjective', 'new_strategicobjectivename', 'new_strategicplan'],
-                                              );
-                                              const manager = readProjectField(project, ['new_projectmanager', 'owneridname', 'new_ownername']);
+                                              const goalRaw_ = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
+                                              const strategicObj = GOAL_MAP_[Number(goalRaw_)] ?? goalRaw_;
+                                              const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
                                               const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
                                               const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
                                               const progressRaw = Number(project.new_progress ?? NaN);
@@ -6053,14 +6310,14 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                               const statusKey = statusLabel.toLowerCase();
                                               return (
                                                 <tr key={`${programKey}-${projectName}-${i}`} className="enj-program-projects-table__row">
-                                                  <td className={`px-3 py-2 font-medium ${enj.tableLink}`}>{projectName}</td>
-                                                  <td className="px-3 py-2">{priority}</td>
-                                                  <td className="px-3 py-2">{sponsor}</td>
-                                                  <td className="px-3 py-2">{projectType}</td>
-                                                  <td className="px-3 py-2"><TableBudgetDisplay value={budget} /></td>
-                                                  <td className="px-3 py-2">{strategicObj}</td>
-                                                  <td className="px-3 py-2">{manager}</td>
-                                                  <td className="px-3 py-2">
+                                                  <td className={`px-3 py-1 font-medium ${enj.tableLink}`}>{projectName}</td>
+                                                  <td className="px-3 py-1">{priority}</td>
+                                                  <td className="px-3 py-1">{sponsor}</td>
+                                                  <td className="px-3 py-1">{projectType}</td>
+                                                  <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
+                                                  <td className="px-3 py-1">{strategicObj}</td>
+                                                  <td className="px-3 py-1">{manager}</td>
+                                                  <td className="px-3 py-1">
                                                     <div className="enj-program-projects-table__schedule">
                                                       <div>
                                                         <p className="enj-program-projects-table__label">Start date</p>
@@ -6079,7 +6336,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                                       </div>
                                                     </div>
                                                   </td>
-                                                  <td className="px-3 py-2 w-32">
+                                                  <td className="px-3 py-1 w-32">
                                                     <div className="flex items-center gap-2">
                                                       <div className="enj-table-progress-track flex-1">
                                                         <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
@@ -6089,7 +6346,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                                       </span>
                                                     </div>
                                                   </td>
-                                                  <td className="px-3 py-2">
+                                                  <td className="px-3 py-1">
                                                     <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
                                                       {statusLabel}
                                                     </span>
@@ -6130,14 +6387,73 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   onNotify={(type, message) => setProgramToast({ type, message })}
                   onSaved={() => setDeliverableListRefresh((k) => k + 1)}
                 />
-              ) : (
-                <DeliverablesListPanel
-                  isActive={activeNav === 'Deliverables' && !showAddDeliverableForm}
-                  refreshKey={deliverableListRefresh}
+              ) : editingDeliverableRow ? (
+                <EditDeliverableFormPanel
+                  row={editingDeliverableRow}
+                  onClose={() => setEditingDeliverableRow(null)}
                   onNotify={(type, message) => setProgramToast({ type, message })}
-                  variant="program"
-                  onNewDeliverable={() => setShowAddDeliverableForm(true)}
+                  onSaved={() => { setEditingDeliverableRow(null); setDeliverableListRefresh((k) => k + 1); }}
                 />
+              ) : (
+                <>
+                  <DeliverablesListPanel
+                    isActive={activeNav === 'Deliverables' && !showAddDeliverableForm && !editingDeliverableRow}
+                    refreshKey={deliverableListRefresh}
+                    onNotify={(type, message) => setProgramToast({ type, message })}
+                    variant="program"
+                    onNewDeliverable={() => setShowAddDeliverableForm(true)}
+                    onEditRequest={(row) => setEditingDeliverableRow(row)}
+                    onDeleteRequest={(row) => setDeletingDeliverableRow(row)}
+                  />
+                  {/* Delete confirm dialog */}
+                  {deletingDeliverableRow && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
+                      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+                        <h3 className="mb-2 text-base font-semibold text-gray-900">Delete Deliverable</h3>
+                        <p className="mb-1 text-sm text-gray-600">
+                          Are you sure you want to delete the deliverable for{' '}
+                          <span className="font-medium text-gray-800">{String(deletingDeliverableRow.new_projectname ?? '—')}</span>?
+                        </p>
+                        <p className="mb-5 text-xs text-gray-400">This action cannot be undone.</p>
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setDeletingDeliverableRow(null)}
+                            className={`${enj.btn} ${enj.btnDefault} text-sm`}
+                            disabled={deletingDeliverableBusy}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const id = String(
+                                (deletingDeliverableRow as unknown as Record<string, unknown>).new_deliverableid ??
+                                (deletingDeliverableRow as unknown as Record<string, unknown>).new_deliverablesid ?? '',
+                              );
+                              if (!id) { setDeletingDeliverableRow(null); return; }
+                              setDeletingDeliverableBusy(true);
+                              try {
+                                await New_deliverablesService.delete(id);
+                                setProgramToast({ type: 'success', message: 'Deliverable deleted.' });
+                                setDeletingDeliverableRow(null);
+                                setDeliverableListRefresh((k) => k + 1);
+                              } catch (e) {
+                                setProgramToast({ type: 'error', message: e instanceof Error ? e.message : 'Failed to delete.' });
+                              } finally {
+                                setDeletingDeliverableBusy(false);
+                              }
+                            }}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                            disabled={deletingDeliverableBusy}
+                          >
+                            {deletingDeliverableBusy ? 'Deleting…' : 'Delete'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </>
           ) : activeNav === 'Meetings' ? (
@@ -6163,16 +6479,16 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
           ) : (
             <>
           <section className="bg-white rounded-xl p-5 shadow-sm chart-card">
-            <h2 className="text-3xl font-bold text-primary mb-4">Overview</h2>
-            <div className="flex flex-wrap items-stretch gap-3">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Overview</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
               {overviewCards.map((card) => (
                 <div
                   key={card.label}
-                  className="w-[152px] rounded-2xl border bg-white px-4 py-3 shadow-sm"
-                  style={{ borderColor: `${card.color}99`, boxShadow: `0 2px 8px ${card.color}22` }}
+                  className="rounded-xl border-2 bg-white px-4 py-4"
+                  style={{ borderColor: card.color }}
                 >
-                  <p className="text-[11px] text-primary text-center">{card.label}</p>
-                  <p className="mt-1 text-4xl leading-none font-bold text-[#111827] text-center">{card.value}</p>
+                  <p className="text-sm text-gray-400 mb-3 leading-tight">{card.label}</p>
+                  <p className="text-3xl font-extrabold text-primary">{card.value}</p>
                 </div>
               ))}
             </div>
@@ -6205,141 +6521,229 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              <div className="bg-gray-50 rounded-lg p-3 min-h-[210px]">
-                <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Budget</h3>
-                <div className="flex items-center gap-1">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-stretch">
+              {/* Budget donut */}
+              <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
+                <h3 className="text-[11px] font-semibold text-gray-600 mb-2 shrink-0">Budget</h3>
+                <div className="flex flex-1 items-center justify-center gap-2 min-h-0">
                   <DonutChart
                     slices={programInsightBudgetSlices}
-                    size={170}
-                    ringWidth={42}
-                    className="w-44 h-44 chart-svg"
+                    size={150}
+                    ringWidth={38}
+                    className="w-36 h-36 shrink-0 chart-svg"
                     showOuterLabels={false}
                   />
-                  <div className="text-[9px] text-gray-500 space-y-1">
+                  <div className="text-[9px] text-gray-500 space-y-1.5">
                     {programInsightBudgetSlices.map((slice) => (
-                      <p key={slice.label}>
-                        <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: slice.color }} />
+                      <p key={slice.label} className="flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: slice.color }} />
                         {slice.label}
                       </p>
                     ))}
                   </div>
                 </div>
               </div>
-              <div className="bg-gray-50 rounded-lg p-3 min-h-[210px]">
-                <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Projects</h3>
-                <div className="space-y-3 mt-4">
-                  {programInsightProjectBars.map((bar) => (
-                    <div key={bar.label}>
-                      <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
-                        <span>{bar.label}</span>
-                        <span>{bar.val}%</span>
+
+              {/* Projects progress bars */}
+              <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
+                <h3 className="text-[11px] font-semibold text-gray-600 mb-2 shrink-0">Projects</h3>
+                <div className="flex flex-1 flex-col justify-center gap-3 min-h-0">
+                  {programInsightProjectBars.map((bar) => {
+                    const v = Math.max(0, Math.min(100, bar.val));
+                    return (
+                      <div key={bar.label} className="flex items-center gap-2">
+                        <div
+                          className="relative h-6 min-w-0 w-full flex-1 overflow-hidden rounded-sm"
+                          style={{ backgroundColor: bar.bg ?? `${bar.color}28` }}
+                        >
+                          <div
+                            className="flex h-6 items-center px-2"
+                            style={{
+                              width: v < 1 ? '0%' : `${v}%`,
+                              minWidth: v >= 1 ? '3.5rem' : '0',
+                              backgroundColor: bar.color,
+                              transition: 'width 0.7s ease',
+                            }}
+                          >
+                            {v >= 1 && (
+                              <span className="truncate text-[9px] font-bold uppercase tracking-wide text-white">{bar.label}</span>
+                            )}
+                          </div>
+                          {v < 1 && (
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-bold uppercase tracking-wide text-gray-400">{bar.label}</span>
+                          )}
+                        </div>
+                        <span className="w-7 shrink-0 text-right text-[9px] font-semibold tabular-nums text-gray-500">{v}%</span>
                       </div>
-                      <div className="h-4 rounded-sm bg-gray-200 overflow-hidden">
-                        <div className="h-full chart-bar" style={{ width: `${bar.val}%`, backgroundColor: bar.color }} />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
-              <div className="bg-gray-50 rounded-lg p-3 min-h-[210px]">
-                <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Milestones</h3>
-                <div className="flex items-center gap-3 mb-1 text-[10px] text-gray-500">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#2563eb]" />Actual</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#f59e0b]" />Planned</span>
-                </div>
-                <svg viewBox="0 0 260 150" className="w-full h-40 chart-svg">
-                  <line x1="10" y1="120" x2="250" y2="120" stroke="#e5e7eb" />
+
+              {/* Deliverables area chart */}
+              <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
+                <h3 className="text-[11px] font-semibold text-gray-600 mb-1 shrink-0">Deliverables</h3>
+                <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
-                    const maxVal = Math.max(1, ...programMilestoneActual, ...programMilestonePlanned);
-                    const xStart = 20;
-                    const xStep = 50;
-                    const yFrom = (v: number) => 120 - (v / maxVal) * 70;
-                    const plannedPoints = programMilestonePlanned.map((v, i) => `${xStart + i * xStep},${yFrom(v)}`).join(' ');
-                    const actualPoints = programMilestoneActual.map((v, i) => `${xStart + i * xStep},${yFrom(v)}`).join(' ');
+                    const monthLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    const CL = 28, CR = 6, CT = 8, CB = 18;
+                    const VW = 320, VH = 160;
+                    const chartW = VW - CL - CR, chartH = VH - CT - CB;
+                    const chartX = CL, chartY = CT, chartBottom = CT + chartH;
+                    const maxV = Math.max(1, ...programDeliverableDelayed, ...programDeliverableDelivered, ...programDeliverablePending);
+                    const tickStep = Math.max(1, Math.ceil(maxV / 4));
+                    const niceMax = tickStep * 4;
+                    const yTicks = [0, 1, 2, 3, 4].map((t) => t * tickStep);
+                    const yCoord = (v: number) => chartBottom - (v / niceMax) * chartH;
+                    const n = 12;
+                    const xCoord = (i: number) => chartX + i * (chartW / (n - 1));
+                    const linePoints = (arr: number[]) => arr.map((v, i) => `${xCoord(i)},${yCoord(v)}`).join(' ');
+                    const areaPoints = (arr: number[]) => `${xCoord(0)},${chartBottom} ${linePoints(arr)} ${xCoord(n - 1)},${chartBottom}`;
+                    const isEmpty = programDeliverableDelivered.every((v) => v === 0) && programDeliverablePending.every((v) => v === 0) && programDeliverableDelayed.every((v) => v === 0);
                     return (
-                      <>
-                        <polygon points={`10,120 ${actualPoints} 250,120`} fill="#2563eb" opacity="0.9" />
-                        <polygon points={`10,120 ${plannedPoints} 250,120`} fill="#f59e0b" opacity="0.9" />
-                        <polyline points={plannedPoints} fill="none" stroke="#ef4444" strokeWidth="2" />
-                        {programMilestoneLabels.map((m, i) => (
-                          <text key={m + i} x={xStart + i * xStep - 8} y="136" fontSize="8" fill="#9ca3af">{m}</text>
+                      <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full flex-1 chart-svg">
+                        {yTicks.map((tick) => {
+                          const y = yCoord(tick);
+                          return (
+                            <g key={tick}>
+                              <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" />
+                              <text x={chartX - 4} y={y + 3} fontSize="7" fill="#9ca3af" textAnchor="end">{tick}</text>
+                            </g>
+                          );
+                        })}
+                        {isEmpty
+                          ? <text x={chartX + chartW / 2} y={chartY + chartH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No deliverable data</text>
+                          : <>
+                            <polygon points={areaPoints(programDeliverableDelivered)} fill="#2563eb" opacity="0.8" />
+                            <polygon points={areaPoints(programDeliverablePending)} fill="#f59e0b" opacity="0.8" />
+                            <polygon points={areaPoints(programDeliverableDelayed)} fill="#dc2626" opacity="0.8" />
+                            <polyline points={linePoints(programDeliverableDelivered)} fill="none" stroke="#2563eb" strokeWidth="1.5" />
+                            <polyline points={linePoints(programDeliverablePending)} fill="none" stroke="#f59e0b" strokeWidth="1.5" />
+                            <polyline points={linePoints(programDeliverableDelayed)} fill="none" stroke="#dc2626" strokeWidth="1.5" />
+                            {programDeliverableDelivered.map((v, i) => <circle key={i} cx={xCoord(i)} cy={yCoord(v)} r="2" fill="#2563eb" stroke="white" strokeWidth="0.8" />)}
+                            {programDeliverablePending.map((v, i) => <circle key={i} cx={xCoord(i)} cy={yCoord(v)} r="2" fill="#f59e0b" stroke="white" strokeWidth="0.8" />)}
+                            {programDeliverableDelayed.map((v, i) => <circle key={i} cx={xCoord(i)} cy={yCoord(v)} r="2" fill="#dc2626" stroke="white" strokeWidth="0.8" />)}
+                          </>
+                        }
+                        {monthLabels.map((m, i) => (
+                          <text key={m} x={xCoord(i)} y={chartBottom + 12} fontSize="6.5" fill="#9ca3af" textAnchor="middle">{m}</text>
                         ))}
-                      </>
+                      </svg>
                     );
                   })()}
-                </svg>
+                  <div className="flex items-center justify-center gap-3 mt-1 shrink-0">
+                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#2563eb]" />Delivered</span>
+                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#f59e0b]" />To Be Delivered</span>
+                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#dc2626]" />Delayed</span>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
 
 
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <div className="bg-white rounded-xl p-4 shadow-sm chart-card">
-              <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Actual Vs Planned</h3>
-              <div className="flex items-center gap-3 mb-2 text-[10px] text-gray-500">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#d4b06a]" />Actual</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#9b6f2c]" />Planned</span>
+            {/* ── Actual VS Planned ── */}
+            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <h3 className="text-[11px] font-semibold text-gray-600">Actual VS Planned</h3>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d4b06a]" />Actual</span>
+                  <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#9b6f2c]" />Planned</span>
+                </div>
               </div>
-              <svg viewBox="0 0 500 180" className="w-full h-40 chart-svg">
-                {(() => {
-                  const maxValue = Math.max(1, ...programChartActual, ...programChartPlanned);
-                  const axisTicks = Array.from({ length: 6 }, (_, i) => Math.round((maxValue * i) / 5));
-                  return axisTicks.map((v) => (
-                    <g key={v}>
-                      <line x1="28" x2="492" y1={150 - (v / maxValue) * 120} y2={150 - (v / maxValue) * 120} stroke="#eef2f7" />
-                      <text x="6" y={154 - (v / maxValue) * 120} fontSize="8" fill="#9ca3af">{v}</text>
-                    </g>
-                  ));
-                })()}
-                {['J','F','M','A','M','J','J','A','S','O','N','D'].map((m, i) => {
-                  const maxValue = Math.max(1, ...programChartActual, ...programChartPlanned);
-                  const actual = programChartActual[i] ?? 0;
-                  const planned = programChartPlanned[i] ?? 0;
-                  const actualHeight = (actual / maxValue) * 120;
-                  const plannedHeight = (planned / maxValue) * 120;
-                  const x = 34 + i * 38;
-                  return (
-                    <g key={m + i}>
-                      <rect className="chart-bar" x={x} y={150 - actualHeight} width="10" height={actualHeight} rx="2" fill="#d4b06a" />
-                      <rect className="chart-bar" x={x + 12} y={150 - plannedHeight} width="10" height={plannedHeight} rx="2" fill="#9b6f2c" />
-                      <text x={x + 10} y="168" textAnchor="middle" fontSize="8" fill="#9ca3af">{m}</text>
-                    </g>
-                  );
-                })}
-              </svg>
+              {(() => {
+                const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
+                const VW = 560, VH = 185;
+                const chartW = VW - CL - CR - TL, chartH = VH - CT - CB;
+                const chartX = CL, chartY = CT, chartBottom = CT + chartH;
+                const monthLabels = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                const maxV = Math.max(1, ...programChartActual, ...programChartPlanned);
+                const tickStep = Math.max(1, Math.ceil(maxV / 5));
+                const niceMax = tickStep * 5;
+                const yTicks = [0, 1, 2, 3, 4, 5].map((t) => t * tickStep);
+                const yCoord = (v: number) => chartBottom - (v / niceMax) * chartH;
+                const slotW = chartW / 12;
+                const barW = Math.max(4, Math.min(10, slotW / 3));
+                const gap = 2;
+                const groupW = barW * 2 + gap;
+                const isEmpty = programChartActual.every((v, i) => v === 0 && (programChartPlanned[i] ?? 0) === 0);
+                return (
+                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
+                    {yTicks.map((tick) => {
+                      const y = yCoord(tick);
+                      return (
+                        <g key={tick}>
+                          <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" />
+                          <text x={chartX - 4} y={y + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
+                        </g>
+                      );
+                    })}
+                    {isEmpty && <text x={chartX + chartW / 2} y={chartY + chartH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No budget data available</text>}
+                    {monthLabels.map((label, i) => {
+                      const slotX = chartX + i * slotW + (slotW - groupW) / 2;
+                      const aH = Math.max(1, ((programChartActual[i] ?? 0) / niceMax) * chartH);
+                      const pH = Math.max(1, ((programChartPlanned[i] ?? 0) / niceMax) * chartH);
+                      return (
+                        <g key={label}>
+                          <rect x={slotX} y={chartBottom - aH} width={barW} height={aH} fill="#d4b06a" rx="1" className="chart-bar" />
+                          <rect x={slotX + barW + gap} y={chartBottom - pH} width={barW} height={pH} fill="#9b6f2c" rx="1" className="chart-bar" />
+                          <text x={slotX + groupW / 2} y={chartBottom + 14} fontSize="7" fill="#9ca3af" textAnchor="middle">{label.slice(0, 3)}</text>
+                        </g>
+                      );
+                    })}
+                    <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>TIMELINE</text>
+                  </svg>
+                );
+              })()}
             </div>
-            <div className="bg-white rounded-xl p-4 shadow-sm chart-card">
-              <h3 className="text-[11px] font-semibold text-gray-600 mb-2">Budget Deviation</h3>
-              <svg viewBox="0 0 460 160" className="w-full h-36 chart-svg">
-                <line x1="10" y1="80" x2="450" y2="80" stroke="#d1d5db" />
-                {(() => {
-                  const maxAbs = Math.max(1, ...programChartDeviation.map((v) => Math.abs(v)));
-                  const tickVals = [-1, -0.5, 0, 0.5, 1].map((p) => Math.round(p * maxAbs));
-                  return tickVals.map((v) => (
-                    <text key={v} x="0" y={80 - (v / maxAbs) * 60} fontSize="8" fill="#9ca3af">{v}</text>
-                  ));
-                })()}
-                {programChartDeviation.map((v, i) => {
-                  const maxAbs = Math.max(1, ...programChartDeviation.map((n) => Math.abs(n)));
-                  const height = (Math.abs(v) / maxAbs) * 60;
-                  return (
-                    <rect
-                      key={i}
-                      x={18 + i * 36}
-                      y={v >= 0 ? 80 - height : 80}
-                      width="14"
-                      height={height}
-                      className="chart-bar"
-                      fill={v >= 0 ? '#ef4444' : '#2563eb'}
-                      rx="2"
-                    />
-                  );
-                })}
-                {['J','F','M','A','M','J','J','A','S','O','N','D'].map((m, i) => (
-                  <text key={m + i} x={25 + i * 36} y="154" fontSize="8" fill="#9ca3af">{m}</text>
-                ))}
-              </svg>
+
+            {/* ── Deviation ── */}
+            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4 min-w-0">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
+              <h3 className="text-[11px] font-semibold text-gray-600 mb-2 shrink-0">Deviation</h3>
+              {(() => {
+                const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
+                const VW = 560, VH = 185;
+                const chartW = VW - CL - CR - TL, chartH = VH - CT - CB;
+                const chartX = CL, chartY = CT;
+                const monthLabels = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+                const maxAbs = Math.max(1, ...programChartDeviation.map((x) => Math.abs(x)));
+                const absStep = Math.max(1, Math.ceil(maxAbs / 3));
+                const niceAbs = absStep * 3;
+                const midY = chartY + chartH / 2;
+                const halfH = chartH / 2;
+                const yTicks = [-3, -2, -1, 0, 1, 2, 3].map((t) => t * absStep);
+                const yCoord = (v: number) => midY - (v / niceAbs) * halfH;
+                const slotW = chartW / 12;
+                const barW = Math.max(4, Math.min(10, slotW / 2.5));
+                return (
+                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
+                    {yTicks.map((tick) => {
+                      const y = yCoord(tick);
+                      return (
+                        <g key={tick}>
+                          <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke={tick === 0 ? '#9ca3af' : '#e5e7eb'} strokeWidth={tick === 0 ? '1' : '0.6'} />
+                          <text x={chartX - 4} y={y + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
+                        </g>
+                      );
+                    })}
+                    {monthLabels.map((label, i) => {
+                      const v = programChartDeviation[i] ?? 0;
+                      const h = Math.max(1, (Math.abs(v) / niceAbs) * halfH);
+                      const slotX = chartX + i * slotW + (slotW - barW) / 2;
+                      return (
+                        <g key={label}>
+                          <rect x={slotX} y={v >= 0 ? yCoord(v) : midY} width={barW} height={h} fill={v >= 0 ? '#d4b06a' : '#9b6f2c'} rx="1" className="chart-bar" />
+                          <text x={slotX + barW / 2} y={chartY + chartH + 14} fontSize="7" fill="#9ca3af" textAnchor="middle">{label.slice(0, 3)}</text>
+                        </g>
+                      );
+                    })}
+                    <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>TIMELINE</text>
+                  </svg>
+                );
+              })()}
             </div>
           </section>
           <section className="space-y-3 rounded-xl border border-[#d6dbe8] bg-white p-3 shadow-sm">
@@ -6348,7 +6752,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               <button
                 type="button"
                 onClick={() => setActiveNav('Portfolio')}
-                className={`${enj.btn} ${enj.btnOutline} h-8 px-3 text-xs font-semibold`}
+                className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
               >
                 View All
               </button>
@@ -6465,15 +6869,16 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                         {programProjects.map((project, i) => {
                                           const projectName =
                                             String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
-                                          const priority = readProjectField(project, ['new_priorityname', 'new_priority']);
-                                          const sponsor = readProjectField(project, ['new_sponsorname', 'new_sponsor']);
+                                          const PRIORITY_MAP_: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+                                          const GOAL_MAP_: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+                                          const priorityRaw_ = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                          const priority = PRIORITY_MAP_[Number(priorityRaw_)] ?? priorityRaw_;
+                                          const sponsor = readProjectField(project, ['crcf8_projectsponsorname', 'crcf8_projectsponsor']);
                                           const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
                                           const budget = readProjectField(project, ['new_budget']);
-                                          const strategicObj = readProjectField(
-                                            project,
-                                            ['new_strategicobjective', 'new_strategicobjectivename', 'new_strategicplan'],
-                                          );
-                                          const manager = readProjectField(project, ['new_projectmanager', 'owneridname', 'new_ownername']);
+                                          const goalRaw_ = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
+                                          const strategicObj = GOAL_MAP_[Number(goalRaw_)] ?? goalRaw_;
+                                          const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
                                           const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
                                           const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
                                           const progressRaw = Number(project.new_progress ?? NaN);
@@ -6644,10 +7049,12 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   const [showAllProjectsScreen, setShowAllProjectsScreen] = useState(false);
   const [projectSearchText, setProjectSearchText] = useState('');
   const [projectStatusFilterValue, setProjectStatusFilterValue] = useState('All');
+  const [allProjectsPage, setAllProjectsPage] = useState(1);
+  const ALL_PROJECTS_PAGE_SIZE = 6;
   /** Insights bar charts: All Projects or a single project (filters in-memory rows). */
   const [insightProjectFilter, setInsightProjectFilter] = useState<string>('all');
   const navItems = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+    { name: 'Dashboard', icon: <LayoutGrid size={16} /> },
     { name: 'Projects', icon: <Briefcase size={16} /> },
     { name: 'Team Management', icon: <Users size={16} /> },
     { name: 'Tasks', icon: <CheckSquare size={16} /> },
@@ -6691,10 +7098,13 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
     if (raw === 100000001) return 'On Track';
     return 'To Start';
   };
-  const projectObjectiveLabel = (row: Record<string, unknown>) =>
-    String(row.new_strategicgoalname ?? row.new_strategicgoal ?? '—').trim() || '—';
+  const STRATEGIC_GOAL_MAP: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+  const projectObjectiveLabel = (row: Record<string, unknown>) => {
+    const raw = String(row.new_strategicgoalname ?? row.new_strategicgoal ?? '').trim();
+    return (STRATEGIC_GOAL_MAP[Number(raw)] ?? raw) || '—';
+  };
   const projectSponsorLabel = (row: Record<string, unknown>) =>
-    String(row.new_projectsponsorname ?? row.new_projectsponsor ?? '—').trim() || '—';
+    String(row.crcf8_projectsponsorname ?? row.crcf8_projectsponsor ?? '—').trim() || '—';
   const projectCategoryLabel = (row: Record<string, unknown>) =>
     String(row.new_projectcategoryname ?? row.new_projectcategory ?? '—').trim() || '—';
   const readProjectName = (row: Record<string, unknown>) =>
@@ -6777,40 +7187,36 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
     const months = 12;
     const now = new Date();
     const labels: string[] = [];
-    const monthStarts: Date[] = [];
-    for (let i = months - 1; i >= 0; i -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      monthStarts.push(d);
+    for (let i = 0; i < months; i += 1) {
+      const d = new Date(now.getFullYear(), i, 1);
       labels.push(d.toLocaleDateString(undefined, { month: 'short' }));
     }
-    const monthEnd = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
-    const inRange = (d: Date | null, start: Date, end: Date) => d && d >= start && d <= end;
-    const planned: number[] = [];
-    const actual: number[] = [];
-    for (let mi = 0; mi < months; mi += 1) {
-      const start = monthStarts[mi]!;
-      const end = monthEnd(start);
-      let p = 0;
-      let a = 0;
-      for (const row of dashboardTasks) {
-        const due = parseTimelineDate(row.new_enddate);
-        if (inRange(due, start, end)) p += 1;
-        const st = String(row.new_taskstatusname ?? '').toLowerCase();
-        const stn = Number(row.new_taskstatus ?? NaN);
-        const completed = st.includes('complet') || stn === 100000002;
-        const doneDate = parseTimelineDate(row.new_taskcompleteddate) ?? (completed ? parseTimelineDate(row.modifiedon) : null);
-        if (completed && inRange(doneDate, start, end)) a += 1;
-      }
-      planned.push(p);
-      actual.push(a);
+    const budgetPlanned = Array(months).fill(0) as number[];
+    const budgetActual = Array(months).fill(0) as number[];
+    for (const row of dashboardProjects) {
+      const d = new Date(String(row.new_startdate ?? row.createdon ?? ''));
+      if (Number.isNaN(d.getTime()) || d.getFullYear() !== now.getFullYear()) continue;
+      const mi = d.getMonth();
+      const bu = Number(row.new_budget ?? 0);
+      const act = Number(row.new_actualamount ?? 0);
+      if (bu > 0) budgetPlanned[mi] += bu;
+      if (act > 0) budgetActual[mi] += act;
     }
+    const bmax = Math.max(1, ...budgetPlanned, ...budgetActual);
+    const toScale = (v: number) => (v / bmax) * 600;
+    const planned = budgetPlanned.map(toScale);
+    const actual = budgetActual.map(toScale);
+    const deviation = budgetPlanned.map((p, i) => {
+      const a = budgetActual[i] ?? 0;
+      const val = p > 0 ? ((a - p) / p) * 100 : a > 0 ? 30 : 0;
+      return Math.max(-30, Math.min(30, val));
+    });
     const allVals = [...planned, ...actual];
     const m = Math.max(1, ...allVals, 0);
     const barH = (v: number) => Math.min(100, Math.round((v / m) * 92));
-    const dev = planned.map((pl, i) => (actual[i] ?? 0) - pl);
-    const maxAbs = Math.max(1, ...dev.map((x) => Math.abs(x)));
-    return { labels, planned, actual, plannedHeights: planned.map(barH), actualHeights: actual.map((v) => barH(v)), deviation: dev, maxAbs };
-  }, [dashboardTasks]);
+    const maxAbs = Math.max(1, ...deviation.map((x) => Math.abs(x)));
+    return { labels, planned, actual, plannedHeights: planned.map(barH), actualHeights: actual.map((v) => barH(v)), deviation, maxAbs };
+  }, [dashboardProjects]);
   const workloadBars = useMemo(() => {
     const weeks = 11;
     const now = new Date();
@@ -7059,6 +7465,9 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
       return [name, status, start, end].some((v) => v.toLowerCase().includes(q));
     });
   }, [dashboardProjects, projectSearchText, projectStatusFilterValue]);
+  const allProjectsTotalPages = Math.max(1, Math.ceil(filteredAllProjects.length / ALL_PROJECTS_PAGE_SIZE));
+  const pagedAllProjects = filteredAllProjects.slice((allProjectsPage - 1) * ALL_PROJECTS_PAGE_SIZE, allProjectsPage * ALL_PROJECTS_PAGE_SIZE);
+  useEffect(() => { setAllProjectsPage(1); }, [projectSearchText, projectStatusFilterValue]);
   const insightProjectNames = useMemo(
     () => Array.from(new Set(dashboardProjects.map((p) => readProjectName(p)).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     [dashboardProjects],
@@ -7075,26 +7484,26 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   }, [dashboardTasks, insightProjectFilter]);
   const projectInsights = useMemo(() => {
     const P = {
-      green: { fg: '#00C853', bg: '#E8F5E9' },
-      blue: { fg: '#0061FE', bg: '#E8EEF8' },
-      amber: { fg: '#FFB300', bg: '#FFF8E1' },
-      red: { fg: '#D32F2F', bg: '#FFEBEE' },
+      gray:   { fg: '#6b7280', bg: '#f3f4f6' },
+      green:  { fg: '#059669', bg: '#d1fae5' },
+      blue:   { fg: '#1d4ed8', bg: '#dbeafe' },
+      red:    { fg: '#dc2626', bg: '#fee2e2' },
+      yellow: { fg: '#b45309', bg: '#fef3c7' },
     } as const;
-    const projectStatus = { onTrack: 0, completed: 0, toStart: 0, delayed: 0 };
+    const projectStatus = { toStart: 0, onTrack: 0, completed: 0, delayed: 0 };
     insightScopedProjects.forEach((row) => {
       const s = projectStatusLabel(row).toLowerCase();
       if (s.includes('complet')) projectStatus.completed += 1;
       else if (s.includes('delay')) projectStatus.delayed += 1;
       else if (s.includes('on track') || (s.includes('track') && !s.includes('not'))) projectStatus.onTrack += 1;
-      else if (s.includes('start') || s.includes('to start')) projectStatus.toStart += 1;
       else projectStatus.toStart += 1;
     });
     const projectTotal = Math.max(1, insightScopedProjects.length);
     const progressBars = [
-      { label: 'ON TRACK', value: Math.round((projectStatus.onTrack / projectTotal) * 100), ...P.green },
-      { label: 'COMPLETED', value: Math.round((projectStatus.completed / projectTotal) * 100), ...P.blue },
-      { label: 'TO START', value: Math.round((projectStatus.toStart / projectTotal) * 100), ...P.amber },
-      { label: 'DELAYED', value: Math.round((projectStatus.delayed / projectTotal) * 100), ...P.red },
+      { label: 'TO START',  value: Math.round((projectStatus.toStart   / projectTotal) * 100), ...P.gray  },
+      { label: 'ON TRACK',  value: Math.round((projectStatus.onTrack   / projectTotal) * 100), ...P.green },
+      { label: 'COMPLETED', value: Math.round((projectStatus.completed / projectTotal) * 100), ...P.blue  },
+      { label: 'DELAYED',   value: Math.round((projectStatus.delayed   / projectTotal) * 100), ...P.red   },
     ];
 
     const taskStatus = { inProgress: 0, newTasks: 0, completed: 0, delayed: 0 };
@@ -7112,7 +7521,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
       { label: 'TO DO', value: Math.round((taskStatus.newTasks / taskTotal) * 100), ...P.green },
       { label: 'IN PROGRESS', value: Math.round((taskStatus.inProgress / taskTotal) * 100), ...P.blue },
       { label: 'DELAYED', value: Math.round((taskStatus.delayed / taskTotal) * 100), ...P.red },
-      { label: 'DONE', value: Math.round((taskStatus.completed / taskTotal) * 100), ...P.amber },
+      { label: 'DONE', value: Math.round((taskStatus.completed / taskTotal) * 100), ...P.yellow },
     ];
 
     const categoryMap = new Map<string, number>();
@@ -7590,8 +7999,9 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
       <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
-        <div className="px-5 py-5 border-b border-gray-100">
+        <div className="h-14 border-b border-gray-100 px-4 flex items-center gap-3">
           <LogoMark />
+          <span className="text-base sm:text-lg font-bold tracking-wide text-[#232360]">ENJAZ</span>
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-1">
           {navItems.map(({ name, icon }) => (
@@ -7623,15 +8033,18 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                     setProjectSubIssueFromDetail(false);
                   }
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  activeNav === name ? 'bg-amber-50 text-primary' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-700'
+                className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  activeNav === name ? 'text-[#A08149] font-semibold' : 'text-[#344054] hover:bg-gray-50 hover:text-[#344054]'
                 }`}
               >
+                {activeNav === name && (
+                  <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-[#A08149]" />
+                )}
                 <span className="flex min-w-0 items-center gap-3 text-left">
                   {icon}
                   <span className="truncate whitespace-nowrap">{name}</span>
                 </span>
-                {name === 'Team Management' && <ChevronDown size={12} className={`shrink-0 ${activeNav === 'Team Management' ? 'text-primary' : 'text-gray-400'}`} />}
+                {name === 'Team Management' && <ChevronDown size={12} className={`shrink-0 ${activeNav === 'Team Management' ? 'text-[#A08149]' : 'text-gray-400'}`} />}
               </button>
               {name === 'Team Management' && activeNav === 'Team Management' && (
                 <div className="ml-9 mt-1 space-y-1">
@@ -7667,7 +8080,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
 
         <main
           className={`enj-app-main flex-1 min-h-0 min-w-0 flex flex-col ${
-            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow)
+            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen)
               ? 'overflow-hidden'
               : 'overflow-y-auto'
           }`}
@@ -7683,7 +8096,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
           )}
           <div
             className={
-              activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow)
+              activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen)
                 ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0'
                 : 'space-y-4'
             }
@@ -7868,9 +8281,6 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                         setShowAddTaskForm(false);
                       }}
                       onTaskDelete={requestDeleteProjectTask}
-                      onTimeSheet={() =>
-                        setProjectDashToast({ type: 'info', message: 'Time Sheet: connect this to your timesheet or canvas app URL.' })
-                      }
                     />
                   </div>
                 </div>
@@ -8116,7 +8526,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
 
                   <section className="overflow-hidden rounded-xl border border-gray-200/90 bg-white shadow-sm">
                     <div className="w-full min-w-0">
-                      <table className="w-full min-w-0 table-fixed border-collapse text-left">
+                      <table className={`${enj.table} w-full min-w-0 table-fixed text-left`}>
                         <colgroup>
                           <col style={{ width: '10%' }} />
                           <col style={{ width: '5%' }} />
@@ -8483,7 +8893,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 ) : (
                   <>
-                    <table className="w-full">
+                    <table className={`${enj.table} w-full`}>
                       <thead className="bg-gray-50 border-b border-gray-100">
                         {teamTab === 'Evaluation' ? (
                           <tr className="text-[11px] text-gray-400 text-left">
@@ -8597,94 +9007,94 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
           ) : activeNav === 'Projects' ? (
             <ProgramProjectsSection todayIso={todayIso} onToast={setProjectDashToast} />
           ) : activeNav === 'Dashboard' && showAllProjectsScreen ? (
-            <section className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-900">All Projects</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowAllProjectsScreen(false)}
-                  className="text-sm text-gray-500 hover:text-gray-800"
-                >
-                  Back
-                </button>
+            <section className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full min-h-0">
+              <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <h3 className="text-base font-bold text-gray-900">All Projects</h3>
+                <div className="flex items-center gap-3">
+                  <input
+                    value={projectSearchText}
+                    onChange={(e) => setProjectSearchText(e.target.value)}
+                    placeholder="Search project…"
+                    className="h-7 w-48 rounded border border-gray-200 px-2 text-xs outline-none focus:border-secondary"
+                  />
+                  <select
+                    value={projectStatusFilterValue}
+                    onChange={(e) => setProjectStatusFilterValue(e.target.value)}
+                    className="h-7 rounded border border-gray-200 px-2 text-xs text-gray-700 outline-none focus:border-secondary"
+                  >
+                    {allProjectStatusOptions.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllProjectsScreen(false)}
+                    className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-2 h-7"
+                  >
+                    Back
+                  </button>
+                </div>
               </div>
-              <div className="px-5 py-4 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between border-b border-gray-100">
-                <input
-                  value={projectSearchText}
-                  onChange={(e) => setProjectSearchText(e.target.value)}
-                  placeholder="Search project, status, or date"
-                  className="h-9 w-full sm:w-72 rounded-md border border-gray-200 px-3 text-sm outline-none focus:border-secondary"
-                />
-                <select
-                  value={projectStatusFilterValue}
-                  onChange={(e) => setProjectStatusFilterValue(e.target.value)}
-                  className="h-9 rounded-md border border-gray-200 px-3 text-sm text-gray-700 outline-none focus:border-secondary"
-                >
-                  {allProjectStatusOptions.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="max-h-[70vh] overflow-auto">
-                <table className="w-full">
-                  <thead className="bg-[#eaecf3] border-b border-gray-100 sticky top-0">
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <table className={`${enj.table} w-full`}>
+                  <thead className="bg-[#eaecf3] border-b border-gray-100">
                     <tr className="text-xs font-semibold text-[#6d7488] text-left">
-                      <th className="px-3 py-2">Project Name</th>
-                      <th className="px-3 py-2">Strategic Objective</th>
-                      <th className="px-3 py-2">Project Sponsor</th>
-                      <th className="px-3 py-2">Budget</th>
-                      <th className="px-3 py-2">Category</th>
-                      <th className="px-3 py-2">Start Date</th>
-                      <th className="px-3 py-2">Progress Level</th>
-                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-1.5">Project Name</th>
+                      <th className="px-3 py-1.5">Strategic Objective</th>
+                      <th className="px-3 py-1.5">Project Sponsor</th>
+                      <th className="px-3 py-1.5">Budget</th>
+                      <th className="px-3 py-1.5">Category</th>
+                      <th className="px-3 py-1.5">Start Date</th>
+                      <th className="px-3 py-1.5">Progress Level</th>
+                      <th className="px-3 py-1.5">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAllProjects.length === 0 && (
+                    {pagedAllProjects.length === 0 && (
                       <tr>
                         <td colSpan={8} className="px-3 py-8 text-center text-xs text-gray-500">No matching projects found.</td>
                       </tr>
                     )}
-                    {filteredAllProjects.map((row) => {
+                    {pagedAllProjects.map((row) => {
                       const name = String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
                       const status = projectStatusLabel(row);
                       const progress = projectProgressPct(row);
                       return (
-                        <tr key={`screen-${String(row.new_projectid ?? row.createdon ?? name)}`} className="border-b border-[#ececf3] text-sm text-[#4c556d]">
-                          <td className="px-3 py-2">{name}</td>
-                          <td className="px-3 py-2">{projectObjectiveLabel(row)}</td>
-                          <td className="px-3 py-2">{projectSponsorLabel(row)}</td>
-                          <td className="px-3 py-2">{projectBudgetLabel(row)}</td>
-                          <td className="px-3 py-2">{projectCategoryLabel(row)}</td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-3">
+                        <tr key={`screen-${String(row.new_projectid ?? row.createdon ?? name)}`} className="border-b border-[#ececf3] text-xs text-[#4c556d]">
+                          <td className="px-3 py-1.5">{name}</td>
+                          <td className="px-3 py-1.5">{projectObjectiveLabel(row)}</td>
+                          <td className="px-3 py-1.5">{projectSponsorLabel(row)}</td>
+                          <td className="px-3 py-1.5">{projectBudgetLabel(row)}</td>
+                          <td className="px-3 py-1.5">{projectCategoryLabel(row)}</td>
+                          <td className="px-3 py-1.5">
+                            <div className="flex items-center gap-2">
                               <div>
-                                <p className="text-[10px] text-[#40475d]">Start Date</p>
-                                <p className="text-[10px] text-[#7b8193] flex items-center gap-1">
-                                  <Calendar size={12} className="text-[#9aa1b4]" />
+                                <p className="text-[10px] text-[#40475d]">Start</p>
+                                <p className="text-[10px] text-[#7b8193] flex items-center gap-0.5">
+                                  <Calendar size={10} className="text-[#9aa1b4]" />
                                   {projectDateLabel(row.new_startdate)}
                                 </p>
                               </div>
-                              <div className="w-px h-8 bg-[#d9dbe5]" />
+                              <div className="w-px h-6 bg-[#d9dbe5]" />
                               <div>
-                                <p className="text-[10px] text-[#40475d]">End Date</p>
-                                <p className="text-[10px] text-[#7b8193] flex items-center gap-1">
-                                  <Calendar size={12} className="text-[#9aa1b4]" />
+                                <p className="text-[10px] text-[#40475d]">End</p>
+                                <p className="text-[10px] text-[#7b8193] flex items-center gap-0.5">
+                                  <Calendar size={10} className="text-[#9aa1b4]" />
                                   {projectDateLabel(row.new_enddate)}
                                 </p>
                               </div>
                             </div>
                           </td>
-                          <td className="px-3 py-2">
-                            <div className="w-[160px]">
-                              <p className="text-[11px] text-[#8c93a6] text-right mb-1">{progress}%</p>
-                              <div className="h-3 rounded-full bg-[#e5e7eb] overflow-hidden">
-                                <div className="h-full rounded-full bg-blue-600 enj-progress-fill" style={{ width: `${progress}%` }} />
+                          <td className="px-3 py-1.5">
+                            <div className="w-[120px]">
+                              <p className="text-[10px] text-[#8c93a6] text-right mb-0.5">{progress}%</p>
+                              <div className="enj-table-progress-track">
+                                <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
                               </div>
                             </div>
                           </td>
-                          <td className="px-3 py-2">
-                            <span className={`inline-block min-w-[90px] text-center px-2 py-1 rounded-md text-[11px] font-semibold ${projectStatusClass(status)}`}>
+                          <td className="px-3 py-1.5">
+                            <span className={`enj-table-status ${projectStatusClass(status)}`}>
                               {status}
                             </span>
                           </td>
@@ -8694,53 +9104,128 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                   </tbody>
                 </table>
               </div>
+              <PagerBar
+                page={allProjectsPage}
+                pageSize={ALL_PROJECTS_PAGE_SIZE}
+                total={filteredAllProjects.length}
+                onPrev={() => setAllProjectsPage((p) => Math.max(1, p - 1))}
+                onNext={() => setAllProjectsPage((p) => Math.min(allProjectsTotalPages, p + 1))}
+              />
             </section>
           ) : (
             <>
-          <section className="bg-white rounded-xl p-4 shadow-sm">
-            <h2 className="text-sm font-bold text-gray-900 mb-3">Overview</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mb-3">
+          <section className="bg-white rounded-xl p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Overview</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
               {overview.map((item) => (
-                <div key={item.label} className="border rounded-lg px-3 py-2" style={{ borderColor: `${item.color}88` }}>
-                  <p className="text-[10px] text-gray-400">{item.label}</p>
-                  <p className={enj.pageTitle}>{item.value}</p>
+                <div key={item.label} className="rounded-xl border-2 bg-white px-4 py-4" style={{ borderColor: item.color }}>
+                  <p className="text-sm text-gray-400 mb-3 leading-tight">{item.label}</p>
+                  <p className="text-3xl font-extrabold text-primary">{item.value}</p>
                 </div>
               ))}
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <h3 className="text-[11px] text-gray-500 mb-1">Actual Vs Planned</h3>
-                <svg viewBox="0 0 500 120" className="w-full h-28 chart-svg">
-                  {projectDashboardTrends.plannedHeights.map((v, i) => (
-                    <g key={i}>
-                      <rect x={22 + i * 38} y={100 - v} width="10" height={v} className="chart-bar" fill="#2563eb" />
-                      <rect x={34 + i * 38} y={100 - (projectDashboardTrends.actualHeights[i] ?? 0)} width="10" height={projectDashboardTrends.actualHeights[i] ?? 0} className="chart-bar" fill="#ef4444" />
-                    </g>
-                  ))}
-                  {projectDashboardTrends.planned.every((p, i) => p === 0 && (projectDashboardTrends.actual[i] ?? 0) === 0) && (
-                    <text x="250" y="60" textAnchor="middle" fontSize="9" fill="#9ca3af">No task data for this range</text>
-                  )}
-                </svg>
+              {/* ── Actual VS Planned ── */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Budgeting</p>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold text-gray-900">Actual VS Planned</h3>
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#ef4444]" />Actual</span>
+                    <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#2563eb]" />Planned</span>
+                  </div>
+                </div>
+                {(() => {
+                  const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
+                  const VW = 560, VH = 185;
+                  const chartW = VW - CL - CR - TL, chartH = VH - CT - CB;
+                  const chartX = CL, chartY = CT, chartBottom = CT + chartH;
+                  const { planned, actual, labels, deviation: _d, maxAbs: _m } = projectDashboardTrends;
+                  const maxV = Math.max(1, ...planned, ...actual);
+                  const tickStep = Math.max(1, Math.ceil(maxV / 5));
+                  const niceMax = tickStep * 5;
+                  const yTicks = [0, 1, 2, 3, 4, 5].map((t) => t * tickStep);
+                  const yCoord = (v: number) => chartBottom - (v / niceMax) * chartH;
+                  const slotW = chartW / 12;
+                  const barW = Math.max(4, Math.min(10, slotW / 3));
+                  const gap = 2;
+                  const groupW = barW * 2 + gap;
+                  const isEmpty = planned.every((p, i) => p === 0 && (actual[i] ?? 0) === 0);
+                  return (
+                    <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
+                      {yTicks.map((tick) => {
+                        const y = yCoord(tick);
+                        return (
+                          <g key={tick}>
+                            <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" />
+                            <text x={chartX - 4} y={y + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
+                          </g>
+                        );
+                      })}
+                      {isEmpty && <text x={chartX + chartW / 2} y={chartY + chartH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No task data available</text>}
+                      {labels.map((label, i) => {
+                        const slotX = chartX + i * slotW + (slotW - groupW) / 2;
+                        const aH = Math.max(1, ((actual[i] ?? 0) / niceMax) * chartH);
+                        const pH = Math.max(1, ((planned[i] ?? 0) / niceMax) * chartH);
+                        return (
+                          <g key={label}>
+                            <rect x={slotX} y={chartBottom - aH} width={barW} height={aH} fill="#ef4444" rx="1" className="chart-bar" />
+                            <rect x={slotX + barW + gap} y={chartBottom - pH} width={barW} height={pH} fill="#2563eb" rx="1" className="chart-bar" />
+                            <text x={slotX + groupW / 2} y={chartBottom + 14} fontSize="7" fill="#9ca3af" textAnchor="middle">{label.toUpperCase().slice(0, 3)}</text>
+                          </g>
+                        );
+                      })}
+                      <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>TIMELINE</text>
+                    </svg>
+                  );
+                })()}
               </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <h3 className="text-[11px] text-gray-500 mb-1">Deviation</h3>
-                <svg viewBox="0 0 500 120" className="w-full h-28 chart-svg">
-                  <line x1="10" y1="60" x2="490" y2="60" stroke="#d1d5db" />
-                  {projectDashboardTrends.deviation.map((v, i) => {
-                    const h = (Math.abs(v) / projectDashboardTrends.maxAbs) * 50;
-                    return (
-                      <rect
-                        key={i}
-                        x={24 + i * 38}
-                        y={v >= 0 ? 60 - h : 60}
-                        width="12"
-                        height={h || 0.5}
-                        className="chart-bar"
-                        fill={i % 2 ? '#ef4444' : '#2563eb'}
-                      />
-                    );
-                  })}
-                </svg>
+
+              {/* ── Deviation ── */}
+              <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Budgeting</p>
+                <h3 className="text-sm font-bold text-gray-900 mb-2">Deviation</h3>
+                {(() => {
+                  const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
+                  const VW = 560, VH = 185;
+                  const chartW = VW - CL - CR - TL, chartH = VH - CT - CB;
+                  const chartX = CL, chartY = CT;
+                  const { labels, deviation } = projectDashboardTrends;
+                  const maxAbs = Math.max(1, ...deviation.map((x) => Math.abs(x)));
+                  const absStep = Math.max(1, Math.ceil(maxAbs / 3));
+                  const niceAbs = absStep * 3;
+                  const midY = chartY + chartH / 2;
+                  const halfH = chartH / 2;
+                  const yTicks = [-3, -2, -1, 0, 1, 2, 3].map((t) => t * absStep);
+                  const yCoord = (v: number) => midY - (v / niceAbs) * halfH;
+                  const slotW = chartW / 12;
+                  const barW = Math.max(4, Math.min(10, slotW / 2.5));
+                  return (
+                    <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
+                      {yTicks.map((tick) => {
+                        const y = yCoord(tick);
+                        return (
+                          <g key={tick}>
+                            <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke={tick === 0 ? '#9ca3af' : '#e5e7eb'} strokeWidth={tick === 0 ? '1' : '0.6'} />
+                            <text x={chartX - 4} y={y + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
+                          </g>
+                        );
+                      })}
+                      {labels.map((label, i) => {
+                        const v = deviation[i] ?? 0;
+                        const h = Math.max(1, (Math.abs(v) / niceAbs) * halfH);
+                        const slotX = chartX + i * slotW + (slotW - barW) / 2;
+                        return (
+                          <g key={label}>
+                            <rect x={slotX} y={v >= 0 ? yCoord(v) : midY} width={barW} height={h} fill={v >= 0 ? '#ef4444' : '#2563eb'} rx="1" className="chart-bar" />
+                            <text x={slotX + barW / 2} y={chartY + chartH + 14} fontSize="7" fill="#9ca3af" textAnchor="middle">{label.toUpperCase().slice(0, 3)}</text>
+                          </g>
+                        );
+                      })}
+                      <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>TIMELINE</text>
+                    </svg>
+                  );
+                })()}
               </div>
             </div>
           </section>
@@ -8766,129 +9251,170 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 </select>
               </label>
             </div>
-            <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-4 sm:max-w-3xl lg:max-w-5xl lg:grid-cols-2 lg:items-stretch lg:gap-6">
-              <div className="flex min-h-[240px] w-full min-w-0 flex-col rounded border border-gray-100 bg-white p-4 sm:min-h-[260px]">
-                <h3 className="mb-3 shrink-0 text-[10px] font-medium text-gray-500">Projects Progress</h3>
-                <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-2.5">
-                  {projectInsights.progressBars.map(({ label, value, fg, bg }) => {
-                    const v = Math.max(0, Math.min(100, Number(value)));
-                    const warmFg = fg === '#FFB300' || fg === '#00C853';
+            <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
+              {/* Projects progress bars */}
+              <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Projects</h3>
+                <div className="flex flex-1 flex-col min-h-0">
+                  {(() => {
+                    const VW = 320, VH = 160;
+                    const CL = 4, CR = 34, CT = 8, CB = 8;
+                    const chartW = VW - CL - CR, chartH = VH - CT - CB;
+                    const bars = projectInsights.progressBars;
+                    const n = Math.max(1, bars.length);
+                    const gap = 8;
+                    const barH = Math.min(18, Math.floor((chartH - (n - 1) * gap) / n));
+                    const totalH = n * barH + (n - 1) * gap;
+                    const startY = CT + (chartH - totalH) / 2;
                     return (
-                      <div key={String(label)} className="flex min-h-5 items-center gap-2 sm:gap-2.5">
-                        <div
-                          className="relative h-5 min-w-0 w-full flex-1 overflow-hidden rounded-none"
-                          style={{ backgroundColor: String(bg) }}
-                        >
-                          {v < 1 ? (
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8px] font-bold uppercase leading-tight tracking-wide text-gray-700">
-                              {label}
-                            </span>
-                          ) : (
-                            <div
-                              className="flex h-5 min-h-5 items-center justify-start rounded-none px-1.5 sm:px-2"
-                              style={{
-                                width: `${v}%`,
-                                minWidth: v < 14 ? '2.5rem' : undefined,
-                                backgroundColor: String(fg),
-                              }}
-                            >
-                              <span
-                                className={`truncate text-[8px] font-extrabold uppercase leading-tight tracking-wide ${warmFg ? 'text-gray-900' : 'text-white'}`}
-                              >
-                                {label}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <span className="w-7 shrink-0 text-right text-[10px] font-semibold tabular-nums text-gray-800 sm:w-8">{v}%</span>
-                      </div>
+                      <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full flex-1 chart-svg">
+                        {bars.length === 0 && (
+                          <text x={VW / 2} y={VH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No data</text>
+                        )}
+                        {bars.map(({ label, value, fg, bg }, i) => {
+                          const v = Math.max(0, Math.min(100, Number(value)));
+                          const y = startY + i * (barH + gap);
+                          const bw = (v / 100) * chartW;
+                          const lbl = String(label).toUpperCase().slice(0, 14);
+                          return (
+                            <g key={String(label)}>
+                              <rect x={CL} y={y} width={chartW} height={barH} fill={String(bg)} rx="3" />
+                              {v > 0 && <rect x={CL} y={y} width={bw} height={barH} fill={String(fg)} rx="3" />}
+                              {v >= 25
+                                ? <text x={CL + 5} y={y + barH * 0.5 + 3} fontSize="8" fill="white" fontWeight="bold">{lbl}</text>
+                                : <text x={CL + bw + 5} y={y + barH * 0.5 + 3} fontSize="8" fill="#9ca3af">{lbl}</text>
+                              }
+                              <text x={VW - CR + 2} y={y + barH * 0.5 + 3} fontSize="8" fill="#6b7280">{v}%</text>
+                            </g>
+                          );
+                        })}
+                      </svg>
                     );
-                  })}
+                  })()}
+                  <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 mt-1 shrink-0">
+                    {projectInsights.progressBars.map(({ label, fg }) => (
+                      <span key={String(label)} className="flex items-center gap-1 text-[8px] text-gray-500">
+                        <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: String(fg) }} />
+                        {String(label)}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex min-h-[240px] w-full min-w-0 flex-col rounded border border-gray-100 bg-white p-4 sm:min-h-[260px]">
-                <h3 className="mb-3 shrink-0 text-[10px] font-medium text-gray-500">Tasks</h3>
-                <div className="grid w-full min-h-0 flex-1 grid-cols-4 items-end gap-2 px-0.5 sm:gap-3 sm:px-1">
-                  {projectInsights.taskBars.map(({ label, value: rawV, fg, bg }) => {
-                    const v = Math.max(0, Math.min(100, Number(rawV)));
+              {/* Tasks vertical bars */}
+              <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Tasks</h3>
+                <div className="flex flex-1 flex-col min-h-0">
+                  {(() => {
+                    const VW = 320, VH = 160;
+                    const CL = 6, CR = 6, CT = 18, CB = 22;
+                    const chartW = VW - CL - CR, chartH = VH - CT - CB;
+                    const chartBottom = CT + chartH;
+                    const bars = projectInsights.taskBars;
+                    const n = Math.max(1, bars.length);
+                    const slotW = chartW / n;
+                    const barW = Math.max(12, Math.min(36, slotW * 0.5));
                     return (
-                      <div key={String(label)} className="flex min-w-0 flex-col items-stretch">
-                        <div className="mb-1 text-center text-[9px] font-semibold tabular-nums text-gray-900 sm:text-[10px]">{v}%</div>
-                        <div
-                          className="relative mx-auto h-[80px] w-full max-w-[48px] rounded-none sm:h-[88px] sm:max-w-[52px]"
-                          style={{ backgroundColor: String(bg) }}
-                        >
-                          <div
-                            className="absolute bottom-0 left-0 right-0 flex items-end justify-center rounded-none px-0.5 pb-0.5 pt-0.5"
-                            style={{
-                              height: v > 0 ? `${v}%` : 0,
-                              minHeight: v > 0 ? 18 : 0,
-                              backgroundColor: String(fg),
-                            }}
-                          >
-                            {v > 0 ? (
-                              <span className="max-h-full text-[7px] font-extrabold uppercase leading-tight [writing-mode:vertical-rl] rotate-180 [text-orientation:mixed] text-gray-900 sm:text-[8px]">
-                                {label}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
+                      <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full flex-1 chart-svg">
+                        {bars.length === 0 && (
+                          <text x={VW / 2} y={VH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No data</text>
+                        )}
+                        {bars.map(({ label, value: rawV, fg, bg }, i) => {
+                          const v = Math.max(0, Math.min(100, Number(rawV)));
+                          const bh = Math.max(v > 0 ? 1 : 0, (v / 100) * chartH);
+                          const slotX = CL + i * slotW;
+                          const barX = slotX + (slotW - barW) / 2;
+                          return (
+                            <g key={String(label)}>
+                              <rect x={barX} y={CT} width={barW} height={chartH} fill={String(bg)} rx="3" />
+                              {v > 0 && <rect x={barX} y={chartBottom - bh} width={barW} height={bh} fill={String(fg)} rx="3" />}
+                              <text x={barX + barW / 2} y={CT - 5} fontSize="8" fill="#6b7280" textAnchor="middle">{v}%</text>
+                              <text x={barX + barW / 2} y={chartBottom + 14} fontSize="7.5" fill="#9ca3af" textAnchor="middle">{String(label).slice(0, 10)}</text>
+                            </g>
+                          );
+                        })}
+                      </svg>
                     );
-                  })}
+                  })()}
+                  <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 mt-1 shrink-0">
+                    {projectInsights.taskBars.map(({ label, fg }) => (
+                      <span key={String(label)} className="flex items-center gap-1 text-[8px] text-gray-500">
+                        <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: String(fg) }} />
+                        {String(label)}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex flex-col min-h-[300px] rounded-lg border border-gray-100 bg-gray-50/40 p-4">
-                <h3 className="text-xs font-semibold text-gray-600 mb-3 shrink-0">Projects Category</h3>
-                <div className="flex-1 flex items-center justify-center min-h-[220px]">
+              {/* Projects Category donut */}
+              <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Projects Category</h3>
+                <div className="flex flex-1 items-center justify-center min-h-0">
                   <DonutChart
-                    className="w-full max-w-[320px] h-56 chart-svg"
+                    className="w-full max-w-[220px] h-full chart-svg"
                     slices={projectInsights.categorySlices}
-                    ringWidth={50}
+                    ringWidth={46}
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col min-h-[300px] rounded-lg border border-gray-100 bg-gray-50/40 p-4">
-                <h3 className="text-xs font-semibold text-gray-600 mb-3 shrink-0">Deliverables</h3>
-                <div className="flex-1 flex flex-col justify-center min-h-[220px]">
-                  <svg viewBox="0 0 280 200" className="w-full max-w-[320px] mx-auto h-56 chart-svg">
-                    {[0, 5, 10, 15, 20].map((v) => (
-                      <g key={v}>
-                        <line x1="32" x2="268" y1={150 - v * 5.2} y2={150 - v * 5.2} stroke="#e5e7eb" />
-                        <text x="8" y={153 - v * 5.2} fontSize="9" fill="#94a3b8">{v}</text>
-                      </g>
-                    ))}
-                    {(() => {
-                      const maxVal = Math.max(
-                        1,
-                        ...projectInsights.deliverableTotal,
-                        ...projectInsights.deliverableDone,
-                        ...projectInsights.deliverablePending,
-                      );
-                      const x = [32, 88, 144, 200, 268];
-                      const yFrom = (n: number) => 150 - (n / maxVal) * 84;
-                      const poly = (arr: number[]) => `${x.map((xp, i) => `${xp},${yFrom(arr[i] ?? 0)}`).join(' ')} 268,150 32,150`;
-                      return (
-                        <>
-                          <polygon points={poly(projectInsights.deliverableDone)} fill="#2563eb" />
-                          <polygon points={poly(projectInsights.deliverableTotal)} fill="#ef4444" opacity="0.85" />
-                          <polygon points={poly(projectInsights.deliverablePending)} fill="#f6be00" opacity="0.95" />
-                        </>
-                      );
-                    })()}
-                    {projectInsights.monthNames.map((m, i) => (
-                      <text key={m} x={40 + i * 56} y="172" fontSize="9" fill="#94a3b8">{m}</text>
-                    ))}
-                    <circle cx="40" cy="188" r="3.5" fill="#ef4444" />
-                    <text x="48" y="192" fontSize="9" fill="#6b7280">Total</text>
-                    <circle cx="100" cy="188" r="3.5" fill="#2563eb" />
-                    <text x="108" y="192" fontSize="9" fill="#6b7280">Delivered</text>
-                    <circle cx="172" cy="188" r="3.5" fill="#f6be00" />
-                    <text x="180" y="192" fontSize="9" fill="#6b7280">To Be delivered</text>
-                  </svg>
+              {/* Deliverables area chart */}
+              <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Deliverables</h3>
+                <div className="flex flex-1 flex-col min-h-0">
+                  {(() => {
+                    const monthLabels = projectInsights.monthNames;
+                    const CL = 28, CR = 6, CT = 6, CB = 18;
+                    const VW = 320, VH = 160;
+                    const chartW = VW - CL - CR, chartH = VH - CT - CB;
+                    const chartX = CL, chartY = CT, chartBottom = CT + chartH;
+                    const maxV = Math.max(1, ...projectInsights.deliverableTotal, ...projectInsights.deliverableDone, ...projectInsights.deliverablePending);
+                    const tickStep = Math.max(1, Math.ceil(maxV / 4));
+                    const niceMax = tickStep * 4;
+                    const yTicks = [0, 1, 2, 3, 4].map((t) => t * tickStep);
+                    const yCoord = (v: number) => chartBottom - (v / niceMax) * chartH;
+                    const n = monthLabels.length || 1;
+                    const xCoord = (i: number) => chartX + (n > 1 ? i * (chartW / (n - 1)) : chartW / 2);
+                    const linePoints = (arr: number[]) => arr.map((v, i) => `${xCoord(i)},${yCoord(v)}`).join(' ');
+                    const areaPoints = (arr: number[]) => `${xCoord(0)},${chartBottom} ${linePoints(arr)} ${xCoord(arr.length - 1)},${chartBottom}`;
+                    const isEmpty = projectInsights.deliverableTotal.every((v) => v === 0);
+                    return (
+                      <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full flex-1 chart-svg">
+                        {yTicks.map((tick) => {
+                          const y = yCoord(tick);
+                          return (
+                            <g key={tick}>
+                              <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" />
+                              <text x={chartX - 4} y={y + 3} fontSize="7" fill="#9ca3af" textAnchor="end">{tick}</text>
+                            </g>
+                          );
+                        })}
+                        {isEmpty
+                          ? <text x={chartX + chartW / 2} y={chartY + chartH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No data</text>
+                          : <>
+                            <polygon points={areaPoints(projectInsights.deliverableTotal)} fill="#ef4444" opacity="0.75" />
+                            <polygon points={areaPoints(projectInsights.deliverableDone)} fill="#2563eb" opacity="0.85" />
+                            <polygon points={areaPoints(projectInsights.deliverablePending)} fill="#f6be00" opacity="0.9" />
+                            <polyline points={linePoints(projectInsights.deliverableTotal)} fill="none" stroke="#ef4444" strokeWidth="1.5" />
+                            <polyline points={linePoints(projectInsights.deliverableDone)} fill="none" stroke="#2563eb" strokeWidth="1.5" />
+                            <polyline points={linePoints(projectInsights.deliverablePending)} fill="none" stroke="#f6be00" strokeWidth="1.5" />
+                            {projectInsights.deliverableDone.map((v, i) => <circle key={i} cx={xCoord(i)} cy={yCoord(v)} r="2" fill="#2563eb" stroke="white" strokeWidth="0.8" />)}
+                            {projectInsights.deliverablePending.map((v, i) => <circle key={i} cx={xCoord(i)} cy={yCoord(v)} r="2" fill="#f6be00" stroke="white" strokeWidth="0.8" />)}
+                          </>
+                        }
+                        {monthLabels.map((m, i) => (
+                          <text key={m} x={xCoord(i)} y={chartBottom + 12} fontSize="6.5" fill="#9ca3af" textAnchor="middle">{m}</text>
+                        ))}
+                      </svg>
+                    );
+                  })()}
+                  <div className="flex items-center justify-center gap-3 mt-1 shrink-0">
+                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#ef4444]" />Total</span>
+                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#2563eb]" />Delivered</span>
+                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#f6be00]" />To Be Delivered</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -8899,13 +9425,13 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               <h3 className="text-xl leading-none font-bold text-primary">Projects List</h3>
               <button
                 type="button"
-                className={`${enj.btn} ${enj.btnOutline} bg-amber-50/90 text-xs font-semibold hover:bg-amber-100/80`}
+                className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
                 onClick={() => setShowAllProjectsScreen(true)}
               >
                 View All
               </button>
             </div>
-            <table className="w-full">
+            <table className={`${enj.table} w-full`}>
               <thead className="bg-[#eaecf3] border-y border-gray-100">
                 <tr className="text-xs font-semibold text-[#6d7488] text-left">
                   <th className="px-3 py-2">Project Name</th>
@@ -8964,13 +9490,13 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       <td className="px-3 py-3">
                         <div className="w-[180px]">
                           <p className="text-[12px] text-[#8c93a6] text-right mb-1">{progress}%</p>
-                          <div className="h-4 rounded-full bg-[#e5e7eb] overflow-hidden">
-                            <div className="h-full rounded-full bg-blue-600 enj-progress-fill" style={{ width: `${progress}%` }} />
+                          <div className="enj-table-progress-track">
+                            <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
                           </div>
                         </div>
                       </td>
                       <td className="px-3 py-2">
-                        <span className={`inline-block min-w-[90px] text-center px-2 py-1 rounded-md text-[11px] font-semibold ${projectStatusClass(status)}`}>
+                        <span className={`enj-table-status ${projectStatusClass(status)}`}>
                           {status}
                         </span>
                       </td>
@@ -9085,17 +9611,18 @@ export default function App() {
     <div className="relative h-screen">
       <main className="flex h-screen flex-col md:flex-row w-full overflow-hidden">
         {/* Left Side: Login Form */}
-        <section className="w-full md:w-1/2 flex flex-col justify-center items-center bg-surface-container-lowest p-6 md:p-10 z-10">
-        <div className="w-full max-w-sm flex flex-col">
+        <section className="w-full md:w-1/2 flex flex-col justify-center items-center bg-surface-container-lowest px-6 py-10 z-10 text-center">
+        <div className="w-full flex flex-col items-center">
           {/* Brand Anchor */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-7"
+            className="mb-4 flex flex-col items-center gap-2"
           >
             <div className="shadow-sm rounded-md">
-              <LogoMark sizeClass="w-12 h-12" />
+              <LogoMark sizeClass="w-20 h-20" />
             </div>
+            <span className="text-base font-bold tracking-wide text-[#232360]">ENJAZ</span>
           </motion.div>
 
           {/* Form Heading */}
@@ -9103,14 +9630,13 @@ export default function App() {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.1 }}
-            className="mb-6"
+            className="mb-6 text-center"
           >
-            <h1 className="text-3xl font-headline font-extrabold text-primary tracking-tight mb-1">Login</h1>
-            <p className="text-on-surface-variant font-sans text-sm">Login to access your project management workspace</p>
+            <h1 className="text-3xl font-headline font-extrabold text-primary tracking-tight">Welcome to ENJAZ</h1>
           </motion.div>
 
           {/* Form */}
-          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setIsLoggedIn(true); }}>
+          <form className="space-y-4 w-1/2 text-left" onSubmit={(e) => { e.preventDefault(); setIsLoggedIn(true); }}>
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
