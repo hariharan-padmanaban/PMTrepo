@@ -57,34 +57,63 @@ export async function uploadAttachments(
 export async function fetchAttachments(attachmentId: string): Promise<AttachmentFile[]> {
   try {
     console.log('📥 Fetching attachments for ID:', attachmentId);
+
     const response = await PMTDocumentFetchService.Run({
       text_1: attachmentId,
     });
 
-    console.log('📨 PMTDocumentFetch Response:', response);
+    console.log('📨 Full Response:', response);
+    console.log('📊 Response Success:', response?.success);
+    console.log('📋 Response Data:', response?.data);
 
     if (!response?.success) {
       console.warn('❌ Response not successful:', response?.error);
       return [];
     }
 
-    const bodyValue = response?.data?.body?.value;
-    console.log('📋 Body value:', bodyValue);
+    // Try multiple paths to find the files array
+    let filesArray: Array<Record<string, unknown>> | null = null;
 
-    if (!bodyValue) {
-      console.warn('⚠️ No body.value in response');
+    // Path 1: response.data.body.value
+    if (Array.isArray(response?.data?.body?.value)) {
+      filesArray = response.data.body.value;
+      console.log('✅ Found files in data.body.value');
+    }
+    // Path 2: response.body.value
+    else if (Array.isArray((response as any)?.body?.value)) {
+      filesArray = (response as any).body.value;
+      console.log('✅ Found files in body.value');
+    }
+    // Path 3: response.data directly
+    else if (Array.isArray(response?.data)) {
+      filesArray = response.data as Array<Record<string, unknown>>;
+      console.log('✅ Found files in data');
+    }
+    // Path 4: Check if body is an array
+    else if (Array.isArray((response as any)?.body)) {
+      filesArray = (response as any).body;
+      console.log('✅ Found files in body');
+    }
+
+    if (!filesArray || filesArray.length === 0) {
+      console.warn('⚠️ No files found in response');
       return [];
     }
 
-    const files = Array.isArray(bodyValue) ? bodyValue : [];
-    console.log('✅ Files found:', files.length);
+    console.log('📦 Total files found:', filesArray.length);
 
-    return files.map((file) => ({
-      id: String(file.UniqueId ?? file.ID ?? file.id ?? ''),
-      name: String(file.Name ?? file.FileLeafRef ?? file.name ?? 'Unknown'),
-      url: String(file.ServerRelativeUrl ?? file.Url ?? file.url ?? ''),
-      modified: String(file.Modified ?? file.TimeCreated ?? file.modified ?? ''),
-    }));
+    const mappedFiles = filesArray.map((file, index) => {
+      console.log(`  File ${index}:`, file);
+      return {
+        id: String(file.UniqueId ?? file.ID ?? file.id ?? file['@odata.id'] ?? `file-${index}`),
+        name: String(file.Name ?? file.FileLeafRef ?? file.name ?? file.Title ?? 'Unknown'),
+        url: String(file.ServerRelativeUrl ?? file.Url ?? file.url ?? file['@odata.id'] ?? ''),
+        modified: String(file.Modified ?? file.TimeCreated ?? file.modified ?? file.Created ?? ''),
+      };
+    });
+
+    console.log('✅ Mapped files:', mappedFiles);
+    return mappedFiles;
   } catch (error) {
     console.error('❌ Error fetching attachments:', error);
     return [];
