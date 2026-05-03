@@ -99,10 +99,18 @@ export function DonutChart({
     const end = angle + sweep;
     angle = end;
     const mid = (start + end) / 2;
-    return { ...slice, start, end, mid, idx };
+    const pct = Math.round((slice.value / total) * 100);
+    return { ...slice, start, end, mid, pct, idx };
   });
 
   const hasHover = hoveredIdx >= 0;
+  const hoveredSeg = hasHover ? segments[hoveredIdx] : null;
+
+  // Tooltip dimensions and positioning
+  const tooltipW = Math.min(size * 0.78, 180);
+  const tooltipH = 52;
+  const tooltipX = cx - tooltipW / 2;
+  const tooltipY = cy - tooltipH / 2;
 
   return (
     <svg
@@ -111,16 +119,10 @@ export function DonutChart({
       style={{ overflow: 'visible' }}
       onMouseLeave={() => setHoveredIdx(-1)}
     >
-      <defs>
-        <clipPath id={`clip-${uid}`}>
-          <circle cx={cx} cy={cy} r={size * 0.7} />
-        </clipPath>
-      </defs>
-
       {segments.map((seg) => {
         const isHovered = hoveredIdx === seg.idx;
         const dimmed = hasHover && !isHovered;
-        const offset = isHovered ? 12 : 0;
+        const offset = isHovered ? 10 : 0;
         const dx = offset * Math.cos((Math.PI / 180) * seg.mid);
         const dy = offset * Math.sin((Math.PI / 180) * seg.mid);
 
@@ -130,18 +132,18 @@ export function DonutChart({
 
         const segStyle: CSSProperties = {
           fill: seg.color,
-          opacity: !mounted ? 0 : dimmed ? 0.4 : 1,
+          opacity: !mounted ? 0 : dimmed ? 0.45 : 1,
           transform,
           transformOrigin: `${cx}px ${cy}px`,
           transition: `transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1) ${seg.idx * 60}ms, opacity 220ms ease-out ${seg.idx * 60}ms, filter 200ms ease-out`,
           cursor: 'pointer',
           willChange: 'transform, opacity',
-          filter: isHovered ? `drop-shadow(0 6px 14px ${seg.color}99)` : 'none',
+          filter: isHovered ? `drop-shadow(0 3px 8px ${seg.color}1A)` : 'none',
         };
 
         return (
           <path
-            key={`seg-${seg.label}-${seg.idx}`}
+            key={`seg-${uid}-${seg.idx}`}
             d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
             stroke="none"
             style={segStyle}
@@ -162,7 +164,7 @@ export function DonutChart({
           const isHovered = hoveredIdx === seg.idx;
           return (
             <g
-              key={`label-${seg.label}-${seg.idx}`}
+              key={`label-${uid}-${seg.idx}`}
               onMouseEnter={() => setHoveredIdx(seg.idx)}
               style={{
                 cursor: 'pointer',
@@ -189,16 +191,102 @@ export function DonutChart({
           );
         })}
 
+      {/* Center text — hidden when hovering since tooltip takes over */}
       {centerText && (
-        <text x={cx} y={cy - 2} fill="#151d5d" fontSize={15} fontWeight={700} textAnchor="middle">
+        <text
+          x={cx}
+          y={cy - 2}
+          fill="#151d5d"
+          fontSize={15}
+          fontWeight={700}
+          textAnchor="middle"
+          style={{
+            opacity: hasHover ? 0 : 1,
+            transition: 'opacity 180ms ease-out',
+            pointerEvents: 'none',
+          }}
+        >
           {centerText}
         </text>
       )}
       {centerSubtext && (
-        <text x={cx} y={cy + 12} fill="#94a3b8" fontSize={8} textAnchor="middle">
+        <text
+          x={cx}
+          y={cy + 12}
+          fill="#94a3b8"
+          fontSize={8}
+          textAnchor="middle"
+          style={{
+            opacity: hasHover ? 0 : 1,
+            transition: 'opacity 180ms ease-out',
+            pointerEvents: 'none',
+          }}
+        >
           {centerSubtext}
         </text>
       )}
+
+      {/* Hover details tooltip */}
+      <g
+        style={{
+          opacity: hoveredSeg ? 1 : 0,
+          transition: 'opacity 180ms ease-out',
+          pointerEvents: 'none',
+        }}
+      >
+        <rect
+          x={tooltipX}
+          y={tooltipY}
+          width={tooltipW}
+          height={tooltipH}
+          rx={8}
+          ry={8}
+          fill="#ffffff"
+          stroke={hoveredSeg?.color ?? '#e5e7eb'}
+          strokeWidth={1.5}
+          style={{ filter: 'drop-shadow(0 2px 6px rgba(15, 23, 42, 0.12))' }}
+        />
+        {/* Color dot */}
+        <circle
+          cx={tooltipX + 12}
+          cy={tooltipY + 14}
+          r={4}
+          fill={hoveredSeg?.color ?? '#cbd5e1'}
+        />
+        {/* Label */}
+        <text
+          x={tooltipX + 22}
+          y={tooltipY + 17}
+          fontSize={10}
+          fontWeight={600}
+          fill="#374151"
+          textAnchor="start"
+        >
+          {hoveredSeg?.label ?? ''}
+        </text>
+        {/* Value */}
+        <text
+          x={cx}
+          y={tooltipY + 36}
+          fontSize={14}
+          fontWeight={800}
+          fill={hoveredSeg?.color ?? '#151d5d'}
+          textAnchor="middle"
+        >
+          {hoveredSeg ? hoveredSeg.value.toLocaleString() : ''}
+        </text>
+        {/* Percentage */}
+        <text
+          x={cx}
+          y={tooltipY + 47}
+          fontSize={8}
+          fontWeight={500}
+          fill="#94a3b8"
+          textAnchor="middle"
+        >
+          {hoveredSeg ? `${hoveredSeg.pct}% of total` : ''}
+        </text>
+      </g>
     </svg>
   );
 }
