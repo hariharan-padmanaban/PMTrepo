@@ -894,7 +894,7 @@ export default function BusinessFeedbackList() {
           <h3 className={`${enj.subhead} mb-2 uppercase tracking-wide`}>Satisfaction level</h3>
           <div className="flex justify-center">
             <DonutChart
-              className="h-40 w-full max-w-[270px] chart-svg"
+              className="h-48 w-48 chart-svg"
               slices={[
                 { label: 'Satisfied', value: analytics.satisfied, color: '#1667de' },
                 { label: 'Very Satisfied', value: analytics.verySatisfied, color: '#3b3a80' },

@@ -918,7 +918,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           <div className="mt-2 flex min-h-0 flex-1 flex-col items-stretch gap-2 sm:flex-row sm:items-start">
             <div className="mx-auto flex shrink-0 justify-center">
               <DonutChart
-                className="chart-svg h-40 w-40 sm:h-44 sm:w-44"
+                className="chart-svg h-48 w-48"
                 showOuterLabels={false}
                 ringWidth={40}
                 slices={reportDashboardStats.categorySlices}
@@ -1076,12 +1076,12 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             </ul>
           </div>
         </div>
-        <div className="chart-card flex min-h-[280px] flex-col rounded-xl bg-white p-3 shadow-sm">
+        <div className="chart-card flex min-h-[320px] flex-col rounded-xl bg-white p-3 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-800">Budget by sector</h3>
           <div className="mt-2 flex min-h-0 flex-1 flex-col items-stretch gap-2 sm:flex-row sm:items-start">
             <div className="mx-auto flex shrink-0 justify-center">
               <DonutChart
-                className="chart-svg h-40 w-40 sm:h-44 sm:w-44"
+                className="chart-svg h-48 w-48"
                 showOuterLabels={false}
                 ringWidth={42}
                 slices={reportDashboardStats.budgetSlices}
@@ -1094,7 +1094,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                 labelColor="#64748b"
               />
             </div>
-            <ul className="w-full min-w-0 space-y-1.5 sm:max-h-44 sm:overflow-y-auto sm:pt-0.5">
+            <ul className="w-full min-w-0 space-y-1.5 sm:max-h-56 sm:overflow-y-auto sm:pt-0.5">
               {reportDashboardStats.filterMeta.projectCount === 0 ? (
                 <li className="rounded-md border border-amber-200 bg-amber-50/80 px-2 py-1.5 text-[10px] text-amber-900">
                   No projects in filter — there is no budget to aggregate.
@@ -1109,18 +1109,17 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                   .map((slice) => (
                     <li
                       key={slice.label}
-                      className="flex items-center justify-between gap-2 text-[10px] text-gray-600"
+                      className="flex items-center gap-1.5 text-[10px] text-gray-600"
                     >
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                          style={{ backgroundColor: slice.color }}
-                          aria-hidden
-                        />
-                        <span className="truncate text-gray-700">{slice.label}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums font-semibold text-gray-800">
-                        {formatListNumber(slice.value)}
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                        style={{ backgroundColor: slice.color }}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 truncate text-gray-700">
+                        <span className="font-medium">{slice.label}</span>
+                        <span className="text-gray-600"> — </span>
+                        <span className="font-semibold text-gray-800">{formatListNumber(slice.value)}</span>
                       </span>
                     </li>
                   ))
@@ -1132,7 +1131,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           <h3 className="text-sm font-semibold text-gray-800">Projects by progress</h3>
           <div className="mt-1 flex items-center justify-center">
             <DonutChart
-              className="chart-svg h-44 w-44"
+              className="chart-svg h-48 w-48"
               showOuterLabels
               ringWidth={42}
               slices={reportDashboardStats.progressSlices}
