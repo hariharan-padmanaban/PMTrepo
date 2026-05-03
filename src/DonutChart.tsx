@@ -97,37 +97,62 @@ export function DonutChart({
     const end = angle + sweep;
     angle = end;
     const mid = (start + end) / 2;
-    const offset = hoveredLabel === slice.label ? 4 : 0;
+    const isHovered = hoveredLabel === slice.label;
+    const offset = isHovered ? 12 : 0;
     const hoverDx = offset * Math.cos((Math.PI / 180) * mid);
     const hoverDy = offset * Math.sin((Math.PI / 180) * mid);
-    return { ...slice, start, end, mid, hoverDx, hoverDy };
+    return { ...slice, start, end, mid, hoverDx, hoverDy, isHovered };
   });
 
+  const glowId = `donut-glow-${clipId}`;
+
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className={className}>
+    <svg viewBox={`0 0 ${size} ${size}`} className={className} style={{ overflow: 'visible' }}>
       <defs>
         <clipPath id={clipId}>
-          <circle cx={cx} cy={cy} r={size * 0.52} />
+          <circle cx={cx} cy={cy} r={size * 0.6} />
         </clipPath>
+        <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+          <feMerge>
+            <feMergeNode in="coloredBlur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        {segments.map((seg) => (
+          <radialGradient key={`grad-${clipId}-${seg.label}`} id={`grad-${clipId}-${seg.label}`}>
+            <stop offset="60%" stopColor={seg.color} stopOpacity={1} />
+            <stop offset="100%" stopColor={seg.color} stopOpacity={0.88} />
+          </radialGradient>
+        ))}
       </defs>
       <g clipPath={`url(#${clipId})`}>
         {segments.map((seg) => (
           <motion.path
             key={seg.label}
             d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
-            fill={seg.color}
+            fill={`url(#grad-${clipId}-${seg.label})`}
             stroke="#ffffff"
             strokeWidth={2}
+            strokeLinejoin="round"
             className="chart-bar"
             onHoverStart={() => setHoveredLabel(seg.label)}
             onHoverEnd={() => setHoveredLabel(null)}
             animate={{
               x: seg.hoverDx,
               y: seg.hoverDy,
-              opacity: hoveredLabel && hoveredLabel !== seg.label ? 0.5 : 1,
+              opacity: hoveredLabel && hoveredLabel !== seg.label ? 0.35 : 1,
+              filter: seg.isHovered ? `url(#${glowId})` : 'none',
             }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
-            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            style={{
+              transformBox: 'fill-box',
+              transformOrigin: 'center',
+              cursor: 'pointer',
+              filter: seg.isHovered
+                ? `drop-shadow(0 6px 14px ${seg.color}55)`
+                : 'drop-shadow(0 1px 2px rgba(15, 23, 42, 0.06))',
+            }}
           >
             <title>{`${seg.label}: ${seg.value}`}</title>
           </motion.path>
