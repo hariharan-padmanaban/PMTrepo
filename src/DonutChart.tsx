@@ -84,7 +84,6 @@ export function DonutChart({
   const total = slices.reduce((sum, s) => sum + s.value, 0) || 1;
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
   const uid = useMemo(() => Math.random().toString(36).slice(2, 10), []);
-  const glowId = `glow-${uid}`;
 
   let angle = -90;
   const segments = slices.map((slice, idx) => {
@@ -103,17 +102,10 @@ export function DonutChart({
   return (
     <svg viewBox={`0 0 ${size} ${size}`} className={className} style={{ overflow: 'visible' }}>
       <defs>
-        <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="5" result="coloredBlur" />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
         {segments.map((seg) => (
           <radialGradient key={`grad-${uid}-${seg.label}`} id={`grad-${uid}-${seg.label}`}>
             <stop offset="55%" stopColor={seg.color} stopOpacity={1} />
-            <stop offset="100%" stopColor={seg.color} stopOpacity={0.85} />
+            <stop offset="100%" stopColor={seg.color} stopOpacity={0.88} />
           </radialGradient>
         ))}
       </defs>
@@ -123,33 +115,28 @@ export function DonutChart({
           key={`${seg.label}-${uid}`}
           d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
           fill={`url(#grad-${uid}-${seg.label})`}
-          stroke="#ffffff"
-          strokeWidth={2.5}
-          strokeLinejoin="round"
-          initial={{ scale: 0, opacity: 0 }}
+          stroke="none"
+          initial={{ scale: 0.6, opacity: 0 }}
           animate={{
             scale: 1,
-            opacity: hoveredLabel && !seg.isHovered ? 0.35 : 1,
+            opacity: hoveredLabel && !seg.isHovered ? 0.4 : 1,
             x: seg.hoverDx,
             y: seg.hoverDy,
-            filter: seg.isHovered ? `url(#${glowId})` : 'none',
           }}
           transition={{
-            scale: { duration: 0.6, delay: seg.idx * 0.08, ease: [0.34, 1.56, 0.64, 1] },
-            opacity: { duration: 0.25, ease: 'easeOut' },
-            x: { duration: 0.3, ease: 'easeOut' },
-            y: { duration: 0.3, ease: 'easeOut' },
-            filter: { duration: 0.2 },
+            scale: { duration: 0.5, delay: seg.idx * 0.07, ease: 'easeOut' },
+            opacity: { duration: 0.18, ease: 'linear' },
+            x: { duration: 0.22, ease: 'easeOut' },
+            y: { duration: 0.22, ease: 'easeOut' },
           }}
           onMouseEnter={() => setHoveredLabel(seg.label)}
           onMouseLeave={() => setHoveredLabel(null)}
           style={{
             cursor: 'pointer',
-            transformBox: 'fill-box',
-            transformOrigin: `${cx}px ${cy}px`,
+            willChange: 'transform, opacity',
             filter: seg.isHovered
-              ? `drop-shadow(0 8px 16px ${seg.color}66)`
-              : 'drop-shadow(0 1px 3px rgba(15, 23, 42, 0.08))',
+              ? `drop-shadow(0 6px 14px ${seg.color}80)`
+              : 'none',
           }}
         >
           <title>{`${seg.label}: ${seg.value}`}</title>

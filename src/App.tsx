@@ -1359,7 +1359,7 @@ function IssuesDonut({
   return (
     <div className="flex items-center gap-2">
       <DonutChart
-        className="w-36 h-36 flex-shrink-0"
+        className="h-48 w-48 flex-shrink-0 chart-svg"
         ringWidth={38}
         showOuterLabels={false}
         centerText={String(total)}
@@ -2594,10 +2594,10 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                     </svg>
                   )}
                 </div>
-                <div className="bg-white rounded-xl p-3 shadow-sm">
-                  <h3 className="text-sm font-semibold text-primary mb-2">Issue Severity</h3>
+                <div className="bg-white rounded-xl p-3 shadow-sm flex flex-col items-center">
+                  <h3 className="text-sm font-semibold text-primary mb-2 self-start">Issue Severity</h3>
                   <DonutChart
-                    className="w-full h-32 chart-svg"
+                    className="h-48 w-48 chart-svg"
                     size={200}
                     ringWidth={32}
                     showOuterLabels
@@ -2615,10 +2615,10 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                     })()}
                   />
                 </div>
-                <div className="bg-white rounded-xl p-3 shadow-sm">
-                  <h3 className="text-sm font-semibold text-primary mb-2">Issue Status</h3>
+                <div className="bg-white rounded-xl p-3 shadow-sm flex flex-col items-center">
+                  <h3 className="text-sm font-semibold text-primary mb-2 self-start">Issue Status</h3>
                   <DonutChart
-                    className="w-full h-32 chart-svg"
+                    className="h-48 w-48 chart-svg"
                     size={200}
                     ringWidth={32}
                     showOuterLabels
@@ -4821,6 +4821,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     { name: 'Deliverables', icon: <ShieldCheck size={16} /> },
     { name: 'Reports', icon: <FileText size={16} /> },
     { name: 'Project Pipeline', icon: <TrendingUp size={16} /> },
+    { name: 'Test', icon: <Sparkles size={16} /> },
   ];
   const programPipelineTableRows = useMemo(
     (): BusinessPipelineTableRow[] => programPipelineData.map((r, i) => newPipelineToTableRow(r, i)),
@@ -6005,7 +6006,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                             <p className="text-xs text-gray-400">Loading…</p>
                           ) : (
                             <DonutChart
-                              className="w-40 h-40 chart-svg"
+                              className="h-48 w-48 chart-svg"
                               showOuterLabels
                               ringWidth={42}
                               slices={programListBudgetChartSlices}
@@ -6136,6 +6137,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               screenTitle="Project Pipeline"
               onNotify={(type, message) => setProgramToast({ type, message })}
             />
+          ) : activeNav === 'Test' ? (
+            <TestDonutChart />
           ) : activeNav === 'Portfolio' ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
@@ -6511,7 +6514,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     slices={programInsightBudgetSlices}
                     size={150}
                     ringWidth={38}
-                    className="w-36 h-36 shrink-0 chart-svg"
+                    className="h-48 w-48 shrink-0 chart-svg"
                     showOuterLabels={false}
                   />
                   <div className="text-[9px] text-gray-500 space-y-1.5">
@@ -8440,11 +8443,11 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-2xl font-semibold text-primary mb-2">Issues Severity</h3>
-                      <p className="text-xs text-gray-500 mb-1">Live distribution of High, Medium, and Low issues</p>
+                    <div className="bg-white rounded-xl p-3 shadow-sm flex flex-col items-center">
+                      <h3 className="text-2xl font-semibold text-primary mb-2 self-start">Issues Severity</h3>
+                      <p className="text-xs text-gray-500 mb-1 self-start">Live distribution of High, Medium, and Low issues</p>
                       <DonutChart
-                        className="w-full h-40 chart-svg"
+                        className="h-48 w-48 chart-svg"
                         size={230}
                         ringWidth={48}
                         centerText={String(issueCharts.total)}
@@ -8489,11 +8492,11 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       </svg>
                     </div>
 
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-2xl font-semibold text-primary mb-2">Issue Status Overview</h3>
-                      <p className="text-xs text-gray-500 mb-1">Open vs Closed issues</p>
+                    <div className="bg-white rounded-xl p-3 shadow-sm flex flex-col items-center">
+                      <h3 className="text-2xl font-semibold text-primary mb-2 self-start">Issue Status Overview</h3>
+                      <p className="text-xs text-gray-500 mb-1 self-start">Open vs Closed issues</p>
                       <DonutChart
-                        className="w-full h-40 chart-svg"
+                        className="h-48 w-48 chart-svg"
                         size={230}
                         ringWidth={48}
                         centerText={String(issueCharts.total)}
@@ -8805,10 +8808,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       </svg>
                     )}
                   </div>
-                  <div className="rounded-xl border border-gray-100 p-3">
-                    <h3 className="text-sm font-semibold text-primary mb-2">{teamTab === 'Evaluation' ? 'Evaluation Category' : 'Utilization Category'}</h3>
+                  <div className="rounded-xl border border-gray-100 p-3 flex flex-col items-center">
+                    <h3 className="text-sm font-semibold text-primary mb-2 self-start">{teamTab === 'Evaluation' ? 'Evaluation Category' : 'Utilization Category'}</h3>
                     <DonutChart
-                      className="w-full h-40 chart-svg"
+                      className="h-48 w-48 chart-svg"
                       ringWidth={46}
                       showOuterLabels={teamTab === 'Workload' ? !teamManagementDonut.utilEmpty : teamTab === 'Performance' ? !teamManagementDonut.perEmpty : !teamManagementDonut.evEmpty}
                       slices={teamTab === 'Workload' ? teamManagementDonut.utilSlices
@@ -9337,7 +9340,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Projects Category</h3>
                 <div className="flex flex-1 items-center justify-center min-h-0">
                   <DonutChart
-                    className="w-full max-w-[220px] h-full chart-svg"
+                    className="h-48 w-48 chart-svg"
                     slices={projectInsights.categorySlices}
                     ringWidth={46}
                   />

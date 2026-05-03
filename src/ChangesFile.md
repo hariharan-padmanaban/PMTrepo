@@ -1,1 +1,0 @@
-In program role dashboad, we have the accordion in the table of program(portfolio). In that table sponsor and projectmanager values are missing. also we should have Strategic goal instead of strag.obj . make it Strat.goal

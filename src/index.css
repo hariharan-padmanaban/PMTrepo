@@ -67,10 +67,6 @@ html.enjaz-dark video {
   transition: transform 320ms ease;
 }
 
-.chart-card:hover .chart-svg {
-  transform: scale(1.03);
-}
-
 .chart-bar {
   transform-origin: bottom;
   animation: chart-grow 700ms ease both;
