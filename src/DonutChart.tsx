@@ -1,6 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'motion/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export type DonutSlice = {
   label: string;
@@ -21,8 +20,9 @@ type DonutChartProps = {
 
 function AnimatedNumber({ value }: { value: number }) {
   const [displayValue, setDisplayValue] = useState(value);
+  const prevRef = useRef(value);
   useEffect(() => {
-    const from = displayValue;
+    const from = prevRef.current;
     const to = value;
     if (from === to) return;
     const start = performance.now();
@@ -33,10 +33,11 @@ function AnimatedNumber({ value }: { value: number }) {
       const eased = 1 - (1 - p) * (1 - p);
       setDisplayValue(Math.round(from + (to - from) * eased));
       if (p < 1) raf = requestAnimationFrame(step);
+      else prevRef.current = to;
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [value, displayValue]);
+  }, [value]);
   return <>{displayValue}</>;
 }
 
@@ -82,8 +83,14 @@ export function DonutChart({
   const rOuter = size * 0.32;
   const rInner = rOuter - ringWidth * 0.5;
   const total = slices.reduce((sum, s) => sum + s.value, 0) || 1;
-  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
+  const [hoveredIdx, setHoveredIdx] = useState<number>(-1);
+  const [mounted, setMounted] = useState(false);
   const uid = useMemo(() => Math.random().toString(36).slice(2, 10), []);
+
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
 
   let angle = -90;
   const segments = slices.map((slice, idx) => {
@@ -92,56 +99,58 @@ export function DonutChart({
     const end = angle + sweep;
     angle = end;
     const mid = (start + end) / 2;
-    const isHovered = hoveredLabel === slice.label;
-    const offset = isHovered ? 14 : 0;
-    const hoverDx = offset * Math.cos((Math.PI / 180) * mid);
-    const hoverDy = offset * Math.sin((Math.PI / 180) * mid);
-    return { ...slice, start, end, mid, hoverDx, hoverDy, isHovered, idx };
+    return { ...slice, start, end, mid, idx };
   });
 
+  const hasHover = hoveredIdx >= 0;
+
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className={className} style={{ overflow: 'visible' }}>
+    <svg
+      viewBox={`0 0 ${size} ${size}`}
+      className={className}
+      style={{ overflow: 'visible' }}
+      onMouseLeave={() => setHoveredIdx(-1)}
+    >
       <defs>
-        {segments.map((seg) => (
-          <radialGradient key={`grad-${uid}-${seg.label}`} id={`grad-${uid}-${seg.label}`}>
-            <stop offset="55%" stopColor={seg.color} stopOpacity={1} />
-            <stop offset="100%" stopColor={seg.color} stopOpacity={0.88} />
-          </radialGradient>
-        ))}
+        <clipPath id={`clip-${uid}`}>
+          <circle cx={cx} cy={cy} r={size * 0.7} />
+        </clipPath>
       </defs>
 
-      {segments.map((seg) => (
-        <motion.path
-          key={`${seg.label}-${uid}`}
-          d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
-          fill={`url(#grad-${uid}-${seg.label})`}
-          stroke="none"
-          initial={{ scale: 0.6, opacity: 0 }}
-          animate={{
-            scale: 1,
-            opacity: hoveredLabel && !seg.isHovered ? 0.4 : 1,
-            x: seg.hoverDx,
-            y: seg.hoverDy,
-          }}
-          transition={{
-            scale: { duration: 0.5, delay: seg.idx * 0.07, ease: 'easeOut' },
-            opacity: { duration: 0.18, ease: 'linear' },
-            x: { duration: 0.22, ease: 'easeOut' },
-            y: { duration: 0.22, ease: 'easeOut' },
-          }}
-          onMouseEnter={() => setHoveredLabel(seg.label)}
-          onMouseLeave={() => setHoveredLabel(null)}
-          style={{
-            cursor: 'pointer',
-            willChange: 'transform, opacity',
-            filter: seg.isHovered
-              ? `drop-shadow(0 6px 14px ${seg.color}80)`
-              : 'none',
-          }}
-        >
-          <title>{`${seg.label}: ${seg.value}`}</title>
-        </motion.path>
-      ))}
+      {segments.map((seg) => {
+        const isHovered = hoveredIdx === seg.idx;
+        const dimmed = hasHover && !isHovered;
+        const offset = isHovered ? 12 : 0;
+        const dx = offset * Math.cos((Math.PI / 180) * seg.mid);
+        const dy = offset * Math.sin((Math.PI / 180) * seg.mid);
+
+        const transform = mounted
+          ? `translate(${dx}px, ${dy}px) scale(1)`
+          : 'translate(0, 0) scale(0.6)';
+
+        const segStyle: CSSProperties = {
+          fill: seg.color,
+          opacity: !mounted ? 0 : dimmed ? 0.4 : 1,
+          transform,
+          transformOrigin: `${cx}px ${cy}px`,
+          transition: `transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1) ${seg.idx * 60}ms, opacity 220ms ease-out ${seg.idx * 60}ms, filter 200ms ease-out`,
+          cursor: 'pointer',
+          willChange: 'transform, opacity',
+          filter: isHovered ? `drop-shadow(0 6px 14px ${seg.color}99)` : 'none',
+        };
+
+        return (
+          <path
+            key={`seg-${seg.label}-${seg.idx}`}
+            d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
+            stroke="none"
+            style={segStyle}
+            onMouseEnter={() => setHoveredIdx(seg.idx)}
+          >
+            <title>{`${seg.label}: ${seg.value}`}</title>
+          </path>
+        );
+      })}
 
       {showOuterLabels &&
         segments.map((seg) => {
@@ -150,31 +159,33 @@ export function DonutChart({
           const right = Math.cos((Math.PI / 180) * seg.mid) >= 0;
           const tx = b.x + (right ? 10 : -10);
           const anchor: CSSProperties['textAnchor'] = right ? 'start' : 'end';
+          const isHovered = hoveredIdx === seg.idx;
           return (
-            <motion.g
-              key={`${seg.label}-label-${uid}`}
-              onMouseEnter={() => setHoveredLabel(seg.label)}
-              onMouseLeave={() => setHoveredLabel(null)}
-              style={{ cursor: 'pointer' }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.4 + seg.idx * 0.05 }}
+            <g
+              key={`label-${seg.label}-${seg.idx}`}
+              onMouseEnter={() => setHoveredIdx(seg.idx)}
+              style={{
+                cursor: 'pointer',
+                opacity: mounted ? 1 : 0,
+                transition: `opacity 320ms ease-out ${300 + seg.idx * 40}ms`,
+              }}
             >
               <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={labelColor} strokeWidth={1.3} />
               <text
                 x={tx}
                 y={b.y - 4}
-                fill={seg.isHovered ? seg.color : labelColor}
+                fill={isHovered ? seg.color : labelColor}
                 fontSize={13}
-                fontWeight={seg.isHovered ? 700 : 500}
+                fontWeight={isHovered ? 700 : 500}
                 textAnchor={anchor}
+                style={{ transition: 'fill 200ms ease, font-weight 200ms ease' }}
               >
                 <AnimatedNumber value={seg.value} />
               </text>
               <text x={tx} y={b.y + 12} fill={labelColor} fontSize={8.5} textAnchor={anchor}>
                 {seg.label}
               </text>
-            </motion.g>
+            </g>
           );
         })}
 
