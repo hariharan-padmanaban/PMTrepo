@@ -8,8 +8,9 @@ import { motion } from 'motion/react';
 import {
   Activity, AlertCircle, ArrowRight, Briefcase, Calendar, CheckCircle, CheckSquare,
   ChevronDown, Clock, FileText, FolderOpen, HelpCircle, Inbox, LayoutGrid, ListTree, Pencil, RefreshCw,
-  LogOut, MessageSquare, ShieldCheck, Trash2, TrendingUp, UserCircle, Users,
+  LogOut, MessageSquare, ShieldCheck, Sparkles, Trash2, TrendingUp, UserCircle, Users,
 } from 'lucide-react';
+import { TestDonutChart } from './TestDonutChart';
 import BusinessFeedbackList from './BusinessFeedbackList';
 import BusinessPipelineScreen from './BusinessPipelineScreen';
 import { newPipelineToTableRow, type BusinessPipelineTableRow } from './pipelineMappers';
@@ -7041,6 +7042,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
     { name: 'Issues', icon: <AlertCircle size={16} /> },
     { name: 'Meetings', icon: <Calendar size={16} /> },
     { name: 'Deliverables', icon: <FolderOpen size={16} /> },
+    { name: 'Test', icon: <Sparkles size={16} /> },
   ];
   const teamTabs = ['Workload', 'Performance', 'Evaluation'];
   const teamWorkloadBarColors = [
@@ -8303,6 +8305,8 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 />
               )}
             </>
+          ) : activeNav === 'Test' ? (
+            <TestDonutChart />
           ) : activeNav === 'Issues' ? (
             <section className={`relative min-w-0 max-w-full ${enj.panelBg}`}>
               {!showAddIssueForm &&

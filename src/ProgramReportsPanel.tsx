@@ -8,7 +8,6 @@ import { ArrowLeft, Calendar, Pencil } from 'lucide-react';
 import { PagerBar } from './PagerBar';
 import { enj } from './ui/enjForm';
 import { DonutChart } from './DonutChart';
-import { TestDonutChart } from './TestDonutChart';
 import { New_projectsService } from './generated/services/New_projectsService';
 import type { New_programs } from './generated/models/New_programsModel';
 import { New_programsService } from './generated/services/New_programsService';
@@ -1186,7 +1185,6 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         <div className="px-3 py-2 text-right text-[10px] text-gray-400">Showing {Math.min(10, filteredReportTableRows.length)} of {filteredReportTableRows.length} rows</div>
       </section>
       {editReportModal}
-      <TestDonutChart />
     </>
   );
 }
