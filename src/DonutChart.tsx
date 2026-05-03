@@ -30,7 +30,6 @@ function AnimatedNumber({ value }: { value: number }) {
     let raf = 0;
     const step = (t: number) => {
       const p = Math.min(1, (t - start) / duration);
-      // Ease-out curve for subtle value transition.
       const eased = 1 - (1 - p) * (1 - p);
       setDisplayValue(Math.round(from + (to - from) * eased));
       if (p < 1) raf = requestAnimationFrame(step);
@@ -84,80 +83,78 @@ export function DonutChart({
   const rInner = rOuter - ringWidth * 0.5;
   const total = slices.reduce((sum, s) => sum + s.value, 0) || 1;
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
-  const clipId = useMemo(
-    () => `donut-reveal-${Math.random().toString(36).slice(2, 10)}`,
-    [],
-  );
+  const uid = useMemo(() => Math.random().toString(36).slice(2, 10), []);
+  const glowId = `glow-${uid}`;
 
   let angle = -90;
-  const segments = slices.map((slice) => {
-    // Cap at 359.9999 — a full 360° arc has identical start/end points and renders nothing.
+  const segments = slices.map((slice, idx) => {
     const sweep = Math.min((slice.value / total) * 360, 359.9999);
     const start = angle;
     const end = angle + sweep;
     angle = end;
     const mid = (start + end) / 2;
     const isHovered = hoveredLabel === slice.label;
-    const offset = isHovered ? 12 : 0;
+    const offset = isHovered ? 14 : 0;
     const hoverDx = offset * Math.cos((Math.PI / 180) * mid);
     const hoverDy = offset * Math.sin((Math.PI / 180) * mid);
-    return { ...slice, start, end, mid, hoverDx, hoverDy, isHovered };
+    return { ...slice, start, end, mid, hoverDx, hoverDy, isHovered, idx };
   });
-
-  const glowId = `donut-glow-${clipId}`;
 
   return (
     <svg viewBox={`0 0 ${size} ${size}`} className={className} style={{ overflow: 'visible' }}>
       <defs>
-        <clipPath id={clipId}>
-          <circle cx={cx} cy={cy} r={size * 0.6} />
-        </clipPath>
         <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+          <feGaussianBlur stdDeviation="5" result="coloredBlur" />
           <feMerge>
             <feMergeNode in="coloredBlur" />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
         {segments.map((seg) => (
-          <radialGradient key={`grad-${clipId}-${seg.label}`} id={`grad-${clipId}-${seg.label}`}>
-            <stop offset="60%" stopColor={seg.color} stopOpacity={1} />
-            <stop offset="100%" stopColor={seg.color} stopOpacity={0.88} />
+          <radialGradient key={`grad-${uid}-${seg.label}`} id={`grad-${uid}-${seg.label}`}>
+            <stop offset="55%" stopColor={seg.color} stopOpacity={1} />
+            <stop offset="100%" stopColor={seg.color} stopOpacity={0.85} />
           </radialGradient>
         ))}
       </defs>
-      <g clipPath={`url(#${clipId})`}>
-        {segments.map((seg) => (
-          <motion.path
-            key={seg.label}
-            d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
-            fill={`url(#grad-${clipId}-${seg.label})`}
-            stroke="#ffffff"
-            strokeWidth={2}
-            strokeLinejoin="round"
-            className="chart-bar"
-            onHoverStart={() => setHoveredLabel(seg.label)}
-            onHoverEnd={() => setHoveredLabel(null)}
-            animate={{
-              x: seg.hoverDx,
-              y: seg.hoverDy,
-              opacity: hoveredLabel && hoveredLabel !== seg.label ? 0.35 : 1,
-              filter: seg.isHovered ? `url(#${glowId})` : 'none',
-            }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
-            style={{
-              transformBox: 'fill-box',
-              transformOrigin: 'center',
-              cursor: 'pointer',
-              filter: seg.isHovered
-                ? `drop-shadow(0 6px 14px ${seg.color}55)`
-                : 'drop-shadow(0 1px 2px rgba(15, 23, 42, 0.06))',
-            }}
-          >
-            <title>{`${seg.label}: ${seg.value}`}</title>
-          </motion.path>
-        ))}
-      </g>
+
+      {segments.map((seg) => (
+        <motion.path
+          key={`${seg.label}-${uid}`}
+          d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
+          fill={`url(#grad-${uid}-${seg.label})`}
+          stroke="#ffffff"
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{
+            scale: 1,
+            opacity: hoveredLabel && !seg.isHovered ? 0.35 : 1,
+            x: seg.hoverDx,
+            y: seg.hoverDy,
+            filter: seg.isHovered ? `url(#${glowId})` : 'none',
+          }}
+          transition={{
+            scale: { duration: 0.6, delay: seg.idx * 0.08, ease: [0.34, 1.56, 0.64, 1] },
+            opacity: { duration: 0.25, ease: 'easeOut' },
+            x: { duration: 0.3, ease: 'easeOut' },
+            y: { duration: 0.3, ease: 'easeOut' },
+            filter: { duration: 0.2 },
+          }}
+          onMouseEnter={() => setHoveredLabel(seg.label)}
+          onMouseLeave={() => setHoveredLabel(null)}
+          style={{
+            cursor: 'pointer',
+            transformBox: 'fill-box',
+            transformOrigin: `${cx}px ${cy}px`,
+            filter: seg.isHovered
+              ? `drop-shadow(0 8px 16px ${seg.color}66)`
+              : 'drop-shadow(0 1px 3px rgba(15, 23, 42, 0.08))',
+          }}
+        >
+          <title>{`${seg.label}: ${seg.value}`}</title>
+        </motion.path>
+      ))}
 
       {showOuterLabels &&
         segments.map((seg) => {
@@ -167,20 +164,30 @@ export function DonutChart({
           const tx = b.x + (right ? 10 : -10);
           const anchor: CSSProperties['textAnchor'] = right ? 'start' : 'end';
           return (
-            <g
-              key={`${seg.label}-label`}
+            <motion.g
+              key={`${seg.label}-label-${uid}`}
               onMouseEnter={() => setHoveredLabel(seg.label)}
               onMouseLeave={() => setHoveredLabel(null)}
-              style={{ cursor: 'default' }}
+              style={{ cursor: 'pointer' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.4 + seg.idx * 0.05 }}
             >
               <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={labelColor} strokeWidth={1.3} />
-              <text x={tx} y={b.y - 4} fill={labelColor} fontSize={13} fontWeight={500} textAnchor={anchor}>
+              <text
+                x={tx}
+                y={b.y - 4}
+                fill={seg.isHovered ? seg.color : labelColor}
+                fontSize={13}
+                fontWeight={seg.isHovered ? 700 : 500}
+                textAnchor={anchor}
+              >
                 <AnimatedNumber value={seg.value} />
               </text>
               <text x={tx} y={b.y + 12} fill={labelColor} fontSize={8.5} textAnchor={anchor}>
                 {seg.label}
               </text>
-            </g>
+            </motion.g>
           );
         })}
 
