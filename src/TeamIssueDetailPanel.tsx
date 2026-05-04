@@ -58,8 +58,8 @@ function toIsoNoon(yyyyMmDd: string): string {
 function ReadonlyCell({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] text-gray-400 mb-1">{label}</p>
-      <div className="min-h-8 rounded border border-gray-200 bg-gray-50/80 px-2 py-1.5 text-[11px] text-gray-700" title={value}>
+      <p className="text-[13px] text-gray-400 mb-1">{label}</p>
+      <div className="min-h-8 rounded border border-gray-200 bg-gray-50/80 px-2 py-1.5 text-[14px] text-gray-700" title={value}>
         {value}
       </div>
     </div>

@@ -484,8 +484,8 @@ export function ProjectTaskDetailView({
 
   const ro = (label: string, value: string) => (
     <div>
-      <p className="text-[11px] text-gray-500 mb-1">{label}</p>
-      <div className="min-h-9 w-full rounded-md border border-gray-200 bg-gray-50/80 px-3 py-2 text-sm text-gray-800 shadow-sm">
+      <p className="text-[13px] text-gray-500 mb-1">{label}</p>
+      <div className="min-h-9 w-full rounded-md border border-gray-200 bg-gray-50/80 px-3 py-2 text-[14px] text-gray-800 shadow-sm">
         {value || '—'}
       </div>
     </div>
