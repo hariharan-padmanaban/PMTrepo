@@ -2367,7 +2367,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
             </section>
           ) : activeNav === 'Tasks' ? (
-            <section className={`${enj.panelBg} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
+            <section className={`${enj.panelBg} min-w-0 flex min-h-0 flex-1 flex-col overflow-y-auto`}>
               {showTeamSubTaskForm && viewingTaskRow ? (
                 <TeamSubTaskFormPanel
                   parentTask={viewingTaskRow}

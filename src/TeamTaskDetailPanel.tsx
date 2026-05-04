@@ -294,14 +294,6 @@ export function TeamTaskDetailPanel({ task, onBack, onRefreshWorkspace, onOpenSu
               </select>
             </div>
             <div>
-              <label className={labelGold}>Priority</label>
-              <input
-                className={inputBase}
-                value={form.priority}
-                disabled
-              />
-            </div>
-            <div>
               <label className={labelGold}>
                 End Date <span className="text-rose-500">*</span>
               </label>
@@ -316,14 +308,6 @@ export function TeamTaskDetailPanel({ task, onBack, onRefreshWorkspace, onOpenSu
                 disabled={saving}
               />
               {errors.endDate && <p className="mt-1 text-[11px] text-rose-600">{errors.endDate}</p>}
-            </div>
-            <div>
-              <label className={labelGold}>Progress</label>
-              <input
-                className={inputBase}
-                value={form.progress}
-                disabled
-              />
             </div>
           </div>
           <div>
