@@ -1,0 +1,1 @@
+- [Publish app after each change](feedback_publish_after_changes.md) — run `npm run build` + `npx power-apps push` after every code edit

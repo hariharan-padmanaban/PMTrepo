@@ -16,6 +16,10 @@ type DonutChartProps = {
   centerSubtext?: string;
   labelColor?: string;
   showOuterLabels?: boolean;
+  /** Optional callback when a segment is hovered (gives segment index, -1 = none) */
+  onHover?: (index: number) => void;
+  /** Externally controlled hover state — overrides internal hover */
+  externalHoveredIdx?: number;
 };
 
 function AnimatedNumber({ value }: { value: number }) {
@@ -77,13 +81,16 @@ export function DonutChart({
   centerSubtext,
   labelColor = '#6f7f95',
   showOuterLabels = true,
+  onHover,
+  externalHoveredIdx,
 }: DonutChartProps) {
   const cx = size / 2;
   const cy = size / 2;
   const rOuter = size * 0.32;
   const rInner = rOuter - ringWidth * 0.5;
   const total = slices.reduce((sum, s) => sum + s.value, 0) || 1;
-  const [hoveredIdx, setHoveredIdx] = useState<number>(-1);
+  const [internalHoveredIdx, setInternalHoveredIdx] = useState<number>(-1);
+  const hoveredIdx = externalHoveredIdx !== undefined ? externalHoveredIdx : internalHoveredIdx;
   const [mounted, setMounted] = useState(false);
   const uid = useMemo(() => Math.random().toString(36).slice(2, 10), []);
 
@@ -92,6 +99,11 @@ export function DonutChart({
     return () => cancelAnimationFrame(t);
   }, []);
 
+  const setHover = (idx: number) => {
+    setInternalHoveredIdx(idx);
+    onHover?.(idx);
+  };
+
   let angle = -90;
   const segments = slices.map((slice, idx) => {
     const sweep = Math.min((slice.value / total) * 360, 359.9999);
@@ -99,25 +111,17 @@ export function DonutChart({
     const end = angle + sweep;
     angle = end;
     const mid = (start + end) / 2;
-    const pct = Math.round((slice.value / total) * 100);
-    return { ...slice, start, end, mid, pct, idx };
+    return { ...slice, start, end, mid, idx };
   });
 
   const hasHover = hoveredIdx >= 0;
-  const hoveredSeg = hasHover ? segments[hoveredIdx] : null;
-
-  // Tooltip dimensions and positioning
-  const tooltipW = Math.min(size * 0.78, 180);
-  const tooltipH = 52;
-  const tooltipX = cx - tooltipW / 2;
-  const tooltipY = cy - tooltipH / 2;
 
   return (
     <svg
       viewBox={`0 0 ${size} ${size}`}
       className={className}
       style={{ overflow: 'visible' }}
-      onMouseLeave={() => setHoveredIdx(-1)}
+      onMouseLeave={() => setHover(-1)}
     >
       {segments.map((seg) => {
         const isHovered = hoveredIdx === seg.idx;
@@ -147,7 +151,7 @@ export function DonutChart({
             d={donutSlicePath(cx, cy, rOuter, rInner, seg.start, seg.end)}
             stroke="none"
             style={segStyle}
-            onMouseEnter={() => setHoveredIdx(seg.idx)}
+            onMouseEnter={() => setHover(seg.idx)}
           >
             <title>{`${seg.label}: ${seg.value}`}</title>
           </path>
@@ -165,7 +169,7 @@ export function DonutChart({
           return (
             <g
               key={`label-${uid}-${seg.idx}`}
-              onMouseEnter={() => setHoveredIdx(seg.idx)}
+              onMouseEnter={() => setHover(seg.idx)}
               style={{
                 cursor: 'pointer',
                 opacity: mounted ? 1 : 0,
@@ -191,102 +195,16 @@ export function DonutChart({
           );
         })}
 
-      {/* Center text — hidden when hovering since tooltip takes over */}
       {centerText && (
-        <text
-          x={cx}
-          y={cy - 2}
-          fill="#151d5d"
-          fontSize={15}
-          fontWeight={700}
-          textAnchor="middle"
-          style={{
-            opacity: hasHover ? 0 : 1,
-            transition: 'opacity 180ms ease-out',
-            pointerEvents: 'none',
-          }}
-        >
+        <text x={cx} y={cy - 2} fill="#151d5d" fontSize={15} fontWeight={700} textAnchor="middle" style={{ pointerEvents: 'none' }}>
           {centerText}
         </text>
       )}
       {centerSubtext && (
-        <text
-          x={cx}
-          y={cy + 12}
-          fill="#94a3b8"
-          fontSize={8}
-          textAnchor="middle"
-          style={{
-            opacity: hasHover ? 0 : 1,
-            transition: 'opacity 180ms ease-out',
-            pointerEvents: 'none',
-          }}
-        >
+        <text x={cx} y={cy + 12} fill="#94a3b8" fontSize={8} textAnchor="middle" style={{ pointerEvents: 'none' }}>
           {centerSubtext}
         </text>
       )}
-
-      {/* Hover details tooltip */}
-      <g
-        style={{
-          opacity: hoveredSeg ? 1 : 0,
-          transition: 'opacity 180ms ease-out',
-          pointerEvents: 'none',
-        }}
-      >
-        <rect
-          x={tooltipX}
-          y={tooltipY}
-          width={tooltipW}
-          height={tooltipH}
-          rx={8}
-          ry={8}
-          fill="#ffffff"
-          stroke={hoveredSeg?.color ?? '#e5e7eb'}
-          strokeWidth={1.5}
-          style={{ filter: 'drop-shadow(0 2px 6px rgba(15, 23, 42, 0.12))' }}
-        />
-        {/* Color dot */}
-        <circle
-          cx={tooltipX + 12}
-          cy={tooltipY + 14}
-          r={4}
-          fill={hoveredSeg?.color ?? '#cbd5e1'}
-        />
-        {/* Label */}
-        <text
-          x={tooltipX + 22}
-          y={tooltipY + 17}
-          fontSize={10}
-          fontWeight={600}
-          fill="#374151"
-          textAnchor="start"
-        >
-          {hoveredSeg?.label ?? ''}
-        </text>
-        {/* Value */}
-        <text
-          x={cx}
-          y={tooltipY + 36}
-          fontSize={14}
-          fontWeight={800}
-          fill={hoveredSeg?.color ?? '#151d5d'}
-          textAnchor="middle"
-        >
-          {hoveredSeg ? hoveredSeg.value.toLocaleString() : ''}
-        </text>
-        {/* Percentage */}
-        <text
-          x={cx}
-          y={tooltipY + 47}
-          fontSize={8}
-          fontWeight={500}
-          fill="#94a3b8"
-          textAnchor="middle"
-        >
-          {hoveredSeg ? `${hoveredSeg.pct}% of total` : ''}
-        </text>
-      </g>
     </svg>
   );
 }

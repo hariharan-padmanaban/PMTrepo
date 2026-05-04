@@ -22,6 +22,7 @@ import AdminDashboard from './AdminDashboard';
 import { ActivityHistoryModal } from './ActivityHistoryModal';
 import { UserProfileModal } from './UserProfileModal';
 import { DonutChart } from './DonutChart';
+import { DonutChartCard } from './DonutChartCard';
 import { New_programsService } from './generated/services/New_programsService';
 import { New_projectsService } from './generated/services/New_projectsService';
 import { buildProgramIdToNameMap, normalizeDataverseId, resolveProjectProgramName } from './programNameResolve';
@@ -2594,60 +2595,38 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                     </svg>
                   )}
                 </div>
-                <div className="bg-white rounded-xl p-3 shadow-sm flex flex-col items-center">
-                  <h3 className="text-sm font-semibold text-primary mb-2 self-start">Issue Severity</h3>
-                  <DonutChart
-                    className="h-48 w-48 chart-svg"
-                    size={200}
-                    ringWidth={32}
-                    showOuterLabels
-                    centerText={String(myIssues.length)}
-                    centerSubtext="issues"
-                    slices={(() => {
-                      const { sev } = teamIssuesRegister;
-                      const raw = [
-                        { label: 'High', value: sev.high, color: '#ea6a6a' },
-                        { label: 'Med', value: sev.med, color: '#efb4b8' },
-                        { label: 'Low', value: sev.low, color: '#d4a759' },
-                        { label: 'Critical', value: sev.crit, color: '#a855f7' },
-                      ];
-                      return raw.some((x) => x.value > 0) ? raw : [{ label: 'No Data', value: 1, color: '#e5e7eb' }];
-                    })()}
-                  />
-                </div>
-                <div className="bg-white rounded-xl p-3 shadow-sm flex flex-col items-center">
-                  <h3 className="text-sm font-semibold text-primary mb-2 self-start">Issue Status</h3>
-                  <DonutChart
-                    className="h-48 w-48 chart-svg"
-                    size={200}
-                    ringWidth={32}
-                    showOuterLabels
-                    centerText={String(myIssues.length)}
-                    centerSubtext="issues"
-                    slices={(() => {
-                      const { st } = teamIssuesRegister;
-                      if (st.open === 0 && st.closed === 0) {
-                        return [{ label: 'No Data', value: 1, color: '#e5e7eb' }];
-                      }
-                      if (st.open > 0 && st.closed === 0) {
-                        return [
-                          { label: 'Open', value: st.open, color: '#dc4f56' },
-                          { label: 'Closed', value: 0.0001, color: '#1f67e0' },
-                        ];
-                      }
-                      if (st.closed > 0 && st.open === 0) {
-                        return [
-                          { label: 'Open', value: 0.0001, color: '#dc4f56' },
-                          { label: 'Closed', value: st.closed, color: '#1f67e0' },
-                        ];
-                      }
-                      return [
-                        { label: 'Open', value: st.open, color: '#dc4f56' },
-                        { label: 'Closed', value: st.closed, color: '#1f67e0' },
-                      ];
-                    })()}
-                  />
-                </div>
+                <DonutChartCard
+                  title="Issue Severity"
+                  ringWidth={32}
+                  centerText={String(myIssues.length)}
+                  centerSubtext="issues"
+                  slices={(() => {
+                    const { sev } = teamIssuesRegister;
+                    const raw = [
+                      { label: 'High', value: sev.high, color: '#ea6a6a' },
+                      { label: 'Med', value: sev.med, color: '#efb4b8' },
+                      { label: 'Low', value: sev.low, color: '#d4a759' },
+                      { label: 'Critical', value: sev.crit, color: '#a855f7' },
+                    ];
+                    return raw.some((x) => x.value > 0) ? raw : [{ label: 'No Data', value: 1, color: '#e5e7eb' }];
+                  })()}
+                />
+                <DonutChartCard
+                  title="Issue Status"
+                  ringWidth={32}
+                  centerText={String(myIssues.length)}
+                  centerSubtext="issues"
+                  slices={(() => {
+                    const { st } = teamIssuesRegister;
+                    if (st.open === 0 && st.closed === 0) {
+                      return [{ label: 'No Data', value: 1, color: '#e5e7eb' }];
+                    }
+                    return [
+                      { label: 'Open', value: st.open, color: '#dc4f56' },
+                      { label: 'Closed', value: st.closed, color: '#1f67e0' },
+                    ].filter((x) => x.value > 0);
+                  })()}
+                />
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -4821,7 +4800,6 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     { name: 'Deliverables', icon: <ShieldCheck size={16} /> },
     { name: 'Reports', icon: <FileText size={16} /> },
     { name: 'Project Pipeline', icon: <TrendingUp size={16} /> },
-    { name: 'Test', icon: <Sparkles size={16} /> },
   ];
   const programPipelineTableRows = useMemo(
     (): BusinessPipelineTableRow[] => programPipelineData.map((r, i) => newPipelineToTableRow(r, i)),
@@ -5999,24 +5977,22 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     </div>
 
                     <aside className="space-y-3">
-                      <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
-                        <h3 className="text-sm font-semibold text-primary mb-2">Budget chart</h3>
-                        <div className="flex items-center justify-center min-h-[168px]">
-                          {programLoading ? (
-                            <p className="text-xs text-gray-400">Loading…</p>
-                          ) : (
-                            <DonutChart
-                              className="h-48 w-48 chart-svg"
-                              showOuterLabels
-                              ringWidth={42}
-                              slices={programListBudgetChartSlices}
-                            />
-                          )}
+                      {programLoading ? (
+                        <div className="bg-white rounded-xl p-3 shadow-sm chart-card flex items-center justify-center min-h-[200px]">
+                          <p className="text-xs text-gray-400">Loading…</p>
                         </div>
-                        {programListBudgetChartSlices.length === 1 && programListBudgetChartSlices[0]?.label === 'No budget data' && (
-                          <p className="text-[10px] text-center text-gray-400 mt-1">Add budgets to programs to see the split.</p>
-                        )}
-                      </div>
+                      ) : (
+                        <DonutChartCard
+                          title="Budget chart"
+                          slices={programListBudgetChartSlices}
+                          ringWidth={32}
+                          chartSize="sm"
+                          className="chart-card"
+                          footer={programListBudgetChartSlices.length === 1 && programListBudgetChartSlices[0]?.label === 'No budget data' ? (
+                            <p className="text-[10px] text-center text-gray-400">Add budgets to programs to see the split.</p>
+                          ) : null}
+                        />
+                      )}
                       <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
                         <h3 className="text-sm font-semibold text-primary mb-2">Program Progress Levels</h3>
                         {programLoading ? (
@@ -6137,8 +6113,6 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               screenTitle="Project Pipeline"
               onNotify={(type, message) => setProgramToast({ type, message })}
             />
-          ) : activeNav === 'Test' ? (
-            <TestDonutChart />
           ) : activeNav === 'Portfolio' ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
@@ -6507,26 +6481,13 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-stretch">
               {/* Budget donut */}
-              <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
-                <h3 className="text-[11px] font-semibold text-gray-600 mb-2 shrink-0">Budget</h3>
-                <div className="flex flex-1 items-center justify-center gap-2 min-h-0">
-                  <DonutChart
-                    slices={programInsightBudgetSlices}
-                    size={150}
-                    ringWidth={38}
-                    className="h-48 w-48 shrink-0 chart-svg"
-                    showOuterLabels={false}
-                  />
-                  <div className="text-[9px] text-gray-500 space-y-1.5">
-                    {programInsightBudgetSlices.map((slice) => (
-                      <p key={slice.label} className="flex items-center gap-1">
-                        <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: slice.color }} />
-                        {slice.label}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <DonutChartCard
+                title="Budget"
+                slices={programInsightBudgetSlices}
+                ringWidth={32}
+                chartSize="sm"
+                className="h-[280px]"
+              />
 
               {/* Projects progress bars */}
               <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
@@ -8443,24 +8404,15 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div className="bg-white rounded-xl p-3 shadow-sm flex flex-col items-center">
-                      <h3 className="text-2xl font-semibold text-primary mb-2 self-start">Issues Severity</h3>
-                      <p className="text-xs text-gray-500 mb-1 self-start">Live distribution of High, Medium, and Low issues</p>
-                      <DonutChart
-                        className="h-48 w-48 chart-svg"
-                        size={230}
-                        ringWidth={48}
-                        centerText={String(issueCharts.total)}
-                        centerSubtext="Total"
-                        showOuterLabels={issueCharts.hasSeverityData}
-                        slices={issueCharts.severitySlices}
-                      />
-                      <div className="mt-2 flex items-center justify-center gap-4 text-xs text-gray-700">
-                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#dc595f]" />High ({issueCharts.severityCounts.High})</span>
-                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#efb4b8]" />Medium ({issueCharts.severityCounts.Medium})</span>
-                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#d4a759]" />Low ({issueCharts.severityCounts.Low})</span>
-                      </div>
-                    </div>
+                    <DonutChartCard
+                      title="Issues Severity"
+                      subtitle="Live distribution of High, Medium, and Low issues"
+                      ringWidth={32}
+                      chartSize="sm"
+                      centerText={String(issueCharts.total)}
+                      centerSubtext="Total"
+                      slices={issueCharts.severitySlices}
+                    />
 
                     <div className="bg-white rounded-xl p-3 shadow-sm">
                       <h3 className="text-2xl font-semibold text-primary mb-2">Issues vs Projects</h3>
@@ -8492,23 +8444,15 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       </svg>
                     </div>
 
-                    <div className="bg-white rounded-xl p-3 shadow-sm flex flex-col items-center">
-                      <h3 className="text-2xl font-semibold text-primary mb-2 self-start">Issue Status Overview</h3>
-                      <p className="text-xs text-gray-500 mb-1 self-start">Open vs Closed issues</p>
-                      <DonutChart
-                        className="h-48 w-48 chart-svg"
-                        size={230}
-                        ringWidth={48}
-                        centerText={String(issueCharts.total)}
-                        centerSubtext="Issues"
-                        showOuterLabels={issueCharts.hasStatusData && issueCharts.hasBothStatusBuckets}
-                        slices={issueCharts.statusSlices}
-                      />
-                      <div className="mt-2 flex items-center justify-center gap-4 text-xs text-gray-700">
-                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#dc4f56]" />Open ({issueCharts.openCount})</span>
-                        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#1f67e0]" />Closed ({issueCharts.closedCount})</span>
-                      </div>
-                    </div>
+                    <DonutChartCard
+                      title="Issue Status Overview"
+                      subtitle="Open vs Closed issues"
+                      ringWidth={32}
+                      chartSize="sm"
+                      centerText={String(issueCharts.total)}
+                      centerSubtext="Issues"
+                      slices={issueCharts.statusSlices}
+                    />
                   </div>
 
                   <section className="overflow-hidden rounded-xl border border-gray-200/90 bg-white shadow-sm">
@@ -8808,17 +8752,14 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       </svg>
                     )}
                   </div>
-                  <div className="rounded-xl border border-gray-100 p-3 flex flex-col items-center">
-                    <h3 className="text-sm font-semibold text-primary mb-2 self-start">{teamTab === 'Evaluation' ? 'Evaluation Category' : 'Utilization Category'}</h3>
-                    <DonutChart
-                      className="h-48 w-48 chart-svg"
-                      ringWidth={46}
-                      showOuterLabels={teamTab === 'Workload' ? !teamManagementDonut.utilEmpty : teamTab === 'Performance' ? !teamManagementDonut.perEmpty : !teamManagementDonut.evEmpty}
-                      slices={teamTab === 'Workload' ? teamManagementDonut.utilSlices
-                        : teamTab === 'Performance' ? teamManagementDonut.perSlices
-                          : teamManagementDonut.evSlices}
-                    />
-                  </div>
+                  <DonutChartCard
+                    title={teamTab === 'Evaluation' ? 'Evaluation Category' : 'Utilization Category'}
+                    ringWidth={32}
+                    chartSize="sm"
+                    slices={teamTab === 'Workload' ? teamManagementDonut.utilSlices
+                      : teamTab === 'Performance' ? teamManagementDonut.perSlices
+                        : teamManagementDonut.evSlices}
+                  />
                 </div>
               </section>
 
@@ -9336,16 +9277,13 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
 
               {/* Projects Category donut */}
-              <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Projects Category</h3>
-                <div className="flex flex-1 items-center justify-center min-h-0">
-                  <DonutChart
-                    className="h-48 w-48 chart-svg"
-                    slices={projectInsights.categorySlices}
-                    ringWidth={46}
-                  />
-                </div>
-              </div>
+              <DonutChartCard
+                title="Projects Category"
+                slices={projectInsights.categorySlices}
+                ringWidth={32}
+                chartSize="sm"
+                className="h-[280px]"
+              />
 
               {/* Deliverables area chart */}
               <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
