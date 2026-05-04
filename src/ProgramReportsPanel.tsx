@@ -3,8 +3,8 @@
  * @license Apache-2.0
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Calendar, Pencil } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Calendar, Paperclip, Pencil } from 'lucide-react';
 import { PagerBar } from './PagerBar';
 import { enj } from './ui/enjForm';
 import { DonutChart } from './DonutChart';
@@ -15,6 +15,7 @@ import { New_projectsnew_projectstatus, New_projectsnew_projecttype } from './ge
 import { New_reportsService } from './generated/services/New_reportsService';
 import { EnjazMasterDataService } from './services/EnjazMasterDataService';
 import { NewUsersService } from './services/NewUsersService';
+import { uploadFilesForReport } from './services/reportFileUpload';
 import type { ToastType } from './NotificationToast';
 import { AddReportFormPanel } from './AddReportFormPanel';
 import { buildProgramIdToNameMap, resolveProjectProgramName } from './programNameResolve';
@@ -98,9 +99,10 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   const [reportEditBusy, setReportEditBusy] = useState(false);
   const [reportEditError, setReportEditError] = useState('');
   const [editingReportId, setEditingReportId] = useState('');
+  const [reportEditAttachmentFiles, setReportEditAttachmentFiles] = useState<File[]>([]);
+  const reportEditFileInputRef = useRef<HTMLInputElement>(null);
   const [reportTypeMasterOptions, setReportTypeMasterOptions] = useState<string[]>([]);
   const [reportAssigneeEmailOptions, setReportAssigneeEmailOptions] = useState<string[]>([]);
-  const [reportEditAttachment, setReportEditAttachment] = useState<File | null>(null);
   const [reportEditForm, setReportEditForm] = useState({
     programName: '',
     reportTitle: '',
@@ -433,9 +435,16 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
       remark: row.remark,
       programStatus: row.programStatus,
     });
-    setReportEditAttachment(null);
+    setReportEditAttachmentFiles([]);
     setReportEditError('');
     setShowEditReportModal(true);
+  };
+
+  const addEditReportFilesFromList = (fileList: FileList | File[]) => {
+    const newFiles = Array.from(fileList).filter(
+      (f) => !reportEditAttachmentFiles.some((existing) => existing.name === f.name),
+    );
+    if (newFiles.length > 0) setReportEditAttachmentFiles((prev) => [...prev, ...newFiles]);
   };
 
   const saveEditedReport = async () => {
@@ -497,8 +506,29 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         new_programstatus: reportEditForm.programStatus.trim() || undefined,
       });
       if (!res.success) throw new Error(res.error?.message ?? 'Failed to update report');
-      onNotify('success', 'Report updated successfully.');
+
+      if (reportEditAttachmentFiles.length > 0) {
+        const { uploaded, errors: uploadErrs } = await uploadFilesForReport(editingReportId, reportEditAttachmentFiles);
+        if (uploadErrs.length > 0 && uploaded.length === 0) {
+          onNotify?.(
+            'info',
+            `Report updated. No files uploaded — set VITE_REPORT_ATTACHMENTS_SITE_URL (SharePoint site) in .env. ${uploadErrs[0] ?? ''}`,
+          );
+        } else if (uploadErrs.length > 0) {
+          onNotify?.(
+            'info',
+            `Report updated. ${uploaded.length} file(s) uploaded; some failed: ${uploadErrs.slice(0, 2).join('; ')}`,
+          );
+        } else if (uploaded.length > 0) {
+          onNotify?.('success', 'Report updated and files uploaded to SharePoint.');
+        } else {
+          onNotify?.('success', 'Report updated.');
+        }
+      } else {
+        onNotify?.('success', 'Report updated successfully.');
+      }
       setShowEditReportModal(false);
+      setReportEditAttachmentFiles([]);
       const refreshRes = await New_reportsService.getAll({ top: 2000, orderBy: ['createdon desc'] });
       setReportEntityRows(refreshRes.success ? ((refreshRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
     } catch (error) {
@@ -648,7 +678,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h3 className={enj.sectionTitle}>Edit Report</h3>
-          <button type="button" onClick={() => setShowEditReportModal(false)} className="text-sm text-gray-500 hover:text-gray-700">Close</button>
+          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); }} className="text-sm text-gray-500 hover:text-gray-700">Close</button>
         </div>
         <div className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-3">
           <label>
@@ -702,22 +732,53 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <span className="text-[11px] text-gray-500">Remark *</span>
             <textarea className="mt-1 h-20 w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-sm" value={reportEditForm.remark} onChange={(e) => setReportEditForm((f) => ({ ...f, remark: e.target.value }))} />
           </label>
-          <label className="md:col-span-1">
+          <label className="md:col-span-3">
             <span className="text-[11px] text-gray-500">Attachments</span>
-            <div className="mt-1 rounded-md border border-gray-200 p-2">
-              {reportEditAttachment ? (
-                <div className="flex items-center justify-between text-xs text-gray-700">
-                  <span className="truncate">{reportEditAttachment.name}</span>
-                  <button type="button" className="ml-2 text-gray-500 hover:text-gray-700" onClick={() => setReportEditAttachment(null)}>✕</button>
-                </div>
-              ) : <p className="mb-1 text-xs text-gray-400">Attach file</p>}
-              <input type="file" className="mt-1 w-full text-xs text-gray-600" onChange={(e) => setReportEditAttachment(e.target.files?.[0] ?? null)} />
+            <input
+              ref={reportEditFileInputRef}
+              type="file"
+              className="sr-only"
+              multiple
+              disabled={reportEditBusy}
+              onChange={(e) => {
+                if (e.target.files?.length) addEditReportFilesFromList(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <div
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') reportEditFileInputRef.current?.click();
+              }}
+              onClick={() => reportEditFileInputRef.current?.click()}
+              className="mt-1 min-h-16 border border-dashed border-gray-300 rounded-md text-[11px] text-gray-500 flex flex-col items-center justify-center gap-1 px-2 py-2 cursor-pointer hover:bg-gray-50"
+            >
+              <Paperclip className="h-4 w-4" />
+              <span>Click to choose or drop files</span>
             </div>
+            {reportEditAttachmentFiles.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-gray-700">
+                {reportEditAttachmentFiles.map((f) => (
+                  <li key={f.name} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{f.name}</span>
+                    <button
+                      type="button"
+                      className="text-rose-600 shrink-0 hover:underline text-[11px]"
+                      disabled={reportEditBusy}
+                      onClick={() => setReportEditAttachmentFiles((prev) => prev.filter((x) => x.name !== f.name))}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </label>
         </div>
         {reportEditError && <p className="px-5 pb-2 text-xs text-rose-600">{reportEditError}</p>}
         <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4">
-          <button type="button" onClick={() => setShowEditReportModal(false)} className={enj.btnOutline} disabled={reportEditBusy}>Cancel</button>
+          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); }} className={enj.btnOutline} disabled={reportEditBusy}>Cancel</button>
           <button type="button" onClick={() => void saveEditedReport()} className={enj.btnPrimary} disabled={reportEditBusy}>{reportEditBusy ? 'Saving...' : 'Save'}</button>
         </div>
       </div>
