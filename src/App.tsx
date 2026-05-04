@@ -231,72 +231,6 @@ function businessSummaryCardTone(title: string) {
   return { Icon: AlertCircle, iconWrap: 'bg-red-100', iconClass: 'text-red-600' };
 }
 
-type BusinessDonutSlice = {
-  label: string;
-  value: number;
-  color: string;
-  displayName?: string;
-  /** If set, used as the full label text instead of "Name (n)". */
-  labelLine?: string;
-};
-
-/**
- * Filled-arc donut with small gaps (white/background) and "Name (n)" (or `labelLine`) with radial callout segments.
- */
-function buildBusinessStyleDonutGeometry(
-  slices: ReadonlyArray<BusinessDonutSlice>,
-  o: { cx: number; cy: number; outerR: number; innerR: number; gapDeg: number; labelR: number; maxNameLen: number; calloutGap?: number },
-) {
-  const { cx, cy, outerR, innerR, gapDeg, labelR, maxNameLen, calloutGap = 6 } = o;
-  const positive = slices.filter((s) => s.value > 0);
-  const useData: BusinessDonutSlice[] =
-    positive.length > 0 ? [...positive] : [{ label: '—', value: 1, color: '#e5e7eb' }];
-  const sum = useData.reduce((a, s) => a + s.value, 0);
-  const n = useData.length;
-  const availableDeg = Math.max(0.1, 360 - n * gapDeg);
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const pt = (r: number, deg: number) => {
-    const t = toRad(deg);
-    return { x: cx + r * Math.cos(t), y: cy + r * Math.sin(t) };
-  };
-  const pathEls: { d: string; key: string; color: string }[] = [];
-  const calloutEls: { x1: number; y1: number; x2: number; y2: number; key: string }[] = [];
-  const labelEls: { key: string; x: number; y: number; line: string; anchor: 'start' | 'middle' | 'end' }[] = [];
-  let cursor = -90;
-  for (let i = 0; i < n; i++) {
-    const s = useData[i];
-    const seg = sum > 0 ? (s.value / sum) * availableDeg : availableDeg / n;
-    const a0 = cursor;
-    const a1 = cursor + seg;
-    cursor = a1 + gapDeg;
-    const large = seg > 180 ? 1 : 0;
-    const o0 = pt(outerR, a0);
-    const o1 = pt(outerR, a1);
-    const i0 = pt(innerR, a0);
-    const i1 = pt(innerR, a1);
-    const d = `M ${o0.x} ${o0.y} A ${outerR} ${outerR} 0 ${large} 1 ${o1.x} ${o1.y} L ${i1.x} ${i1.y} A ${innerR} ${innerR} 0 ${large} 0 ${i0.x} ${i0.y} Z`;
-    pathEls.push({ d, key: `${i}-${s.label}`, color: s.color });
-    const mid = (a0 + a1) / 2;
-    const tMid = toRad(mid);
-    const lp = pt(labelR, mid);
-    const pLineOut = { x: cx + (labelR - calloutGap) * Math.cos(tMid), y: cy + (labelR - calloutGap) * Math.sin(tMid) };
-    const pLineIn = { x: cx + (outerR + 2) * Math.cos(tMid), y: cy + (outerR + 2) * Math.sin(tMid) };
-    calloutEls.push({ x1: pLineIn.x, y1: pLineIn.y, x2: pLineOut.x, y2: pLineOut.y, key: `${i}-c` });
-    const base = (s.displayName ?? s.label).trim() || s.label;
-    const short = base.length > maxNameLen ? `${base.slice(0, maxNameLen - 1).trimEnd()}…` : base;
-    const line =
-      s.labelLine && s.labelLine.trim() !== ''
-        ? s.labelLine.trim().length > 36
-          ? `${s.labelLine.trim().slice(0, 33)}…`
-          : s.labelLine.trim()
-        : `${short} (${s.value})`;
-    let anchor: 'start' | 'middle' | 'end' = 'middle';
-    if (lp.x < cx - 6) anchor = 'end';
-    if (lp.x > cx + 6) anchor = 'start';
-    labelEls.push({ key: `${i}-l`, x: lp.x, y: lp.y, line, anchor });
-  }
-  return { pathEls, calloutEls, labelEls, cx, cy, innerR };
-}
 
 function formatAEDShort(n: number): string {
   if (!Number.isFinite(n) || n === 0) return '—';
@@ -3061,196 +2995,6 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function BusinessDashboardStyleDonut({
-  title,
-  slices,
-  centerValue,
-  centerSub,
-  showCenterValue = true,
-  layout = 'default',
-  donutVariant = 'standard',
-  stacked = false,
-  cx: cxProp,
-  cy: cyProp,
-  viewW: viewWProp,
-  viewH: viewHProp,
-  outerR: outerRProp,
-  innerR: innerRProp,
-  labelR: labelRProp,
-  maxNameLen = 11,
-  embedded = false,
-}: {
-  title: string;
-  slices: Array<{
-    label: string;
-    value: number;
-    color: string;
-    displayName?: string;
-    labelLine?: string;
-  }>;
-  centerValue?: string | number;
-  centerSub?: string;
-  /** If false, only the white “pinhole” is shown (e.g. Budget). */
-  showCenterValue?: boolean;
-  /** `hero` = larger chart + container (Projects by progress, Budget). */
-  layout?: 'default' | 'hero';
-  /**
-   * `thinRing` = narrow annulus; `pinhole` = small center (budget pie);
-   * `standard` = default band width.
-   */
-  donutVariant?: 'standard' | 'thinRing' | 'pinhole';
-  /** Tighter vertical size when stacked in the right column under another donut. */
-  stacked?: boolean;
-  cx?: number;
-  cy?: number;
-  viewW?: number;
-  viewH?: number;
-  outerR?: number;
-  innerR?: number;
-  labelR?: number;
-  maxNameLen?: number;
-  /** No outer card — use inside a shared panel (e.g. Business pipeline split layout). */
-  embedded?: boolean;
-}) {
-  const isHero = layout === 'hero';
-  const cx = cxProp ?? (isHero ? 120 : 90);
-  const cy = cyProp ?? (isHero ? 120 : 90);
-  const viewW = viewWProp ?? (isHero ? 240 : 180);
-  const viewH = viewHProp ?? (isHero ? 240 : 180);
-  let outerR: number;
-  let innerR: number;
-  let labelR: number;
-  if (isHero && donutVariant === 'thinRing') {
-    outerR = outerRProp ?? (stacked ? 66 : 54);
-    innerR = innerRProp ?? Math.max(outerR - 10, 42);
-    labelR = labelRProp ?? (stacked ? 88 : 80);
-  } else if (isHero && donutVariant === 'pinhole') {
-    outerR = outerRProp ?? (stacked ? 68 : 58);
-    innerR = innerRProp ?? (stacked ? 13 : 11);
-    labelR = labelRProp ?? (stacked ? 94 : 92);
-  } else {
-    outerR = outerRProp ?? (isHero ? 50 : 36);
-    innerR = innerRProp ?? (isHero ? 28 : 20);
-    labelR = labelRProp ?? (isHero ? 82 : 58);
-  }
-  const g = useMemo(
-    () =>
-      buildBusinessStyleDonutGeometry(slices, {
-        cx,
-        cy,
-        outerR,
-        innerR,
-        gapDeg: 2.6,
-        labelR,
-        maxNameLen,
-        calloutGap: 5,
-      }),
-    [slices, cx, cy, outerR, innerR, labelR, maxNameLen],
-  );
-  const shellClass = embedded
-    ? 'min-h-0 w-full'
-    : `bg-white shadow-sm chart-card border border-gray-100/90 ${
-        isHero
-          ? stacked
-            ? 'min-h-0 rounded-xl p-4'
-            : 'min-h-[15rem] rounded-xl p-4'
-          : 'min-h-0 rounded-lg p-2.5'
-      }`;
-  return (
-    <div className={shellClass}>
-      <h3
-        className={
-          embedded
-            ? 'mb-2 text-left text-sm font-bold text-gray-900'
-            : `font-bold text-gray-900 ${isHero ? 'mb-1 text-sm' : 'mb-0.5 text-xs'}`
-        }
-      >
-        {title}
-      </h3>
-      <div
-        className={`flex w-full items-center justify-center ${
-          embedded
-            ? 'min-h-[10.5rem] py-0 sm:min-h-[11.5rem]'
-            : isHero
-              ? stacked
-                ? 'min-h-0 py-0.5'
-                : 'min-h-[12rem] py-1'
-              : 'min-h-[7.5rem] max-h-[9.5rem] py-0.5'
-        }`}
-      >
-        <svg
-          viewBox={`0 0 ${viewW} ${viewH}`}
-          className={`w-full chart-svg ${
-            isHero
-              ? stacked
-                ? 'h-44 min-h-[10.5rem] max-w-[min(100%,22rem)] sm:h-[11rem]'
-                : 'h-[12rem] max-h-[14rem] min-h-[11rem] max-w-[min(100%,24rem)] sm:h-[13rem]'
-              : 'h-[7.5rem] max-w-[11.5rem]'
-          }`}
-          style={{ overflow: 'visible' }}
-        >
-          {g.pathEls.map((p) => (
-            <path key={p.key} d={p.d} fill={p.color} />
-          ))}
-          <circle cx={g.cx} cy={g.cy} r={g.innerR - 0.5} fill="white" />
-          {g.calloutEls.map((c) => (
-            <line
-              key={c.key}
-              x1={c.x1}
-              y1={c.y1}
-              x2={c.x2}
-              y2={c.y2}
-              stroke="#cbd5e1"
-              strokeWidth="0.9"
-            />
-          ))}
-          {showCenterValue && (centerValue !== undefined && centerValue !== null && String(centerValue).trim() !== '') && (
-            <text
-              x={g.cx}
-              y={centerSub ? g.cy - 2 : g.cy}
-              textAnchor="middle"
-              fill="#0f172a"
-              fontSize={isHero ? 18 : 15}
-              fontWeight="700"
-              dominantBaseline="middle"
-            >
-              {centerValue}
-            </text>
-          )}
-          {centerSub && showCenterValue && (
-            <text
-              x={g.cx}
-              y={g.cy + 9}
-              textAnchor="middle"
-              fill="#94a3b8"
-              fontSize="7"
-              dominantBaseline="middle"
-            >
-              {centerSub}
-            </text>
-          )}
-          {g.labelEls.map((t) => (
-            <text
-              key={t.key}
-              x={t.x}
-              y={t.y}
-              textAnchor={t.anchor}
-              fontSize={isHero ? 9 : 7}
-              fill="#64748b"
-              fontWeight="500"
-              dominantBaseline="middle"
-              className="select-none"
-              style={{ fontFamily: 'inherit' }}
-            >
-              <title>{t.line}</title>
-              {t.line}
-            </text>
-          ))}
-        </svg>
-      </div>
-    </div>
-  );
-}
 
 // ─── Business dashboard (stakeholder / portfolio view) ─────────────────────────
 function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
@@ -4213,25 +3957,19 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
 
             <div className="space-y-3 xl:col-span-5 min-h-0">
-              <BusinessDashboardStyleDonut
+              <DonutChartCard
                 title="Projects by progress"
-                layout="hero"
-                donutVariant="thinRing"
-                stacked
+                ringWidth={42}
                 slices={progressDonutSlices}
-                centerValue={businessDash.totalProjectCount}
-                maxNameLen={11}
+                centerText={String(businessDash.totalProjectCount)}
+                centerSubtext="projects"
               />
               {businessDash.has.budget && (
-              <BusinessDashboardStyleDonut
-                title="Budget"
-                layout="hero"
-                donutVariant="pinhole"
-                stacked
-                slices={budgetDonutSlices}
-                showCenterValue={false}
-                maxNameLen={24}
-              />
+                <DonutChartCard
+                  title="Budget"
+                  ringWidth={70}
+                  slices={budgetDonutSlices}
+                />
               )}
             </div>
           </section>
@@ -4295,16 +4033,13 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
 
             {businessDash.has.category && (
-            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <BusinessDashboardStyleDonut
+              <DonutChartCard
                 title="Project categories"
-                layout="hero"
-                donutVariant="thinRing"
+                ringWidth={42}
                 slices={categoryDonutSlices}
-                centerValue={categoryDonutCenter}
-                maxNameLen={11}
+                centerText={String(categoryDonutCenter)}
+                className="h-[280px]"
               />
-            </div>
             )}
 
             {/* ── Projects Count ── */}
