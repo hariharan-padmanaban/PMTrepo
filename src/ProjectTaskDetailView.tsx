@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, Pencil, RefreshCw, X } from 'lucide-react';
+import { Paperclip, RefreshCw, X } from 'lucide-react';
 import { New_subtasksService } from './generated/services/New_subtasksService';
 import { New_tasksService } from './generated/services/New_tasksService';
 import type { New_tasksnew_taskstatus } from './generated/models/New_tasksModel';
 import type { ToastType } from './NotificationToast';
 import { ScreenLoader } from './ScreenLoader';
-import { TaskLogsModal } from './TaskLogsModal';
+import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
 import { enj } from './ui/enjForm';
 
 const TASK_STATUS_OPTIONS = ['To Do', 'In Progress', 'Delayed', 'Done'] as const;
@@ -54,38 +54,14 @@ function toStartOfDayIsoFromYmd(dateYmd: string): string {
   return d.toISOString();
 }
 
-function normGuid(s: string): string {
-  return String(s).replace(/[{}]/g, '').toLowerCase();
-}
-
 function ymdFromToday(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function ymdFromDataverseDate(raw: unknown): string {
-  if (raw == null || raw === '') return ymdFromToday();
-  const s = String(raw);
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return ymdFromToday();
-  return d.toISOString().slice(0, 10);
 }
 
 function atStartOfLocalDay(d: Date): number {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x.getTime();
-}
-
-function subtaskBelongsToTaskRow(row: Record<string, unknown>, parentTaskId: string): boolean {
-  const tid = normGuid(parentTaskId);
-  const v =
-    (row as { new_taskid?: string }).new_taskid ??
-    (row as { _new_taskid_value?: string })._new_taskid_value;
-  if (v && typeof v === 'string' && normGuid(v) === tid) return true;
-  const d = (row as { new_duration?: string }).new_duration;
-  if (d && normGuid(d) === tid) return true;
-  return false;
 }
 
 function getPmDisplay(row: Record<string, unknown>): string {
@@ -126,8 +102,6 @@ export function ProjectTaskDetailView({
   const [subTaskDescription, setSubTaskDescription] = useState('');
   const [subTaskErrors, setSubTaskErrors] = useState<{ name?: string; duration?: string; desc?: string }>({});
   const [subTaskSaving, setSubTaskSaving] = useState(false);
-  const [subTaskRows, setSubTaskRows] = useState<Array<Record<string, unknown>>>([]);
-  const [subTasksLoading, setSubTasksLoading] = useState(false);
   const [editingSubTask, setEditingSubTask] = useState<Record<string, unknown> | null>(null);
   const [editStName, setEditStName] = useState('');
   const [editStDurationYmd, setEditStDurationYmd] = useState(ymdFromToday);
@@ -135,11 +109,20 @@ export function ProjectTaskDetailView({
   const [editStStatus, setEditStStatus] = useState<TaskStatusLabel>('To Do');
   const [editStErrors, setEditStErrors] = useState<{ name?: string; duration?: string; desc?: string }>({});
   const [editStSaving, setEditStSaving] = useState(false);
-  const [showTaskLogs, setShowTaskLogs] = useState(false);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [existingAttachments, setExistingAttachments] = useState<AttachmentFile[]>([]);
 
   useEffect(() => {
     setLocalRow(task);
   }, [task]);
+
+  const addFilesFromList = (fileList: FileList) => {
+    const newFiles = Array.from(fileList).filter(
+      (f) => !attachmentFiles.some((existing) => existing.name === f.name),
+    );
+    if (newFiles.length > 0) setAttachmentFiles((prev) => [...prev, ...newFiles]);
+  };
 
   const syncFormFromRow = useCallback((row: Record<string, unknown>) => {
     const n = Number(row.new_taskstatus ?? NaN);
@@ -151,6 +134,16 @@ export function ProjectTaskDetailView({
       setEstimationHours('');
     }
     setDescription(String(row.new_description ?? ''));
+    setAttachmentFiles([]);
+
+    const attachmentId = String(row.new_attachmentid ?? '').trim();
+    if (attachmentId) {
+      fetchAttachments(attachmentId)
+        .then(setExistingAttachments)
+        .catch(() => setExistingAttachments([]));
+    } else {
+      setExistingAttachments([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -173,42 +166,16 @@ export function ProjectTaskDetailView({
     [taskId, onTaskRefreshed, onListRefresh, onNotify],
   );
 
-  const loadSubTasksForTask = useCallback(async () => {
-    if (!taskId) {
-      setSubTaskRows([]);
-      return;
-    }
-    setSubTasksLoading(true);
-    try {
-      const res = await New_subtasksService.getAll({ top: 500, orderBy: ['createdon desc'] });
-      if (!res.success) {
-        setSubTaskRows([]);
-        return;
-      }
-      const rows = (res.data ?? []) as unknown as Array<Record<string, unknown>>;
-      setSubTaskRows(rows.filter((r) => subtaskBelongsToTaskRow(r, taskId)));
-    } catch {
-      setSubTaskRows([]);
-    } finally {
-      setSubTasksLoading(false);
-    }
-  }, [taskId]);
-
-  useEffect(() => {
-    void loadSubTasksForTask();
-  }, [loadSubTasksForTask, taskId]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshBusy(true);
     try {
       await loadTaskById({ notify: true });
-      await loadSubTasksForTask();
     } catch (e) {
       onNotify('error', e instanceof Error ? e.message : 'Failed to refresh');
     } finally {
       setRefreshBusy(false);
     }
-  }, [loadTaskById, loadSubTasksForTask, onNotify]);
+  }, [loadTaskById, onNotify]);
 
   const openAddSubTaskModal = useCallback(() => {
     setEditingSubTask(null);
@@ -300,7 +267,6 @@ export function ProjectTaskDetailView({
       setSubTaskName('');
       setSubTaskDescription('');
       setSubTaskDurationYmd(ymdFromToday());
-      await loadSubTasksForTask();
       onListRefresh();
     } catch (e) {
       onNotify('error', e instanceof Error ? e.message : 'Failed to create sub task');
@@ -316,21 +282,9 @@ export function ProjectTaskDetailView({
     taskEndDateLabel,
     taskEndValid,
     onNotify,
-    loadSubTasksForTask,
     onListRefresh,
   ]);
 
-  const openEditSubTask = useCallback((row: Record<string, unknown>) => {
-    setShowAddSubTask(false);
-    setSubTaskErrors({});
-    setEditingSubTask(row);
-    setEditStName(String(row.new_subtaskname ?? '').trim());
-    setEditStDurationYmd(ymdFromDataverseDate(row.new_subtaskduration));
-    setEditStDesc(String(row.new_description ?? '').slice(0, SUBTASK_DESC_MAX));
-    const stn = Number(row.new_subtaskstatus ?? NaN);
-    setEditStStatus(CHOICE_TO_STATUS[stn] ?? 'To Do');
-    setEditStErrors({});
-  }, []);
 
   const closeEditSubTask = useCallback(() => {
     if (editStSaving) return;
@@ -392,7 +346,6 @@ export function ProjectTaskDetailView({
       }
       onNotify('success', 'Sub task has been updated.');
       setEditingSubTask(null);
-      await loadSubTasksForTask();
       onListRefresh();
     } catch (e) {
       onNotify('error', e instanceof Error ? e.message : 'Failed to update sub task');
@@ -409,7 +362,6 @@ export function ProjectTaskDetailView({
     taskEndDateLabel,
     taskEndValid,
     onNotify,
-    loadSubTasksForTask,
     onListRefresh,
   ]);
 
@@ -435,11 +387,28 @@ export function ProjectTaskDetailView({
     }
     setSaveBusy(true);
     try {
-      const payload = {
+      let attachmentId = String(localRow.new_attachmentid ?? '').trim();
+
+      if (attachmentFiles.length > 0) {
+        if (!attachmentId) {
+          attachmentId = String(Math.random()).replace('0.', '').substring(0, 8).toUpperCase();
+        }
+        const uploadRes = await uploadAttachments(attachmentId, attachmentFiles);
+        if (uploadRes.errors.length > 0) {
+          throw new Error(`Failed to upload attachments: ${uploadRes.errors.join(', ')}`);
+        }
+      }
+
+      const payload: Record<string, unknown> = {
         new_taskstatus: STATUS_TO_CHOICE[taskStatus] as New_tasksnew_taskstatus,
         new_cost: hours,
         new_description: clip(desc, 2000),
       };
+
+      if (attachmentId) {
+        payload.new_attachmentid = attachmentId;
+      }
+
       const res = await New_tasksService.update(taskId, payload);
       if (!res.success) {
         throw new Error(res.error?.message ?? 'Failed to save');
@@ -602,62 +571,91 @@ export function ProjectTaskDetailView({
         </div>
       </div>
 
-      <div className="mt-4 mx-4 sm:mx-0 space-y-4 pb-6">
-        <aside className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-primary">Task Logs</h3>
-          <p className="mt-1 text-[11px] text-gray-500">History from Task Details (Dataverse) for this task.</p>
-          <button
-            type="button"
-            onClick={() => {
-              if (!taskId) onNotify('error', 'Cannot open task logs: missing task id.');
-              else setShowTaskLogs(true);
+      <div className="mt-4 mx-4 sm:mx-0 pb-6">
+        <aside className="rounded-xl border border-gray-200/90 bg-white p-4 shadow-sm">
+          <p className="text-[13px] font-medium text-secondary mb-3">Attachments</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="sr-only"
+            multiple
+            disabled={saveBusy}
+            onChange={(e) => {
+              if (e.target.files?.length) addFilesFromList(e.target.files);
+              e.target.value = '';
             }}
-            className={`${enj.btnDefault} mt-3 w-full justify-center border-gray-200 bg-gray-50 py-2.5 text-[12px] font-medium text-primary hover:border-secondary/50 hover:bg-white`}
-          >
-            <Eye className="h-4 w-4 text-secondary" aria-hidden />
-            View task logs
-          </button>
-        </aside>
-        <aside className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-primary">Sub-Task Logs</h3>
-          {subTasksLoading ? (
-            <p className="mt-2 text-xs text-gray-400">Loading…</p>
-          ) : subTaskRows.length === 0 ? (
-            <p className="mt-2 text-xs text-gray-400">No sub-tasks for this task yet.</p>
-          ) : (
-            <ul className="mt-2 space-y-2">
-              {subTaskRows.map((st) => {
-                const id = String(st.new_subtaskid ?? Math.random());
-                const stName = String(st.new_subtaskname ?? 'Sub task').trim() || 'Sub task';
-                const d = st.new_subtaskduration;
-                return (
-                  <li
-                    key={id}
-                    className="flex items-start justify-between gap-2 rounded border border-gray-100 bg-gray-50 px-2 py-2 text-[12px] text-gray-700"
+          />
+          <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
+            {attachmentFiles.length === 0 && existingAttachments.length === 0 ? (
+              <div className="text-center">
+                <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={saveBusy}
+                  className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+                  style={{ color: '#A08149' }}
+                >
+                  <Paperclip size={16} />
+                  Attach file
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {attachmentFiles.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
+                    <ul className="space-y-1">
+                      {attachmentFiles.map((f) => (
+                        <li key={f.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                          <span className="truncate">{f.name}</span>
+                          <button
+                            type="button"
+                            className="text-rose-600 shrink-0 hover:underline text-[11px]"
+                            disabled={saveBusy}
+                            onClick={() => setAttachmentFiles((prev) => prev.filter((x) => x.name !== f.name))}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {existingAttachments.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Current attachments</p>
+                    <ul className="space-y-1">
+                      {existingAttachments.map((f) => (
+                        <li key={f.id} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                          <span className="truncate">{f.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => downloadFile(f).catch(() => onNotify('error', 'Download failed'))}
+                            className="text-blue-600 shrink-0 hover:underline text-[11px]"
+                          >
+                            Download
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="pt-2 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={saveBusy}
+                    className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
+                    style={{ color: '#A08149' }}
                   >
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-800 truncate" title={stName}>
-                        {stName}
-                      </p>
-                      <p className="text-[11px] text-gray-500">{formatDdMmYyyy(d)}</p>
-                      {st.new_description ? (
-                        <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{String(st.new_description)}</p>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-1 text-gray-400 hover:bg-white hover:text-secondary"
-                      title="Edit sub task"
-                      onClick={() => openEditSubTask(st)}
-                      aria-label="Edit sub task"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                    <Paperclip size={14} />
+                    Attach more
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </aside>
       </div>
 
@@ -909,7 +907,6 @@ export function ProjectTaskDetailView({
           )
         : null}
 
-      {showTaskLogs && taskId ? <TaskLogsModal taskId={taskId} onClose={() => setShowTaskLogs(false)} /> : null}
     </section>
   );
 }
