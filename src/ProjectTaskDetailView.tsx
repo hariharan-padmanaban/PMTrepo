@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, Pencil, Paperclip, RefreshCw, UserPlus, X } from 'lucide-react';
+import { Eye, Pencil, RefreshCw, X } from 'lucide-react';
 import { New_subtasksService } from './generated/services/New_subtasksService';
 import { New_tasksService } from './generated/services/New_tasksService';
 import type { New_tasksnew_taskstatus } from './generated/models/New_tasksModel';
@@ -39,21 +39,6 @@ function formatDdMmYyyy(v: unknown): string {
   return `${dd}/${mm}/${d.getFullYear()}`;
 }
 
-function subTaskCount(row: Record<string, unknown>): number {
-  const n = Number(row.new_subtask ?? NaN);
-  if (n === 100000001) return 1;
-  const t = String(row.new_subtaskname ?? '').toLowerCase();
-  if (t === 'yes') return 1;
-  return 0;
-}
-
-function linkToDisplay(row: Record<string, unknown>): string {
-  const progress = String(row.new_progress ?? '').trim();
-  if (progress) return progress;
-  const n = String(row.new_linktoname ?? '').trim();
-  if (n) return n;
-  return '—';
-}
 
 function clip(s: string, max: number): string {
   if (s.length <= max) return s;
@@ -482,218 +467,198 @@ export function ProjectTaskDetailView({
     loadTaskById,
   ]);
 
-  const ro = (label: string, value: string) => (
-    <div>
-      <p className="text-[13px] text-gray-500 mb-1">{label}</p>
-      <div className="min-h-9 w-full rounded-md border border-gray-200 bg-gray-50/80 px-3 py-2 text-[14px] text-gray-800 shadow-sm">
-        {value || '—'}
+  function ReadonlyCell({ label, value }: { label: string; value: string }) {
+    return (
+      <div>
+        <p className="text-[13px] text-gray-400 mb-1">{label}</p>
+        <div className="min-h-8 rounded border border-gray-200 bg-gray-50/80 px-2 py-1.5 text-[14px] text-gray-700" title={value}>
+          {value}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   const title = String(localRow.new_tasktitle ?? 'Task').trim() || 'Task';
   const assign = String(localRow.new_assigntoteammember ?? '').trim() || '—';
   const projectName = String(localRow.new_projectname ?? localRow.new_taskprojectname ?? '').trim() || '—';
-  const pred = String(localRow.new_predecessor ?? '').trim();
-  const succ = String(localRow.new_successor ?? '').trim();
 
   return (
-    <section className="relative w-full max-w-6xl mx-auto">
-      {(refreshBusy || saveBusy) && <ScreenLoader overlay />}
+    <section className="relative w-full max-w-6xl">
+      {(refreshBusy || saveBusy) && <ScreenLoader overlay className="rounded-xl" />}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_260px]">
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium text-primary">
-              <button type="button" className="font-semibold text-primary underline" onClick={onBack}>
-                Tasks
-              </button>
-              {' > '}
-              <span>Task Details</span>
-            </p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[16px] font-bold text-primary">
+          <button type="button" className="font-bold text-primary underline" onClick={onBack}>
+            Tasks
+          </button>
+          <span className="text-gray-300"> / </span>
+          <span className="text-primary">Task Details</span>
+        </p>
+        <button
+          type="button"
+          onClick={() => void handleRefresh()}
+          disabled={refreshBusy || !taskId}
+          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-xs font-medium text-gray-600 shadow-sm hover:bg-gray-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200/90 shadow-sm overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+            <div className="space-y-3">
+              <ReadonlyCell label="Task Title" value={title} />
+              <ReadonlyCell label="Project" value={projectName} />
+            </div>
+            <div className="space-y-3">
+              <ReadonlyCell label="Start Date" value={formatDdMmYyyy(localRow.new_startdate)} />
+              <ReadonlyCell label="End Date" value={formatDdMmYyyy(localRow.new_enddate)} />
+            </div>
+            <div className="space-y-3">
+              <ReadonlyCell label="Project Manager" value={getPmDisplay(localRow)} />
+              <ReadonlyCell label="Assign to" value={assign} />
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => void handleRefresh()}
-              disabled={refreshBusy || !taskId}
-              className={`${enj.btnDefault} inline-flex gap-1.5 px-3 disabled:opacity-50`}
+              onClick={openAddSubTaskModal}
+              className={`${enj.btnOutline} min-w-[6rem] text-xs`}
             >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
+              Sub Task
             </button>
           </div>
+        </div>
 
-          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-            {ro('Task Title', title)}
-            {ro('Project Name', projectName)}
-            {ro('Project Manager', getPmDisplay(localRow))}
-            {ro('Start Date', formatDdMmYyyy(localRow.new_startdate))}
-            {ro('End Date', formatDdMmYyyy(localRow.new_enddate))}
-            {ro('Link to', linkToDisplay(localRow))}
-            {ro('Sub Task', String(subTaskCount(localRow)))}
-            {ro('Predecessor', pred || '—')}
-            {ro('Successor', succ || '—')}
-            {ro('Assign to', assign)}
-            <div className="hidden md:block" aria-hidden />
-            <div className="hidden md:block" aria-hidden />
-          </div>
-
-          <div className="mb-4 flex items-center gap-2 text-sm text-gray-700">
-            <Paperclip className="h-4 w-4 text-amber-800/80" />
-            <span className="font-medium text-gray-800">Attached Files (from PM)</span>
-            <span className="text-xs text-gray-400">(No files on record)</span>
-          </div>
-
-          <div className="space-y-3 border-t border-gray-100 pt-4">
-            <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_auto]">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="block min-w-0">
-                  <span className="mb-1 block text-[11px] text-gray-500">
-                    Task Status <span className="text-rose-500">*</span>
-                  </span>
-                  <select
-                    className={enj.control}
-                    value={taskStatus}
-                    onChange={(e) => setTaskStatus(e.target.value as TaskStatusLabel)}
-                    disabled={saveBusy}
-                  >
-                    {TASK_STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block min-w-0">
-                  <span className="mb-1 block text-[11px] text-gray-500">
-                    Estimation Time <span className="text-rose-500">*</span>
-                  </span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={enj.control}
-                    placeholder="Mention In Hours"
-                    value={estimationHours}
-                    onChange={(e) => setEstimationHours(e.target.value)}
-                    disabled={saveBusy}
-                  />
-                </label>
-              </div>
-              <button
-                type="button"
-                onClick={openAddSubTaskModal}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 self-end text-sm font-medium text-secondary hover:text-[#9a7638] md:justify-end"
+        <div className="p-4 sm:p-5 space-y-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="text-[11px] font-medium text-secondary mb-1 block">
+                Task Status <span className="text-rose-500">*</span>
+              </label>
+              <select
+                className={enj.control}
+                value={taskStatus}
+                onChange={(e) => setTaskStatus(e.target.value as TaskStatusLabel)}
+                disabled={saveBusy}
               >
-                <UserPlus className="h-4 w-4" />
-                Add sub.task
-              </button>
+                {TASK_STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
             </div>
-
-            <label className="block">
-              <span className="mb-1 block text-[11px] text-gray-500">
-                Description <span className="text-rose-500">*</span>
-              </span>
-              <textarea
-                className={`${enj.textarea} min-h-[100px]`}
-                placeholder="Description..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+            <div>
+              <label className="text-[11px] font-medium text-secondary mb-1 block">
+                Estimation Time <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                className={enj.control}
+                placeholder="Mention In Hours"
+                value={estimationHours}
+                onChange={(e) => setEstimationHours(e.target.value)}
                 disabled={saveBusy}
               />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-secondary mb-1 block">
+              Description <span className="text-rose-500">*</span>
             </label>
-
-            <div>
-              <p className="mb-1 text-[11px] text-gray-500">Attachment</p>
-              <label className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50/50 px-3 py-2 text-sm text-gray-500">
-                <input type="file" className="hidden" disabled={saveBusy} onChange={() => onNotify('info', 'File upload: wire to SharePoint or Dataverse in a follow-up.')} />
-                <span>
-                  <span className="font-medium text-gray-600">Choose a file</span> or drag it here
-                </span>
-                <span className="mt-1 inline-flex items-center gap-1 text-xs text-secondary">
-                  <Paperclip className="h-3 w-3" />
-                  Attach file
-                </span>
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={onBack}
-                disabled={saveBusy}
-                className={`${enj.btnDefault} px-5`}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saveBusy}
-                className={`${enj.btnPrimary} px-5 font-semibold`}
-              >
-                {saveBusy ? 'Saving...' : 'Save'}
-              </button>
-            </div>
+            <textarea
+              className={`${enj.textarea} min-h-[6.5rem] resize-y`}
+              placeholder="Description..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={saveBusy}
+            />
           </div>
         </div>
 
-        <div className="space-y-4">
-          <aside className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-primary">Task Logs</h3>
-            <p className="mt-1 text-[11px] text-gray-500">History from Task Details (Dataverse) for this task.</p>
-            <button
-              type="button"
-              onClick={() => {
-                if (!taskId) onNotify('error', 'Cannot open task logs: missing task id.');
-                else setShowTaskLogs(true);
-              }}
-              className={`${enj.btnDefault} mt-3 w-full justify-center border-gray-200 bg-gray-50 py-2.5 text-[12px] font-medium text-primary hover:border-secondary/50 hover:bg-white`}
-            >
-              <Eye className="h-4 w-4 text-secondary" aria-hidden />
-              View task logs
-            </button>
-          </aside>
-          <aside className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-primary">Sub-Task Logs</h3>
-            {subTasksLoading ? (
-              <p className="mt-2 text-xs text-gray-400">Loading…</p>
-            ) : subTaskRows.length === 0 ? (
-              <p className="mt-2 text-xs text-gray-400">No sub-tasks for this task yet.</p>
-            ) : (
-              <ul className="mt-2 space-y-2">
-                {subTaskRows.map((st) => {
-                  const id = String(st.new_subtaskid ?? Math.random());
-                  const stName = String(st.new_subtaskname ?? 'Sub task').trim() || 'Sub task';
-                  const d = st.new_subtaskduration;
-                  return (
-                    <li
-                      key={id}
-                      className="flex items-start justify-between gap-2 rounded border border-gray-100 bg-gray-50 px-2 py-2 text-[12px] text-gray-700"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-gray-800 truncate" title={stName}>
-                          {stName}
-                        </p>
-                        <p className="text-[11px] text-gray-500">{formatDdMmYyyy(d)}</p>
-                        {st.new_description ? (
-                          <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{String(st.new_description)}</p>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        className="shrink-0 rounded p-1 text-gray-400 hover:bg-white hover:text-secondary"
-                        title="Edit sub task"
-                        onClick={() => openEditSubTask(st)}
-                        aria-label="Edit sub task"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </aside>
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-100 bg-white px-4 py-3 sm:px-5 shrink-0">
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={saveBusy}
+            className="h-9 min-w-[5.5rem] rounded-md border border-gray-300 bg-white px-6 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saveBusy}
+            className={`${enj.btnPrimary} min-w-[5.5rem]`}
+          >
+            {saveBusy ? 'Saving...' : 'Save'}
+          </button>
         </div>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        <aside className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-primary">Task Logs</h3>
+          <p className="mt-1 text-[11px] text-gray-500">History from Task Details (Dataverse) for this task.</p>
+          <button
+            type="button"
+            onClick={() => {
+              if (!taskId) onNotify('error', 'Cannot open task logs: missing task id.');
+              else setShowTaskLogs(true);
+            }}
+            className={`${enj.btnDefault} mt-3 w-full justify-center border-gray-200 bg-gray-50 py-2.5 text-[12px] font-medium text-primary hover:border-secondary/50 hover:bg-white`}
+          >
+            <Eye className="h-4 w-4 text-secondary" aria-hidden />
+            View task logs
+          </button>
+        </aside>
+        <aside className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-primary">Sub-Task Logs</h3>
+          {subTasksLoading ? (
+            <p className="mt-2 text-xs text-gray-400">Loading…</p>
+          ) : subTaskRows.length === 0 ? (
+            <p className="mt-2 text-xs text-gray-400">No sub-tasks for this task yet.</p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {subTaskRows.map((st) => {
+                const id = String(st.new_subtaskid ?? Math.random());
+                const stName = String(st.new_subtaskname ?? 'Sub task').trim() || 'Sub task';
+                const d = st.new_subtaskduration;
+                return (
+                  <li
+                    key={id}
+                    className="flex items-start justify-between gap-2 rounded border border-gray-100 bg-gray-50 px-2 py-2 text-[12px] text-gray-700"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-800 truncate" title={stName}>
+                        {stName}
+                      </p>
+                      <p className="text-[11px] text-gray-500">{formatDdMmYyyy(d)}</p>
+                      {st.new_description ? (
+                        <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{String(st.new_description)}</p>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded p-1 text-gray-400 hover:bg-white hover:text-secondary"
+                      title="Edit sub task"
+                      onClick={() => openEditSubTask(st)}
+                      aria-label="Edit sub task"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </aside>
       </div>
 
       {showAddSubTask
