@@ -12,7 +12,7 @@
       "properties": {
         "createdby": {
           "type": "string",
-          "title": "createdby",
+          "title": "Created By",
           "x-ms-dataverse-attribute": "createdby",
           "x-ms-dataverse-type": "LookupType",
           "x-ms-schema-name": "CreatedBy",
@@ -39,7 +39,7 @@
         },
         "createdon": {
           "type": "string",
-          "title": "createdon",
+          "title": "Created On",
           "x-ms-dataverse-attribute": "createdon",
           "x-ms-dataverse-type": "DateTimeType",
           "x-ms-schema-name": "CreatedOn",
@@ -47,7 +47,7 @@
         },
         "createdonbehalfby": {
           "type": "string",
-          "title": "createdonbehalfby",
+          "title": "Created By (Delegate)",
           "x-ms-dataverse-attribute": "createdonbehalfby",
           "x-ms-dataverse-type": "LookupType",
           "x-ms-schema-name": "CreatedOnBehalfBy",
@@ -74,14 +74,14 @@
         },
         "importsequencenumber": {
           "type": "string",
-          "title": "importsequencenumber",
+          "title": "Import Sequence Number",
           "x-ms-dataverse-attribute": "importsequencenumber",
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "ImportSequenceNumber"
         },
         "modifiedby": {
           "type": "string",
-          "title": "modifiedby",
+          "title": "Modified By",
           "x-ms-dataverse-attribute": "modifiedby",
           "x-ms-dataverse-type": "LookupType",
           "x-ms-schema-name": "ModifiedBy",
@@ -108,7 +108,7 @@
         },
         "modifiedon": {
           "type": "string",
-          "title": "modifiedon",
+          "title": "Modified On",
           "x-ms-dataverse-attribute": "modifiedon",
           "x-ms-dataverse-type": "DateTimeType",
           "x-ms-schema-name": "ModifiedOn",
@@ -116,7 +116,7 @@
         },
         "modifiedonbehalfby": {
           "type": "string",
-          "title": "modifiedonbehalfby",
+          "title": "Modified By (Delegate)",
           "x-ms-dataverse-attribute": "modifiedonbehalfby",
           "x-ms-dataverse-type": "LookupType",
           "x-ms-schema-name": "ModifiedOnBehalfBy",
@@ -139,6 +139,14 @@
           "x-ms-schema-name": "ModifiedOnBehalfByYomiName",
           "x-ms-read-only": true,
           "required": true,
+          "maxLength": 100
+        },
+        "new_attachmentid": {
+          "type": "string",
+          "title": "AttachmentID",
+          "x-ms-dataverse-attribute": "new_attachmentid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_AttachmentID",
           "maxLength": 100
         },
         "new_description": {
@@ -225,14 +233,14 @@
         },
         "overriddencreatedon": {
           "type": "string",
-          "title": "overriddencreatedon",
+          "title": "Record Created On",
           "x-ms-dataverse-attribute": "overriddencreatedon",
           "x-ms-dataverse-type": "DateTimeType",
           "x-ms-schema-name": "OverriddenCreatedOn"
         },
         "ownerid": {
           "type": "string",
-          "title": "ownerid",
+          "title": "Owner",
           "x-ms-dataverse-attribute": "ownerid",
           "x-ms-dataverse-type": "OwnerType",
           "x-ms-schema-name": "OwnerId",
@@ -268,7 +276,7 @@
         },
         "owningbusinessunit": {
           "type": "string",
-          "title": "owningbusinessunit",
+          "title": "Owning Business Unit",
           "x-ms-dataverse-attribute": "owningbusinessunit",
           "x-ms-dataverse-type": "LookupType",
           "x-ms-schema-name": "OwningBusinessUnit",
@@ -286,7 +294,7 @@
         },
         "owningteam": {
           "type": "string",
-          "title": "owningteam",
+          "title": "Owning Team",
           "x-ms-dataverse-attribute": "owningteam",
           "x-ms-dataverse-type": "LookupType",
           "x-ms-schema-name": "OwningTeam",
@@ -294,7 +302,7 @@
         },
         "owninguser": {
           "type": "string",
-          "title": "owninguser",
+          "title": "Owning User",
           "x-ms-dataverse-attribute": "owninguser",
           "x-ms-dataverse-type": "LookupType",
           "x-ms-schema-name": "OwningUser",
@@ -302,14 +310,14 @@
         },
         "statecode": {
           "type": "string",
-          "title": "statecode",
+          "title": "Status",
           "x-ms-dataverse-attribute": "statecode",
           "x-ms-dataverse-type": "StateType",
           "x-ms-schema-name": "statecode",
           "required": true,
           "enum": [
-            "0",
-            "1"
+            "Active",
+            "Inactive"
           ],
           "x-ms-enum-values": [
             0,
@@ -321,6 +329,7 @@
           ],
           "x-ms-optionsetmetadataid": "c6bc728b-253f-f111-88b3-70a8a51e6374",
           "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
         },
         "statecodename": {
@@ -333,13 +342,13 @@
         },
         "statuscode": {
           "type": "string",
-          "title": "statuscode",
+          "title": "Status Reason",
           "x-ms-dataverse-attribute": "statuscode",
           "x-ms-dataverse-type": "StatusType",
           "x-ms-schema-name": "statuscode",
           "enum": [
-            "1",
-            "2"
+            "Active",
+            "Inactive"
           ],
           "x-ms-enum-values": [
             1,
@@ -351,6 +360,7 @@
           ],
           "x-ms-optionsetmetadataid": "d0bc728b-253f-f111-88b3-70a8a51e6374",
           "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"
         },
         "statuscodename": {
@@ -363,21 +373,21 @@
         },
         "timezoneruleversionnumber": {
           "type": "string",
-          "title": "timezoneruleversionnumber",
+          "title": "Time Zone Rule Version Number",
           "x-ms-dataverse-attribute": "timezoneruleversionnumber",
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "TimeZoneRuleVersionNumber"
         },
         "utcconversiontimezonecode": {
           "type": "string",
-          "title": "utcconversiontimezonecode",
+          "title": "UTC Conversion Time Zone Code",
           "x-ms-dataverse-attribute": "utcconversiontimezonecode",
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "UTCConversionTimeZoneCode"
         },
         "versionnumber": {
           "type": "string",
-          "title": "versionnumber",
+          "title": "Version Number",
           "x-ms-dataverse-attribute": "versionnumber",
           "x-ms-dataverse-type": "BigIntType",
           "x-ms-schema-name": "VersionNumber",

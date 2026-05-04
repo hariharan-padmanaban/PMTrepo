@@ -8,18 +8,19 @@ export const New_issuedetailsnew_issuestatus = {
 } as const;
 export type New_issuedetailsnew_issuestatus = keyof typeof New_issuedetailsnew_issuestatus;
 export const New_issuedetailsstatecode = {
-  0: '_0',
-  1: '_1'
+  0: 'Active',
+  1: 'Inactive'
 } as const;
 export type New_issuedetailsstatecode = keyof typeof New_issuedetailsstatecode;
 export const New_issuedetailsstatuscode = {
-  1: '_1',
-  2: '_2'
+  1: 'Active',
+  2: 'Inactive'
 } as const;
 export type New_issuedetailsstatuscode = keyof typeof New_issuedetailsstatuscode;
 
 export interface New_issuedetailsBase {
   importsequencenumber?: number;
+  new_attachmentid?: string;
   new_description?: string;
   new_issuedetail1: string;
   new_issuedetailid: string;

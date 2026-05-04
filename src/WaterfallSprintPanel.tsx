@@ -49,6 +49,8 @@ export function WaterfallSprintPanel({
   const [stageFilter, setStageFilter] = useState('All Stages');
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 5;
   const [taskForm, setTaskForm] = useState({
     key: '',
     summary: '',
@@ -70,6 +72,10 @@ export function WaterfallSprintPanel({
     setTaskForm({ key: '', summary: '', startDate: isoToday, endDate: isoToday, stage: '' });
     setTaskErr({});
   }, [showCreateTask]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, stageFilter, statusFilter]);
 
   const toDateInput = (v: unknown) => {
     const s = String(v ?? '').trim();
@@ -128,6 +134,14 @@ export function WaterfallSprintPanel({
     return TASK_STATUS_OPTIONS.find((s) => s.value === statusNum)?.label ?? String(r.new_statusname ?? '—');
   };
 
+  const getStatusColorClass = (statusLabel: string) => {
+    const lower = statusLabel.toLowerCase();
+    if (lower.includes('done')) return 'bg-blue-100 text-blue-700';
+    if (lower.includes('progress')) return 'bg-amber-100 text-amber-700';
+    if (lower.includes('delay')) return 'bg-rose-100 text-rose-700';
+    return 'bg-emerald-100 text-emerald-700';
+  };
+
   const filteredRows = taskRows.filter((r) => {
     const stageLabel = stageLabelFromRow(r);
     const statusLabel = statusLabelFromRow(r);
@@ -142,6 +156,9 @@ export function WaterfallSprintPanel({
       || statusLabel.toLowerCase().includes(q);
     return matchesStage && matchesStatus && matchesSearch;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const pagedRows = filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const saveTask = async () => {
     const err: Record<string, string> = {};
@@ -324,7 +341,7 @@ export function WaterfallSprintPanel({
                     </td>
                   </tr>
                 ) : (
-                  filteredRows.map((r, idx) => {
+                  pagedRows.map((r, idx) => {
                     const stageLabel = stageLabelFromRow(r);
                     const statusLabel = statusLabelFromRow(r);
                     const timelineStart = String(r.new_startdate ?? '').trim();
@@ -358,7 +375,7 @@ export function WaterfallSprintPanel({
                           </span>
                         </td>
                         <td className="px-3 py-2">
-                          <span className="inline-flex min-w-[56px] items-center justify-center rounded-md bg-[#bfeedd] px-2 py-0.5 text-[12px] font-medium text-[#14a36f]">
+                          <span className={`inline-flex min-w-[56px] items-center justify-center rounded-md px-2 py-0.5 text-[12px] font-medium ${getStatusColorClass(statusLabel)}`}>
                             {statusLabel || '—'}
                           </span>
                         </td>
@@ -379,8 +396,14 @@ export function WaterfallSprintPanel({
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-end gap-2 text-xs text-gray-500">
-            <span>{'<'}</span><span>{'<'}</span><span>Page 1 of 1</span><span>{'>'}</span><span>{'>'}</span>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button type="button" className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => p - 1)}>
+              &lsaquo;
+            </button>
+            <span className="text-[11px] text-gray-500">{(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, filteredRows.length)}</span>
+            <button type="button" className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => p + 1)}>
+              &rsaquo;
+            </button>
           </div>
         </div>
 

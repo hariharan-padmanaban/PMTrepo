@@ -73,13 +73,7 @@
       "definitions": {
         "ManualTriggerInput": {
           "type": "object",
-          "properties": {
-            "text_1": {
-              "title": "AttachmentID",
-              "type": "string",
-              "description": "The Attachment ID to fetch files for"
-            }
-          },
+          "properties": {},
           "required": []
         },
         "ResponseActionOutput": {

@@ -5,7 +5,6 @@
 
 // Models
 export * as CommonModels from './models/CommonModels';
-export * as Crcf8_projectsModel from './models/Crcf8_projectsModel';
 export * as New_adminauditsModel from './models/New_adminauditsModel';
 export * as New_classicwaterfallsModel from './models/New_classicwaterfallsModel';
 export * as New_clientsModel from './models/New_clientsModel';
@@ -35,7 +34,6 @@ export * as PMTDocumentUploadModel from './models/PMTDocumentUploadModel';
 export * as SharePointModel from './models/SharePointModel';
 
 // Services
-export * from './services/Crcf8_projectsService';
 export * from './services/New_adminauditsService';
 export * from './services/New_classicwaterfallsService';
 export * from './services/New_clientsService';

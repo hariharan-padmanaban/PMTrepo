@@ -20,7 +20,9 @@ export const New_enjazmasterdatasnew_category = {
   100000014: 'Time',
   100000015: 'Shift',
   100000016: 'Holiday',
-  100000017: 'Methodology'
+  100000017: 'Methodology',
+  100000018: 'Sector',
+  100000019: 'ProjectCategory'
 } as const;
 export type New_enjazmasterdatasnew_category = keyof typeof New_enjazmasterdatasnew_category;
 export const New_enjazmasterdatasnew_status = {
@@ -42,11 +44,13 @@ export type New_enjazmasterdatasstatuscode = keyof typeof New_enjazmasterdatasst
 export interface New_enjazmasterdatasBase {
   importsequencenumber?: number;
   new_category?: New_enjazmasterdatasnew_category;
+  new_categorytype?: string;
   new_code?: number;
   new_description?: string;
   new_enjazmasterdata1: string;
   new_enjazmasterdataid: string;
   new_status?: New_enjazmasterdatasnew_status;
+  new_uniqueid?: string;
   overriddencreatedon?: string;
   ownerid: string;
   owneridtype: string;

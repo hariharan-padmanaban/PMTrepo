@@ -220,7 +220,7 @@ export function TasksScreenBoard({
                         >
                           {initialsFromText(assign || '?')}
                         </div>
-                        {variant === 'project' && (
+                        {(variant === 'project' || variant === 'team') && (
                           <>
                             <button
                               type="button"
@@ -231,15 +231,17 @@ export function TasksScreenBoard({
                             >
                               <Pencil className="h-3 w-3" strokeWidth={2} />
                             </button>
-                            <button
-                              type="button"
-                              onClick={del}
-                              className="rounded p-1 text-gray-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
-                              disabled={!onTaskDelete}
-                              title="Delete"
-                            >
-                              <Trash2 className="h-3 w-3" strokeWidth={2} />
-                            </button>
+                            {variant === 'project' && (
+                              <button
+                                type="button"
+                                onClick={del}
+                                className="rounded p-1 text-gray-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+                                disabled={!onTaskDelete}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3 w-3" strokeWidth={2} />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>

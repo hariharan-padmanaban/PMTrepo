@@ -53,6 +53,14 @@ function sprintStatusLabel(row: SprintRow): string {
   return '—';
 }
 
+function getSprintStatusColor(row: SprintRow): string {
+  const status = sprintStatusLabel(row);
+  if (status === 'To Do') return 'bg-blue-100 text-blue-800 border-blue-300';
+  if (status === 'In Progress') return 'bg-amber-100 text-amber-800 border-amber-300';
+  if (status === 'Done') return 'bg-green-100 text-green-800 border-green-300';
+  return 'bg-gray-100 text-gray-800 border-gray-300';
+}
+
 function issueStatusLabel(row: IssueRow): string {
   const s = String(row.new_statusname ?? '').trim();
   if (s) return s.replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -62,6 +70,15 @@ function issueStatusLabel(row: IssueRow): string {
   if (n === 100000002) return 'Delayed';
   if (n === 100000003) return 'Done';
   return '—';
+}
+
+function getIssueStatusColor(row: IssueRow): string {
+  const status = issueStatusLabel(row);
+  if (status === 'To Do') return 'bg-blue-100 text-blue-800 border-blue-300';
+  if (status === 'In Progress') return 'bg-amber-100 text-amber-800 border-amber-300';
+  if (status === 'Done') return 'bg-green-100 text-green-800 border-green-300';
+  if (status === 'Delayed') return 'bg-red-100 text-red-800 border-red-300';
+  return 'bg-gray-100 text-gray-800 border-gray-300';
 }
 
 function issueTypeLabel(row: IssueRow): string {
@@ -555,8 +572,8 @@ export function AgileSprintPanel({
 
   return (
     <section className={`${enj.panelBg} flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden`}>
-      <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_15rem]">
-        <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-4 flex flex-col gap-3">
+      <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_15rem] overflow-hidden">
+        <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-4 flex flex-col gap-3 overflow-y-auto">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">
               <button type="button" onClick={onBack} className="text-gray-700 underline">
@@ -635,13 +652,17 @@ export function AgileSprintPanel({
                           </div>
                         </td>
                         <td className="px-3 py-1.5">
-                          <div className="text-[10px] text-right text-gray-500">{pct} %</div>
-                          <div className="h-2.5 w-32 overflow-hidden rounded-full bg-gray-200">
-                            <div className="h-full rounded-full bg-[#1b67e0]" style={{ width: `${pct}%` }} />
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-32 overflow-hidden rounded-full bg-gray-200 flex-shrink-0">
+                              <div className="h-full rounded-full bg-[#1b67e0]" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-[10px] text-gray-600 font-medium min-w-[2rem] text-right">{pct}%</span>
                           </div>
                         </td>
                         <td className="px-3 py-1.5">
-                          <span className={`${enj.pillSuccess} min-w-[44px]`}>{sprintStatusLabel(s)}</span>
+                          <span className={`px-2 py-1 rounded-full border text-[10px] font-medium inline-block min-w-[44px] text-center ${getSprintStatusColor(s)}`}>
+                            {sprintStatusLabel(s)}
+                          </span>
                         </td>
                         <td className="px-3 py-1.5">
                           <div className="flex items-center gap-1 text-gray-600">
@@ -670,30 +691,28 @@ export function AgileSprintPanel({
               </tbody>
             </table>
           </div>
-          {sprintTotalPages > 1 && (
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                className="h-6 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                disabled={sprintPage <= 1}
-                onClick={() => setSprintPage((p) => p - 1)}
-              >
-                &lsaquo; Prev
-              </button>
-              <span className="text-[11px] text-gray-500">{sprintPage} / {sprintTotalPages}</span>
-              <button
-                type="button"
-                className="h-6 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                disabled={sprintPage >= sprintTotalPages}
-                onClick={() => setSprintPage((p) => p + 1)}
-              >
-                Next &rsaquo;
-              </button>
-            </div>
-          )}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              disabled={sprintPage <= 1}
+              onClick={() => setSprintPage((p) => p - 1)}
+            >
+              &lsaquo;
+            </button>
+            <span className="text-[11px] text-gray-500">{(sprintPage - 1) * SPRINT_PAGE_SIZE + 1}-{Math.min(sprintPage * SPRINT_PAGE_SIZE, visibleSprints.length)}</span>
+            <button
+              type="button"
+              className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              disabled={sprintPage >= sprintTotalPages}
+              onClick={() => setSprintPage((p) => p + 1)}
+            >
+              &rsaquo;
+            </button>
+          </div>
 
-          <div className="rounded-xl border border-[#dfe3f2] p-3 min-h-0 flex-1 overflow-hidden">
-            <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="rounded-xl border border-[#dfe3f2] p-3 flex flex-col">
+            <div className="mb-2 flex items-center justify-between gap-3 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <h3 className={enj.pageTitle}>Activity</h3>
                 <select className="h-7 rounded border border-gray-200 bg-[#f5f6fb] px-2 text-xs" value={issueStatusFilter} onChange={(e) => setIssueStatusFilter(e.target.value)}>
@@ -715,61 +734,63 @@ export function AgileSprintPanel({
             </div>
             <div className="rounded-lg border border-gray-200 overflow-hidden">
               <table className={`${enj.tableBrand} text-xs`}>
-                <thead>
-                  <tr>
-                    <th className="px-3 py-1.5">Type</th>
-                    <th className="px-3 py-1.5">Issue Description</th>
-                    <th className="px-3 py-1.5">Progress</th>
-                    <th className="px-3 py-1.5">Status</th>
-                    <th className="px-3 py-1.5">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleIssues.length === 0 ? (
+                  <thead>
                     <tr>
-                      <td className="px-3 py-8 text-center text-gray-500" colSpan={5}>
-                        {selectedSprintName ? 'No activity in selected sprint' : 'Select sprint to view activity'}
-                      </td>
+                      <th className="px-3 py-1.5">Type</th>
+                      <th className="px-3 py-1.5">Issue Description</th>
+                      <th className="px-3 py-1.5">Progress</th>
+                      <th className="px-3 py-1.5">Status</th>
+                      <th className="px-3 py-1.5">Action</th>
                     </tr>
-                  ) : (
-                    pagedIssues.map((i, idx) => (
-                      <tr key={`${String(i.new_sprintissueid ?? idx)}`}>
-                        <td className="px-3 py-1">{issueTypeLabel(i)}</td>
-                        <td className="px-3 py-1">{String(i.new_issuedescription ?? '—')}</td>
-                        <td className="px-3 py-1">{String(i.new_progress ?? '—')}</td>
-                        <td className="px-3 py-1">{issueStatusLabel(i)}</td>
-                        <td className="px-3 py-1">—</td>
+                  </thead>
+                  <tbody>
+                    {visibleIssues.length === 0 ? (
+                      <tr>
+                        <td className="px-3 py-8 text-center text-gray-500" colSpan={5}>
+                          {selectedSprintName ? 'No activity in selected sprint' : 'Select sprint to view activity'}
+                        </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      pagedIssues.map((i, idx) => (
+                        <tr key={`${String(i.new_sprintissueid ?? idx)}`}>
+                          <td className="px-3 py-1">{issueTypeLabel(i)}</td>
+                          <td className="px-3 py-1">{String(i.new_issuedescription ?? '—')}</td>
+                          <td className="px-3 py-1">{String(i.new_progress ?? '—')}</td>
+                          <td className="px-3 py-1">
+                            <span className={`px-2 py-1 rounded-full border text-[10px] font-medium inline-block ${getIssueStatusColor(i)}`}>
+                              {issueStatusLabel(i)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-1">—</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
             </div>
-            {issueTotalPages > 1 && (
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  className="h-6 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                  disabled={issuePage <= 1}
-                  onClick={() => setIssuePage((p) => p - 1)}
-                >
-                  &lsaquo; Prev
-                </button>
-                <span className="text-[11px] text-gray-500">{issuePage} / {issueTotalPages}</span>
-                <button
-                  type="button"
-                  className="h-6 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                  disabled={issuePage >= issueTotalPages}
-                  onClick={() => setIssuePage((p) => p + 1)}
-                >
-                  Next &rsaquo;
-                </button>
-              </div>
-            )}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                disabled={issuePage <= 1}
+                onClick={() => setIssuePage((p) => p - 1)}
+              >
+                &lsaquo;
+              </button>
+              <span className="text-[11px] text-gray-500">{(issuePage - 1) * ISSUE_PAGE_SIZE + 1}-{Math.min(issuePage * ISSUE_PAGE_SIZE, visibleIssues.length)}</span>
+              <button
+                type="button"
+                className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                disabled={issuePage >= issueTotalPages}
+                onClick={() => setIssuePage((p) => p + 1)}
+              >
+                &rsaquo;
+              </button>
+            </div>
           </div>
         </div>
 
-        <aside className="rounded-xl border border-gray-200 bg-white px-5 py-4 text-xs text-gray-700">
+        <aside className="rounded-xl border border-gray-200 bg-white px-5 py-4 text-xs text-gray-700 overflow-y-auto min-h-0">
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <span className="text-gray-500">Pro. Sponsor</span>

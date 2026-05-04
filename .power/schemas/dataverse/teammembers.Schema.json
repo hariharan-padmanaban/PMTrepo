@@ -202,14 +202,6 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "new_KPI"
         },
-        "new_kpittext": {
-          "type": "string",
-          "title": "KPI Text",
-          "x-ms-dataverse-attribute": "new_kpittext",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "new_KPIText",
-          "maxLength": 2000
-        },
         "new_performance": {
           "type": "string",
           "title": "Performance",

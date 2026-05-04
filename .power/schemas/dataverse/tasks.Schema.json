@@ -149,6 +149,14 @@
           "x-ms-schema-name": "new_AssignToTeamMember",
           "maxLength": 100
         },
+        "new_attachmentid": {
+          "type": "string",
+          "title": "AttachmentID",
+          "x-ms-dataverse-attribute": "new_attachmentid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_AttachmentID",
+          "maxLength": 100
+        },
         "new_cost": {
           "type": "string",
           "title": "Cost",

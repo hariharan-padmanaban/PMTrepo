@@ -3,7 +3,8 @@
     "allow": [
       "Bash(node -e \"const fs = require\\('fs'\\); const data = JSON.parse\\(fs.readFileSync\\('.power/schemas/logicflows/PMTDocumentFetch.Schema.json', 'utf8'\\)\\); console.log\\('✓ Valid JSON'\\);\")",
       "Bash(npx tsc *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npx power-apps *)"
     ]
   }
 }

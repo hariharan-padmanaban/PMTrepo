@@ -22,12 +22,16 @@ export type New_subtasksstatuscode = keyof typeof New_subtasksstatuscode;
 
 export interface New_subtasksBase {
   importsequencenumber?: number;
+  new_attachmentid?: string;
   new_description?: string;
+  new_duedate?: string;
   new_duration?: string;
   new_subtaskduration?: string;
   new_subtaskid: string;
   new_subtaskname: string;
   new_subtaskstatus?: New_subtasksnew_subtaskstatus;
+  new_taskid?: string;
+  new_taskname?: string;
   overriddencreatedon?: string;
   ownerid: string;
   owneridtype: string;

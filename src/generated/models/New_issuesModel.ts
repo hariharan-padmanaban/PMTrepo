@@ -30,6 +30,7 @@ export type New_issuesstatuscode = keyof typeof New_issuesstatuscode;
 export interface New_issuesBase {
   importsequencenumber?: number;
   new_assigntoteammember?: string;
+  new_attachmentid?: string;
   new_description?: string;
   new_issuedate?: string;
   new_issueid: string;

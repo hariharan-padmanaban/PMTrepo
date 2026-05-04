@@ -149,6 +149,31 @@
           "x-ms-schema-name": "new_AssigntoManagementMember",
           "maxLength": 100
         },
+        "new_attachmentid": {
+          "type": "string",
+          "title": "AttachmentID",
+          "x-ms-dataverse-attribute": "new_attachmentid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_AttachmentID",
+          "maxLength": 100
+        },
+        "new_attachments": {
+          "type": "string",
+          "title": "Attachments",
+          "x-ms-dataverse-attribute": "new_attachments",
+          "x-ms-dataverse-type": "FileType",
+          "x-ms-schema-name": "new_Attachments",
+          "x-ms-read-only": true
+        },
+        "new_attachments_name": {
+          "type": "string",
+          "title": "new_attachments_name",
+          "x-ms-dataverse-attribute": "new_attachments_name",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_Attachments_Name",
+          "x-ms-read-only": true,
+          "maxLength": 200
+        },
         "new_program": {
           "type": "string",
           "title": "Program",
@@ -187,7 +212,7 @@
           "x-ms-dataverse-attribute": "new_remark",
           "x-ms-dataverse-type": "MemoType",
           "x-ms-schema-name": "new_Remark",
-          "maxLength": 100
+          "maxLength": 500
         },
         "new_report1": {
           "type": "string",
@@ -231,7 +256,7 @@
           "x-ms-dataverse-attribute": "new_summary",
           "x-ms-dataverse-type": "MemoType",
           "x-ms-schema-name": "new_Summary",
-          "maxLength": 100
+          "maxLength": 500
         },
         "overriddencreatedon": {
           "type": "string",

@@ -165,7 +165,9 @@
             "Time",
             "Shift",
             "Holiday",
-            "Methodology"
+            "Methodology",
+            "Sector",
+            "Project Category"
           ],
           "x-ms-enum-values": [
             100000000,
@@ -185,9 +187,13 @@
             100000014,
             100000015,
             100000016,
-            100000017
+            100000017,
+            100000018,
+            100000019
           ],
           "Color": [
+            null,
+            null,
             null,
             null,
             null,
@@ -219,6 +225,14 @@
           "x-ms-dataverse-type": "VirtualType",
           "x-ms-schema-name": "new_categoryName",
           "x-ms-read-only": true
+        },
+        "new_categorytype": {
+          "type": "string",
+          "title": "Category Type",
+          "x-ms-dataverse-attribute": "new_categorytype",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_CategoryType",
+          "maxLength": 100
         },
         "new_code": {
           "type": "string",
@@ -285,6 +299,14 @@
           "x-ms-dataverse-type": "VirtualType",
           "x-ms-schema-name": "new_statusName",
           "x-ms-read-only": true
+        },
+        "new_uniqueid": {
+          "type": "string",
+          "title": "UniqueID",
+          "x-ms-dataverse-attribute": "new_uniqueid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_UniqueID",
+          "maxLength": 100
         },
         "overriddencreatedon": {
           "type": "string",

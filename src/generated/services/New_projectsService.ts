@@ -6,7 +6,7 @@
 import type { GetEntityMetadataOptions, EntityMetadata } from '@microsoft/power-apps/data/metadata/dataverse';
 import type { IGetOptions, IGetAllOptions } from '../models/CommonModels';
 import type { IOperationResult } from '@microsoft/power-apps/data';
-import type { New_projectsBase, New_projects } from '../models/New_projectsModel';
+import type { New_projectsBase, New_projects, New_projectsFileColumnName, New_projectsUploadColumnName } from '../models/New_projectsModel';
 import { dataSourcesInfo } from '../../../.power/schemas/appschemas/dataSourcesInfo';
 import { getClient } from '@microsoft/power-apps/data';
 
@@ -68,5 +68,36 @@ export class New_projectsService {
         },
       },
     });
+  }
+
+  public static async upload(id: string, columnName: New_projectsUploadColumnName, file: File, fileDisplayName?: string): Promise<IOperationResult<void>> {
+    const arrayBuffer = await file.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    const result = await New_projectsService.client.uploadFileToRecord(
+      New_projectsService.dataSourceName,
+      id,
+      columnName,
+      fileDisplayName || file.name,
+      data,
+    );
+    return result;
+  }
+
+  public static async downloadFile(id: string, columnName: New_projectsFileColumnName): Promise<IOperationResult<Uint8Array>> {
+    const result = await New_projectsService.client.downloadFileFromRecord(
+      New_projectsService.dataSourceName,
+      id,
+      columnName,
+    );
+    return result;
+  }
+
+  public static async deleteFileOrImage(id: string, columnName: New_projectsUploadColumnName): Promise<IOperationResult<void>> {
+    const result = await New_projectsService.client.deleteFileOrImageFromRecord(
+      New_projectsService.dataSourceName,
+      id,
+      columnName,
+    );
+    return result;
   }
 }

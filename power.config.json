@@ -18,7 +18,7 @@
       ],
       "dataSets": {}
     },
-    "dd524c86-cad6-44ab-beed-2ad334e8e9db": {
+    "03b03065-120e-4af2-96b9-c1d1e4a0391e": {
       "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
       "displayName": "Logic flows",
       "dataSources": [
@@ -33,7 +33,7 @@
         }
       }
     },
-    "84956c0b-fdc3-4927-802a-4e802ce85905": {
+    "1d2d8d3e-9b65-4458-a65d-b91c452e7de1": {
       "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
       "displayName": "Logic flows",
       "dataSources": [

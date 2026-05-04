@@ -65,10 +65,6 @@ function dateToYyyyMmDd(d: Date | null): string {
 
 function splitProspectAndOpportunity(r: New_pipelines, idx: number): { pipelineName: string; opportunityName: string } {
   const rawOp = (r.new_opportunityname ?? '').trim();
-  const fromColumn = r.new_pipelinename;
-  if (fromColumn && String(fromColumn).trim() !== '') {
-    return { pipelineName: String(fromColumn).trim(), opportunityName: rawOp || `Opportunity ${idx + 1}` };
-  }
   const sep = ' — ';
   const j = rawOp.indexOf(sep);
   if (j > 0) {

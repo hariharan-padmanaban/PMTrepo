@@ -167,14 +167,6 @@
           "required": true,
           "maxLength": 850
         },
-        "new_pipelinename": {
-          "type": "string",
-          "title": "Pipeline",
-          "x-ms-dataverse-attribute": "new_pipelinename",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "new_PipelineName",
-          "maxLength": 200
-        },
         "new_pipelineid": {
           "type": "string",
           "title": "Pipeline",

@@ -8,7 +8,7 @@ import { PagerBar } from './PagerBar';
 import { ScreenLoader } from './ScreenLoader';
 import { enj } from './ui/enjForm';
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 5;
 const FETCH_TOP = 5000;
 
 function statusBadgeClass(statusLabel: string): string {

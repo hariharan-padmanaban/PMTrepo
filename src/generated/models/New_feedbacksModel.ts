@@ -14,13 +14,13 @@ export const New_feedbacksnew_satisfactionlevel = {
 } as const;
 export type New_feedbacksnew_satisfactionlevel = keyof typeof New_feedbacksnew_satisfactionlevel;
 export const New_feedbacksstatecode = {
-  0: '_0',
-  1: '_1'
+  0: 'Active',
+  1: 'Inactive'
 } as const;
 export type New_feedbacksstatecode = keyof typeof New_feedbacksstatecode;
 export const New_feedbacksstatuscode = {
-  1: '_1',
-  2: '_2'
+  1: 'Active',
+  2: 'Inactive'
 } as const;
 export type New_feedbacksstatuscode = keyof typeof New_feedbacksstatuscode;
 

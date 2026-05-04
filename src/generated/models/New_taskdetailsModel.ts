@@ -21,6 +21,7 @@ export type New_taskdetailsstatuscode = keyof typeof New_taskdetailsstatuscode;
 
 export interface New_taskdetailsBase {
   importsequencenumber?: number;
+  new_attachmentid?: string;
   new_description?: string;
   new_estimationtime?: string;
   new_taskdetail1: string;

@@ -8,9 +8,8 @@ import { motion } from 'motion/react';
 import {
   Activity, AlertCircle, ArrowRight, Briefcase, Calendar, CheckCircle, CheckSquare,
   ChevronDown, Clock, FileText, FolderOpen, HelpCircle, Inbox, LayoutGrid, ListTree, Pencil, RefreshCw,
-  LogOut, MessageSquare, ShieldCheck, Sparkles, Trash2, TrendingUp, UserCircle, Users,
+  LogOut, MessageSquare, ShieldCheck, Trash2, TrendingUp, UserCircle, Users,
 } from 'lucide-react';
-import { TestDonutChart } from './TestDonutChart';
 import BusinessFeedbackList from './BusinessFeedbackList';
 import BusinessPipelineScreen from './BusinessPipelineScreen';
 import { newPipelineToTableRow, type BusinessPipelineTableRow } from './pipelineMappers';
@@ -26,7 +25,7 @@ import { DonutChartCard } from './DonutChartCard';
 import { New_programsService } from './generated/services/New_programsService';
 import { New_projectsService } from './generated/services/New_projectsService';
 import { buildProgramIdToNameMap, normalizeDataverseId, resolveProjectProgramName } from './programNameResolve';
-import { New_projectsnew_projectcategory } from './generated/models/New_projectsModel';
+import { New_projectsnew_projecttype } from './generated/models/New_projectsModel';
 import { New_deliverablesService } from './generated/services/New_deliverablesService';
 import { New_issuesService } from './generated/services/New_issuesService';
 import { New_issuesnew_issueseverity, New_issuesnew_issuestatus } from './generated/models/New_issuesModel';
@@ -45,6 +44,8 @@ import { TasksScreenBoard, taskStatusBucket } from './TasksScreenBoard';
 import { AddIssueFormPanel } from './AddIssueFormPanel';
 import { TeamSubIssueFormPanel } from './TeamSubIssueFormPanel';
 import { TeamIssueDetailPanel } from './TeamIssueDetailPanel';
+import { TeamTaskDetailPanel } from './TeamTaskDetailPanel';
+import { TeamSubTaskFormPanel } from './TeamSubTaskFormPanel';
 import { ScreenLoader } from './ScreenLoader';
 import { ProgramReportsPanel } from './ProgramReportsPanel';
 import { AddMeetingFormPanel } from './AddMeetingFormPanel';
@@ -599,7 +600,7 @@ function businessDashboardModel(
   };
 }
 
-const PROJECT_CATEGORY_OPTIONS: Array<{ value: string; label: string }> = Object.entries(New_projectsnew_projectcategory).map(
+const PROJECT_CATEGORY_OPTIONS: Array<{ value: string; label: string }> = Object.entries(New_projectsnew_projecttype).map(
   ([value, label]) => ({ value, label: String(label).replace(/_/g, ' ') }),
 );
 
@@ -1686,6 +1687,10 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
   const [showTeamSubIssueForm, setShowTeamSubIssueForm] = useState(false);
   /** If true, closing sub-issue form returns to read-only issue detail; if false, returns to the register. */
   const [teamSubIssueFromDetail, setTeamSubIssueFromDetail] = useState(false);
+  const [showTeamTaskDetail, setShowTeamTaskDetail] = useState(false);
+  const [showTeamSubTaskForm, setShowTeamSubTaskForm] = useState(false);
+  /** If true, closing sub-task form returns to task detail; if false, returns to list. */
+  const [teamSubTaskFromDetail, setTeamSubTaskFromDetail] = useState(false);
   const [viewingTaskRow, setViewingTaskRow] = useState<Record<string, unknown> | null>(null);
   const [viewingIssueRow, setViewingIssueRow] = useState<Record<string, unknown> | null>(null);
   const [teamSessionProfile, setTeamSessionProfile] = useState<SessionUserProfile | null>(null);
@@ -1709,6 +1714,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
   const [teamTaskListRefresh, setTeamTaskListRefresh] = useState(0);
   const [teamProjectToast, setTeamProjectToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [teamIssueToast, setTeamIssueToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [teamTaskToast, setTeamTaskToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [teamTimelineYear, setTeamTimelineYear] = useState(() => new Date().getFullYear());
   const [teamCalendarProjectFilter, setTeamCalendarProjectFilter] = useState('All');
   const [teamCalendarSelectedDateIso, setTeamCalendarSelectedDateIso] = useState(() => {
@@ -1954,11 +1960,14 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
   const teamDashboardTasksTable = useMemo(
     () => myTasks.map((row) => {
       const pn = String(row.new_projectname ?? '—');
+      const PRIORITY_MAP: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+      const priorityRaw = String(row.new_priorityname ?? row.new_priority ?? 'Medium').trim();
+      const priority = PRIORITY_MAP[Number(priorityRaw)] ?? priorityRaw;
       return {
         key: String(row.new_taskid ?? row.createdon),
         project: pn,
         task: String(row.new_tasktitle ?? '—'),
-        priority: String(row.new_priorityname ?? row.new_priority ?? 'MEDIUM').toUpperCase().slice(0, 12) || 'MEDIUM',
+        priority,
         status: teamTaskStatusDisplay(row),
         pm: String((row as Record<string, unknown>).crcf8_projectmanagername ?? (row as Record<string, unknown>).crcf8_projectmanager ?? row.new_projectmanager ?? '—'),
         sponsor: projectSponsorByName.get(pn) ?? '—',
@@ -2019,7 +2028,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
       .filter((r) => teamTimelineProjectFilter === 'All' || (String(r.new_projectname ?? 'Unassigned').trim() || 'Unassigned') === teamTimelineProjectFilter)
       .map((r, idx) => {
         const s = parseTimelineDate(r.new_startdate);
-        const e = parseTimelineDate(r.new_enddate);
+        const e = parseTimelineDate(r.new_enddate) ?? s;
         if (!s || !e) return null;
         const projectEndExcl = exclusiveEndAfterInclusiveDate(e);
         if (projectEndExcl <= s.getTime()) return null;
@@ -2359,7 +2368,47 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
             </section>
           ) : activeNav === 'Tasks' ? (
             <section className={`${enj.panelBg} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
-              {editingTaskRow ? (
+              {showTeamSubTaskForm && viewingTaskRow ? (
+                <TeamSubTaskFormPanel
+                  parentTask={viewingTaskRow}
+                  onBack={() => {
+                    setShowTeamSubTaskForm(false);
+                    if (teamSubTaskFromDetail) {
+                      setShowTeamTaskDetail(true);
+                    } else {
+                      setViewingTaskRow(null);
+                    }
+                    setTeamSubTaskFromDetail(false);
+                  }}
+                  onRefresh={() => { setWorkspaceRefreshKey((k) => k + 1); }}
+                  onNotify={(type, message) => {
+                    setTeamTaskToast({ type, message });
+                  }}
+                  onSaved={() => {
+                    setTeamTaskListRefresh((k) => k + 1);
+                  }}
+                />
+              ) : showTeamTaskDetail && viewingTaskRow ? (
+                <TeamTaskDetailPanel
+                  task={viewingTaskRow}
+                  onBack={() => {
+                    setShowTeamTaskDetail(false);
+                    setViewingTaskRow(null);
+                  }}
+                  onRefreshWorkspace={() => { setWorkspaceRefreshKey((k) => k + 1); }}
+                  onOpenSubTask={() => {
+                    setTeamSubTaskFromDetail(true);
+                    setShowTeamSubTaskForm(true);
+                  }}
+                  onNotify={(type, message) => {
+                    setTeamTaskToast({ type, message });
+                  }}
+                  onTaskUpdated={(row) => {
+                    setViewingTaskRow(row);
+                    setTeamTaskListRefresh((k) => k + 1);
+                  }}
+                />
+              ) : editingTaskRow ? (
                 <div className="min-h-0 max-h-[min(calc(100dvh-7rem),48rem)] w-full overflow-y-auto">
                   <AddNewTaskFormPanel
                     editingTask={editingTaskRow}
@@ -2375,87 +2424,28 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                     }}
                   />
                 </div>
-              ) : showTaskDetails ? (
-                <section className="grid grid-cols-1 xl:grid-cols-[1fr_170px] gap-4">
-                  <div className="bg-white rounded-xl p-4 shadow-sm">
-                    <p className="text-[11px] text-gray-400 mb-3">
-                      <button className="underline text-gray-500" onClick={() => setShowTaskDetails(false)}>Tasks</button>
-                      {' > '}Task Detail
-                    </p>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-                      {(
-                        [
-                          ['Task Title', String(viewingTaskRow?.new_tasktitle ?? '—')],
-                          ['Project Name', String(viewingTaskRow?.new_projectname ?? '—')],
-                          ['Project Manager', String((viewingTaskRow as Record<string, unknown>)?.crcf8_projectmanagername ?? (viewingTaskRow as Record<string, unknown>)?.crcf8_projectmanager ?? viewingTaskRow?.new_projectmanager ?? '—')],
-                          ['Start Date', teamFormatShortDate(viewingTaskRow?.new_startdate)],
-                          ['End Date', teamFormatShortDate(viewingTaskRow?.new_enddate)],
-                          ['Sub Task', String((viewingTaskRow as { new_subtaskname?: string })?.new_subtaskname ?? (Number(viewingTaskRow?.new_subtask) === 100000001 ? 'Yes' : '—'))],
-                          ['Task Name', String(viewingTaskRow?.new_tasktitle ?? '—')],
-                          ['Milestone', String((viewingTaskRow as { new_predecessor?: string })?.new_predecessor ?? '—')],
-                          ['Assig To', String(viewingTaskRow?.new_assigntoteammember ?? '—')],
-                        ] as [string, string][]
-                      ).map(([label, value]) => (
-                        <div key={label} className="col-span-1">
-                          <p className="text-[10px] text-gray-400 mb-1">{label}</p>
-                          <div className="min-h-9 flex items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 shadow-sm">{value}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <label className="block mb-3">
-                      <span className="text-[10px] text-gray-400 mb-1 block">Task Status</span>
-                      <div className="flex items-center gap-3">
-                        <div className="flex w-36 min-h-9 items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 shadow-sm">
-                          {String(viewingTaskRow?.new_taskstatusname ?? teamTaskStatusDisplay(viewingTaskRow ?? {}))}
-                        </div>
-                        <div className="flex w-24 min-h-9 items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 shadow-sm">
-                          {String(viewingTaskRow?.new_cost != null && viewingTaskRow?.new_cost !== '' ? String(viewingTaskRow.new_cost) : '—')}
-                        </div>
-                        <span className="text-[9px] text-gray-400"> </span>
-                      </div>
-                    </label>
-                    <label className="block mb-3">
-                      <span className="text-[10px] text-gray-400 mb-1 block">Description</span>
-                      <textarea readOnly className={`${enj.textarea} h-14 min-h-14 resize-none text-xs`} value={String(viewingTaskRow?.new_description ?? '')} />
-                    </label>
-                    <label className="block">
-                      <span className="text-[10px] text-gray-400 mb-1 block">Attachment</span>
-                      <button className="w-full h-16 rounded border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400">
-                        <span className="font-semibold text-gray-600">Choose a file</span> or drag it here
-                      </button>
-                    </label>
-                    <div className="mt-4 flex justify-end gap-3">
-                      <button type="button" className={`${enj.btn} ${enj.btnOutline} px-6 text-sm`} onClick={() => setShowTaskDetails(false)}>Cancel</button>
-                      <button type="button" className={`${enj.btn} ${enj.btnPrimary} px-6 text-sm`}>Save & Submit</button>
-                    </div>
-                  </div>
-                  <aside className="bg-white rounded-xl p-3 border border-gray-100">
-                    <h3 className="text-xs font-semibold text-primary mb-2">Task Logs</h3>
-                    <div className="space-y-2 text-[10px] text-gray-500">
-                      <div className="p-2 rounded bg-gray-50 border border-gray-100">
-                        Created
-                        <br />
-                        {teamFormatShortDate(viewingTaskRow?.createdon)}
-                      </div>
-                      <div className="p-2 rounded bg-gray-50 border border-gray-100">
-                        Modified
-                        <br />
-                        {teamFormatShortDate(viewingTaskRow?.modifiedon)}
-                      </div>
-                    </div>
-                  </aside>
-                </section>
               ) : (
                 <div className="relative min-w-0 flex w-full flex-col">
                   {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
+                  {teamTaskToast && (
+                    <NotificationToast
+                      type={teamTaskToast.type}
+                      message={teamTaskToast.message}
+                      onClose={() => setTeamTaskToast(null)}
+                    />
+                  )}
                   <h2 className="text-xl font-bold text-primary mb-4 shrink-0">Tasks List</h2>
                   <div className="w-full min-w-0 shrink-0">
                     <TasksScreenBoard
                       variant="team"
                       tasks={myTasks}
+                      onTaskEdit={(row) => {
+                        setViewingTaskRow(row as Record<string, unknown>);
+                        setShowTeamTaskDetail(true);
+                      }}
                       onTaskOpen={(row) => {
                         setViewingTaskRow(row as Record<string, unknown>);
-                        setShowTaskDetails(true);
+                        setShowTeamTaskDetail(true);
                       }}
                     />
                   </div>
@@ -2508,25 +2498,27 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               <h2 className="text-xl font-bold text-primary mb-4">Issue Register</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div className="bg-white rounded-xl p-3 shadow-sm">
-                  <h3 className="text-sm font-semibold text-primary mb-2">Projects vs Issues</h3>
+                <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col">
+                  <h3 className="text-sm font-semibold text-primary mb-3">Projects vs Issues</h3>
                   {teamIssuesRegister.projectBars.length === 0 ? (
-                    <p className="text-xs text-gray-400 py-2">No issue data by project</p>
+                    <p className="text-xs text-gray-400 py-8">No issue data by project</p>
                   ) : (
-                    <svg viewBox="0 0 220 120" className="w-full h-28 chart-svg">
+                    <div className="flex-1 flex items-center justify-center min-h-[200px]">
+                      <svg viewBox="0 0 220 160" className="w-full h-full max-h-64 chart-svg">
                       {[0, 10, 20, 30, 40, 50].map((v) => (
                         <g key={v}>
-                          <line x1="18" x2="210" y1={92 - v * 1.5} y2={92 - v * 1.5} stroke="#eef2f7" />
-                          <text x="4" y={95 - v * 1.5} fontSize="7" fill="#9ca3af">{v}</text>
+                          <line x1="18" x2="210" y1={110 - v * 1.5} y2={110 - v * 1.5} stroke="#eef2f7" />
+                          <text x="4" y={113 - v * 1.5} fontSize="7" fill="#9ca3af">{v}</text>
                         </g>
                       ))}
                       {teamIssuesRegister.projectBars.map((b, i) => (
                         <g key={b.name}>
-                          <rect x={58 + i * 32} y={92 - b.h * 1.5} width="12" height={b.h * 1.5} rx="2" className="chart-bar" fill={b.color} />
-                          <text x={64 + i * 32} y="108" fontSize="7" textAnchor="middle" fill="#9ca3af">{b.name}</text>
+                          <rect x={58 + i * 32} y={110 - b.h * 1.5} width="12" height={b.h * 1.5} rx="2" className="chart-bar" fill={b.color} />
+                          <text x={64 + i * 32} y="130" fontSize="7" textAnchor="middle" fill="#9ca3af">{b.name}</text>
                         </g>
                       ))}
-                    </svg>
+                      </svg>
+                    </div>
                   )}
                 </div>
                 <DonutChartCard
@@ -2958,7 +2950,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
         </main>
       </div>
       {teamTaskDeleteCandidate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/35 px-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
             <h3 className={enj.sectionTitle}>Delete task?</h3>
             <p className="mt-2 text-sm text-gray-600">
@@ -3015,10 +3007,22 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   const [newClients, setNewClients] = useState<New_clients[]>([]);
   const [timelinePeriod, setTimelinePeriod] = useState<'weekly' | 'monthly' | 'yearly'>('yearly');
   const [timelineLoading, setTimelineLoading] = useState(false);
-  const businessDash = useMemo(
-    () => businessDashboardModel(timelineProjects, programIdToName, dashboardMasterRows),
-    [timelineProjects, programIdToName, dashboardMasterRows],
+
+  const readTimelineProgramName = useCallback(
+    (row: Record<string, unknown>) => resolveProjectProgramName(row, programIdToName),
+    [programIdToName],
   );
+
+  const filteredProjectsForDash = useMemo(
+    () => timelineProjects.filter((p) => selectedProgramGroup === 'All Programs' || readTimelineProgramName(p) === selectedProgramGroup),
+    [timelineProjects, selectedProgramGroup, readTimelineProgramName],
+  );
+
+  const businessDash = useMemo(
+    () => businessDashboardModel(filteredProjectsForDash, programIdToName, dashboardMasterRows),
+    [filteredProjectsForDash, programIdToName, dashboardMasterRows],
+  );
+
   const programProgressById = useMemo(() => {
     const acc = new Map<string, { sum: number; n: number }>();
     for (const r of timelineProjects) {
@@ -3072,7 +3076,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   );
 
   const latestPortfolio = useMemo(() => portfolioPrograms.slice(0, 5), [portfolioPrograms]);
-  const portfolioPageSize = 10;
+  const portfolioPageSize = 5;
   const portfolioTotalPages = useMemo(
     () => Math.max(1, Math.ceil(portfolioPrograms.length / portfolioPageSize)),
     [portfolioPrograms.length],
@@ -3129,10 +3133,6 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
     { name: 'Timeline', icon: <Calendar size={16} /> },
     { name: 'Feedback', icon: <MessageSquare size={16} /> },
   ];
-  const readTimelineProgramName = useCallback(
-    (row: Record<string, unknown>) => resolveProjectProgramName(row, programIdToName),
-    [programIdToName],
-  );
   const readTimelineProjectName = (row: Record<string, unknown>) =>
     String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
   const readTimelineStart = (row: Record<string, unknown>) => {
@@ -3876,13 +3876,13 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                 {(() => {
                   const tl = businessDash.projectTimelineNarrow;
                   const nY = Math.max(1, tl.years.length);
-                  const viewW = 400;
+                  const viewW = 600;
                   const plotH = 186;
                   const yBottom = 166;
                   const yTop = 30;
                   const yearY = 178;
                   const xLeft = 44;
-                  const xRight = 360;
+                  const xRight = 560;
                   const xAt = (i: number) =>
                     nY <= 1 ? (xLeft + xRight) / 2 : xLeft + (i * (xRight - xLeft)) / Math.max(1, nY - 1);
                   const yFor = (v: number) => yBottom - (v / 50) * (yBottom - yTop);
@@ -4474,7 +4474,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   const [statusOptions, setStatusOptions] = useState<Array<{ label: string; value: number }>>(fallbackStatusOptions);
   const [programRows, setProgramRows] = useState<Array<Record<string, unknown>>>([]);
   const [programListPage, setProgramListPage] = useState(1);
-  const PROGRAM_LIST_PAGE_SIZE = 6;
+  const PROGRAM_LIST_PAGE_SIZE = 5;
   const [programLoading, setProgramLoading] = useState(false);
   const [programColumns, setProgramColumns] = useState<{
     benefits?: string;
@@ -5015,7 +5015,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
           }
           if (!cancelled) await loadProgramManagerEmails();
           if (!cancelled) await loadPrograms();
-        } else if (activeNav === 'Dashboard') {
+        } else if (activeNav === 'Dashboard' || activeNav === 'Portfolio') {
           if (!cancelled) await loadPrograms();
         }
       } catch (error) {
@@ -5851,226 +5851,183 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
           ) : activeNav === 'Portfolio' ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <h1 className="text-lg font-bold text-gray-900">Portfolio</h1>
-                <button
-                  type="button"
-                  onClick={() => setActiveNav('Dashboard')}
-                  className={`${enj.btn} ${enj.btnOutline} text-xs`}
-                >
-                  Back
-                </button>
+                <h1 className={enj.pageTitle}>Portfolio</h1>
               </div>
-              <section className="space-y-3">
-                <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
-                  <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
-                    <thead>
-                      <tr>
-                        <th className="px-3 py-2 font-semibold">Program</th>
-                        <th className="px-3 py-2 font-semibold">KPI</th>
-                        <th className="px-3 py-2 font-semibold">Benefits</th>
-                        <th className="px-3 py-2 font-semibold">Budget</th>
-                        <th className="px-3 py-2 font-semibold">Program Manager</th>
-                        <th className="px-3 py-2 font-semibold">ROI</th>
-                        <th className="px-3 py-2 font-semibold">Start Date</th>
-                        <th className="px-3 py-2 font-semibold">Progress</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pagedProgramPortfolioRows.map((row) => {
-                        const pid = String(row.new_programid ?? '');
-                        const normalizedPid = normalizeDataverseId(pid);
-                        const programName = readProgramPortfolioText(row, programColumns.name ?? 'new_name', ['new_name']);
-                        const programKey = normalizedPid ? `id:${normalizedPid}` : `name:${programName.toLowerCase()}`;
-                        const fallbackNameKey = `name:${programName.toLowerCase()}`;
-                        const programProjects = (
-                          portfolioProjectsByProgramKey.get(programKey)
-                          ?? portfolioProjectsByProgramKey.get(fallbackNameKey)
-                          ?? []
-                        )
-                          .slice()
-                          .sort((a, b) => {
-                            const aStart = parseTimelineDate(a.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-                            const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-                            return aStart - bStart;
-                          });
-                        const rawPrgPct = Number(row.new_progresslevel ?? NaN);
-                        const pPct = Number.isFinite(rawPrgPct) ? Math.max(0, Math.min(100, rawPrgPct)) : (portfolioProgramProgressById.get(normalizedPid) ?? 0);
-                        const start = parseTimelineDate(row.new_startdate);
-                        const isExpanded = programPortfolioExpandedKey === programKey;
-                        const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
-                          for (const k of keys) {
-                            const v = project[k];
-                            if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
-                          }
-                          return fallback;
-                        };
+              {pagedProgramPortfolioRows.length > 0 && (
+                <section className="space-y-3">
+                  <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
+                    <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+                      <thead>
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">Program</th>
+                          <th className="px-3 py-2 font-semibold">KPI</th>
+                          <th className="px-3 py-2 font-semibold">Benefits</th>
+                          <th className="px-3 py-2 font-semibold">Budget</th>
+                          <th className="px-3 py-2 font-semibold">Program Manager</th>
+                          <th className="px-3 py-2 font-semibold">ROI</th>
+                          <th className="px-3 py-2 font-semibold">Start Date</th>
+                          <th className="px-3 py-2 font-semibold">Progress</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedProgramPortfolioRows.map((row) => {
+                          const pid = String(row.new_programid ?? '');
+                          const normalizedPid = normalizeDataverseId(pid);
+                          const programName = readProgramPortfolioText(row, programColumns.name ?? 'new_name', ['new_name']);
+                          const programKey = normalizedPid ? `id:${normalizedPid}` : `name:${programName.toLowerCase()}`;
+                          const fallbackNameKey = `name:${programName.toLowerCase()}`;
+                          const programProjects = (
+                            portfolioProjectsByProgramKey.get(programKey)
+                            ?? portfolioProjectsByProgramKey.get(fallbackNameKey)
+                            ?? []
+                          )
+                            .slice()
+                            .sort((a, b) => {
+                              const aStart = parseTimelineDate(a.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                              const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                              return aStart - bStart;
+                            });
+                          const progressValue = row.new_progresslevel;
+                          const rawPrgPct = typeof progressValue === 'number' ? progressValue : (typeof progressValue === 'string' ? Number(progressValue.trim()) : Number(progressValue ?? NaN));
+                          const pPct = Number.isFinite(rawPrgPct) && rawPrgPct >= 0 && rawPrgPct <= 100 ? rawPrgPct : (portfolioProgramProgressById.get(normalizedPid) ?? 0);
+                          const start = parseTimelineDate(row.new_startdate);
+                          const isExpanded = programPortfolioExpandedKey === programKey;
+                          const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
+                            for (const k of keys) {
+                              const v = project[k];
+                              if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+                            }
+                            return fallback;
+                          };
 
-                        return (
-                          <Fragment key={pid || programName}>
-                            <tr className="border-t border-[#d7def0] bg-white">
-                              <td className="px-3 py-2 font-normal">
-                                <button
-                                  type="button"
-                                  className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
-                                  onClick={() => setProgramPortfolioExpandedKey((prev) => (prev === programKey ? null : programKey))}
-                                  aria-expanded={isExpanded}
-                                >
-                                  <ChevronDown size={14} className={`transition-transform text-[#6B7280] ${isExpanded ? 'rotate-180' : ''}`} />
-                                  <span className="max-w-[18rem] truncate">{programName}</span>
-                                </button>
-                              </td>
-                              <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
-                              <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
-                              <td className="px-3 py-2"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
-                              <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
-                              <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
-                              <td className="px-3 py-2 whitespace-nowrap">
-                                <span className="inline-flex items-center gap-1">
-                                  <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
-                                  <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 w-40">
-                                <div className="flex items-center gap-2">
-                                  <div className="enj-table-progress-track flex-1">
-                                    <div
-                                      className="enj-table-progress-fill"
-                                      style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }}
-                                    />
-                                  </div>
-                                  <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-gray-600">
-                                    {Math.round(pPct)}%
+                          return (
+                            <Fragment key={pid || programName}>
+                              <tr className="border-t border-[#d7def0] bg-white">
+                                <td className="px-3 py-2 font-normal">
+                                  <button
+                                    type="button"
+                                    className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
+                                    onClick={() => setProgramPortfolioExpandedKey((prev) => (prev === programKey ? null : programKey))}
+                                    aria-expanded={isExpanded}
+                                  >
+                                    <ChevronDown size={14} className={`transition-transform text-[#6B7280] ${isExpanded ? 'rotate-180' : ''}`} />
+                                    <span className="max-w-[18rem] truncate">{programName}</span>
+                                  </button>
+                                </td>
+                                <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
+                                <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
+                                <td className="px-3 py-2"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
+                                <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                                <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
+                                    <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
                                   </span>
-                                </div>
-                              </td>
-                            </tr>
-                            {isExpanded && (
-                              <>
-                                {programProjects.length === 0 ? (
-                                  <tr className="border-t border-gray-100 bg-white">
-                                    <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">
-                                      No projects found for this program.
-                                    </td>
-                                  </tr>
-                                ) : (
-                                  <tr className="border-t border-gray-100 bg-[#f9fafc]">
-                                    <td colSpan={8} className="px-3 py-2.5">
-                                      <div className="overflow-x-auto rounded-xl border border-[#E5E7EB] bg-[#eef2f9] px-2 py-2">
-                                        <table className={`${enj.table} enj-program-projects-table min-w-[1140px] text-left text-xs`}>
-                                          <thead>
-                                            <tr>
-                                              <th className="px-3 py-2 font-semibold">Project</th>
-                                              <th className="px-3 py-2 font-semibold">Priority</th>
-                                              <th className="px-3 py-2 font-semibold">Sponsor</th>
-                                              <th className="px-3 py-2 font-semibold">Type</th>
-                                              <th className="px-3 py-2 font-semibold">Budget</th>
-                                              <th className="px-3 py-2 font-semibold">Starg.obj</th>
-                                              <th className="px-3 py-2 font-semibold">Project Manager</th>
-                                              <th className="px-3 py-2 font-semibold">Timeline</th>
-                                              <th className="px-3 py-2 font-semibold">Progress</th>
-                                              <th className="px-3 py-2 font-semibold">Status</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {programProjects.map((project, i) => {
-                                              const projectName =
-                                                String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
-                                              const PRIORITY_MAP_: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
-                                              const GOAL_MAP_: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
-                                              const priorityRaw_ = readProjectField(project, ['new_priorityname', 'new_priority']);
-                                              const priority = PRIORITY_MAP_[Number(priorityRaw_)] ?? priorityRaw_;
-                                              const sponsor = readProjectField(project, ['crcf8_projectsponsorname', 'crcf8_projectsponsor']);
-                                              const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
-                                              const budget = readProjectField(project, ['new_budget']);
-                                              const goalRaw_ = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
-                                              const strategicObj = GOAL_MAP_[Number(goalRaw_)] ?? goalRaw_;
-                                              const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
-                                              const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
-                                              const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
-                                              const progressRaw = Number(project.new_progress ?? NaN);
-                                              const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
-                                              const statusText = String(project.new_projectstatusname ?? '').trim();
-                                              const statusBucket = businessProjectStatusBucket(project);
-                                              const statusLabel =
-                                                statusText
-                                                || (statusBucket === 'completed'
-                                                  ? 'Completed'
-                                                  : statusBucket === 'delayed'
-                                                    ? 'Delayed'
-                                                    : statusBucket === 'onTrack'
-                                                      ? 'On Track'
-                                                      : 'To Start');
-                                              const statusKey = statusLabel.toLowerCase();
-                                              return (
-                                                <tr key={`${programKey}-${projectName}-${i}`} className="enj-program-projects-table__row">
-                                                  <td className={`px-3 py-1 font-medium ${enj.tableLink}`}>{projectName}</td>
-                                                  <td className="px-3 py-1">{priority}</td>
-                                                  <td className="px-3 py-1">{sponsor}</td>
-                                                  <td className="px-3 py-1">{projectType}</td>
-                                                  <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
-                                                  <td className="px-3 py-1">{strategicObj}</td>
-                                                  <td className="px-3 py-1">{manager}</td>
-                                                  <td className="px-3 py-1">
-                                                    <div className="enj-program-projects-table__schedule">
-                                                      <div>
-                                                        <p className="enj-program-projects-table__label">Start date</p>
-                                                        <p className="enj-program-projects-table__value">
-                                                          <Calendar size={12} className="text-[#9CA3AF]" />
-                                                          {startDate}
-                                                        </p>
+                                </td>
+                                <td className="px-3 py-2 w-40">
+                                  <div className="flex items-center gap-2">
+                                    <div className="enj-table-progress-track flex-1">
+                                      <div className="enj-table-progress-fill" style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }} />
+                                    </div>
+                                    <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-gray-600">{Math.round(pPct)}%</span>
+                                  </div>
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <>
+                                  {programProjects.length === 0 ? (
+                                    <tr className="border-t border-gray-100 bg-white">
+                                      <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">No projects found for this program.</td>
+                                    </tr>
+                                  ) : (
+                                    <tr className="border-t border-gray-100 bg-[#f9fafc]">
+                                      <td colSpan={8} className="px-3 py-2.5">
+                                        <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
+                                          <table className={`${enj.table} min-w-[1140px] text-left text-[11px]`}>
+                                            <thead>
+                                              <tr>
+                                                <th className="px-3 py-1.5 font-semibold">Project</th>
+                                                <th className="px-3 py-1.5 font-semibold">Priority</th>
+                                                <th className="px-3 py-1.5 font-semibold">Sponsor</th>
+                                                <th className="px-3 py-1.5 font-semibold">Type</th>
+                                                <th className="px-3 py-1.5 font-semibold">Budget</th>
+                                                <th className="px-3 py-1.5 font-semibold">Strat.goal</th>
+                                                <th className="px-3 py-1.5 font-semibold">Project Manager</th>
+                                                <th className="px-3 py-1.5 font-semibold">Timeline</th>
+                                                <th className="px-3 py-1.5 font-semibold">Progress</th>
+                                                <th className="px-3 py-1.5 font-semibold">Status</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {programProjects.map((project, i) => {
+                                                const projectName = String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
+                                                const PRIORITY_MAP: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+                                                const GOAL_MAP: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+                                                const priorityRaw = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                                const priority = PRIORITY_MAP[Number(priorityRaw)] ?? priorityRaw;
+                                                const sponsor = readProjectField(project, ['crcf8_projectsponsorname', 'crcf8_projectsponsor']);
+                                                const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
+                                                const budget = readProjectField(project, ['new_budget']);
+                                                const goalRaw = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
+                                                const strategicObj = GOAL_MAP[Number(goalRaw)] ?? goalRaw;
+                                                const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
+                                                const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
+                                                const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                                const progressRaw = Number(project.new_progress ?? NaN);
+                                                const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
+                                                const statusText = String(project.new_projectstatusname ?? '').trim();
+                                                const statusBucket = businessProjectStatusBucket(project);
+                                                const statusLabel = statusText || (statusBucket === 'completed' ? 'Completed' : statusBucket === 'delayed' ? 'Delayed' : statusBucket === 'onTrack' ? 'On Track' : 'To Start');
+                                                const statusKey = statusLabel.toLowerCase();
+                                                return (
+                                                  <tr key={`${programKey}-${projectName}-${i}`} className="border-t border-gray-100 bg-white">
+                                                    <td className="px-3 py-1 font-medium text-[#374151]">{projectName}</td>
+                                                    <td className="px-3 py-1">{priority}</td>
+                                                    <td className="px-3 py-1">{sponsor}</td>
+                                                    <td className="px-3 py-1">{projectType}</td>
+                                                    <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
+                                                    <td className="px-3 py-1">{strategicObj}</td>
+                                                    <td className="px-3 py-1">{manager}</td>
+                                                    <td className="px-3 py-1 text-[10px]">
+                                                      <div className="space-y-0.5">
+                                                        <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
+                                                        <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
                                                       </div>
-                                                      <div className="enj-program-projects-table__schedule-sep" />
-                                                      <div>
-                                                        <p className="enj-program-projects-table__label">End date</p>
-                                                        <p className="enj-program-projects-table__value">
-                                                          <Calendar size={12} className="text-[#9CA3AF]" />
-                                                          {endDate}
-                                                        </p>
+                                                    </td>
+                                                    <td className="px-3 py-1 w-32">
+                                                      <div className="flex items-center gap-2">
+                                                        <div className="enj-table-progress-track flex-1">
+                                                          <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
+                                                        </div>
+                                                        <span className="w-7 text-right text-[10px] tabular-nums text-gray-600">{Math.round(progress)}%</span>
                                                       </div>
-                                                    </div>
-                                                  </td>
-                                                  <td className="px-3 py-1 w-32">
-                                                    <div className="flex items-center gap-2">
-                                                      <div className="enj-table-progress-track flex-1">
-                                                        <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
-                                                      </div>
-                                                      <span className="w-7 text-right text-[10px] tabular-nums text-gray-600">
-                                                        {Math.round(progress)}%
-                                                      </span>
-                                                    </div>
-                                                  </td>
-                                                  <td className="px-3 py-1">
-                                                    <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
-                                                      {statusLabel}
-                                                    </span>
-                                                  </td>
-                                                </tr>
-                                              );
-                                            })}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  <div className="border-t border-gray-100 px-3 py-2">
-                    <PagerBar
-                      page={programPortfolioPage}
-                      pageSize={programPortfolioPageSize}
-                      total={programRows.length}
-                      onPrev={() => setProgramPortfolioPage((p) => Math.max(1, p - 1))}
-                      onNext={() => setProgramPortfolioPage((p) => Math.min(programPortfolioTotalPages, p + 1))}
-                    />
+                                                    </td>
+                                                    <td className="px-3 py-1">
+                                                      <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>{statusLabel}</span>
+                                                    </td>
+                                                  </tr>
+                                                );
+                                              })}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
-              </section>
+                  <div className="border-t border-gray-100 px-3 py-2">
+                    <PagerBar page={programPortfolioPage} pageSize={programPortfolioPageSize} total={programRows.length} onPrev={() => setProgramPortfolioPage((p) => Math.max(1, p - 1))} onNext={() => setProgramPortfolioPage((p) => Math.min(programPortfolioTotalPages, p + 1))} />
+                  </div>
+                </section>
+              )}
             </div>
           ) : activeNav === 'Deliverables' ? (
             <>
@@ -6426,216 +6383,187 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               })()}
             </div>
           </section>
-          <section className="space-y-3 rounded-xl border border-[#d6dbe8] bg-white p-3 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-bold text-gray-900">Portfolio</h2>
-              <button
-                type="button"
-                onClick={() => setActiveNav('Portfolio')}
-                className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
-              >
-                View All
-              </button>
-            </div>
-            <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white">
-              <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
-                <thead>
-                  <tr>
-                    <th className="px-3 py-2 font-semibold">Program</th>
-                    <th className="px-3 py-2 font-semibold">KPI</th>
-                    <th className="px-3 py-2 font-semibold">Benefits</th>
-                    <th className="px-3 py-2 font-semibold">Budget</th>
-                    <th className="px-3 py-2 font-semibold">Program Manager</th>
-                    <th className="px-3 py-2 font-semibold">ROI</th>
-                    <th className="px-3 py-2 font-semibold">Start Date</th>
-                    <th className="px-3 py-2 font-semibold">Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {programPortfolioLatestFive.map((row) => {
-                    const pid = String(row.new_programid ?? '');
-                    const normalizedPid = normalizeDataverseId(pid);
-                    const programName = readProgramPortfolioText(row, programColumns.name ?? 'new_name', ['new_name']);
-                    const programKey = normalizedPid ? `id:${normalizedPid}` : `name:${programName.toLowerCase()}`;
-                    const fallbackNameKey = `name:${programName.toLowerCase()}`;
-                    const programProjects = (
-                      portfolioProjectsByProgramKey.get(programKey)
-                      ?? portfolioProjectsByProgramKey.get(fallbackNameKey)
-                      ?? []
-                    )
-                      .slice()
-                      .sort((a, b) => {
-                        const aStart = parseTimelineDate(a.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-                        const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-                        return aStart - bStart;
-                      });
-                    const pPct = portfolioProgramProgressById.get(normalizedPid) ?? 0;
-                    const start = parseTimelineDate(row.new_startdate);
-                    const isExpanded = programPortfolioExpandedKey === programKey;
-                    const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
-                      for (const k of keys) {
-                        const v = project[k];
-                        if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
-                      }
-                      return fallback;
-                    };
-                    return (
-                      <Fragment key={`dash-portfolio-${pid || programName}`}>
-                        <tr className="border-t border-[#d7def0] bg-white">
-                          <td className="px-3 py-2 font-normal">
-                            <button
-                              type="button"
-                              className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
-                              onClick={() => setProgramPortfolioExpandedKey((prev) => (prev === programKey ? null : programKey))}
-                              aria-expanded={isExpanded}
-                            >
-                              <ChevronDown size={14} className={`transition-transform text-[#6B7280] ${isExpanded ? 'rotate-180' : ''}`} />
-                              <span className="max-w-[18rem] truncate">{programName}</span>
-                            </button>
-                          </td>
-                          <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
-                          <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
-                          <td className="px-3 py-2"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
-                          <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
-                          <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <span className="inline-flex items-center gap-1">
-                              <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
-                              <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 w-40">
-                            <div className="flex items-center gap-2">
-                              <div className="enj-table-progress-track flex-1">
-                                <div
-                                  className="enj-table-progress-fill"
-                                  style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }}
-                                />
-                              </div>
-                              <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-gray-600">
-                                {Math.round(pPct)}%
+          {programPortfolioLatestFive.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-gray-900">Portfolio</h2>
+                <button
+                  type="button"
+                  onClick={() => setActiveNav('Portfolio')}
+                  className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
+                >
+                  View All
+                </button>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
+                <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+                  <thead>
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Program</th>
+                      <th className="px-3 py-2 font-semibold">KPI</th>
+                      <th className="px-3 py-2 font-semibold">Benefits</th>
+                      <th className="px-3 py-2 font-semibold">Budget</th>
+                      <th className="px-3 py-2 font-semibold">Program Manager</th>
+                      <th className="px-3 py-2 font-semibold">ROI</th>
+                      <th className="px-3 py-2 font-semibold">Start Date</th>
+                      <th className="px-3 py-2 font-semibold">Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {programPortfolioLatestFive.slice(0, 5).map((row) => {
+                      const pid = String(row.new_programid ?? '');
+                      const normalizedPid = normalizeDataverseId(pid);
+                      const programName = readProgramPortfolioText(row, programColumns.name ?? 'new_name', ['new_name']);
+                      const programKey = normalizedPid ? `id:${normalizedPid}` : `name:${programName.toLowerCase()}`;
+                      const fallbackNameKey = `name:${programName.toLowerCase()}`;
+                      const programProjects = (
+                        portfolioProjectsByProgramKey.get(programKey)
+                        ?? portfolioProjectsByProgramKey.get(fallbackNameKey)
+                        ?? []
+                      )
+                        .slice()
+                        .sort((a, b) => {
+                          const aStart = parseTimelineDate(a.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                          const bStart = parseTimelineDate(b.new_startdate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                          return aStart - bStart;
+                        });
+                      const progressValue = row.new_progresslevel;
+                      const rawPrgPct = typeof progressValue === 'number' ? progressValue : (typeof progressValue === 'string' ? Number(progressValue.trim()) : Number(progressValue ?? NaN));
+                      const pPct = Number.isFinite(rawPrgPct) && rawPrgPct >= 0 && rawPrgPct <= 100 ? rawPrgPct : (portfolioProgramProgressById.get(normalizedPid) ?? 0);
+                      const start = parseTimelineDate(row.new_startdate);
+                      const isExpanded = programPortfolioExpandedKey === programKey;
+                      const readProjectField = (project: Record<string, unknown>, keys: string[], fallback = '—') => {
+                        for (const k of keys) {
+                          const v = project[k];
+                          if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+                        }
+                        return fallback;
+                      };
+
+                      return (
+                        <Fragment key={pid || programName}>
+                          <tr className="border-t border-[#d7def0] bg-white">
+                            <td className="px-3 py-2 font-normal">
+                              <button
+                                type="button"
+                                className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
+                                onClick={() => setProgramPortfolioExpandedKey((prev) => (prev === programKey ? null : programKey))}
+                                aria-expanded={isExpanded}
+                              >
+                                <ChevronDown size={14} className={`transition-transform text-[#6B7280] ${isExpanded ? 'rotate-180' : ''}`} />
+                                <span className="max-w-[18rem] truncate">{programName}</span>
+                              </button>
+                            </td>
+                            <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
+                            <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
+                            <td className="px-3 py-2"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
+                            <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                            <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1">
+                                <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
+                                <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
                               </span>
-                            </div>
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <>
-                            {programProjects.length === 0 ? (
-                              <tr className="border-t border-gray-100 bg-white">
-                                <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">
-                                  No projects found for this program.
-                                </td>
-                              </tr>
-                            ) : (
-                              <tr className="border-t border-gray-100 bg-[#f9fafc]">
-                                <td colSpan={8} className="px-3 py-2.5">
-                                  <div className="overflow-x-auto rounded-xl border border-[#E5E7EB] bg-[#eef2f9] px-2 py-2">
-                                    <table className={`${enj.table} enj-program-projects-table min-w-[1140px] text-left text-xs`}>
-                                      <thead>
-                                        <tr>
-                                          <th className="px-3 py-2 font-semibold">Project</th>
-                                          <th className="px-3 py-2 font-semibold">Priority</th>
-                                          <th className="px-3 py-2 font-semibold">Sponsor</th>
-                                          <th className="px-3 py-2 font-semibold">Type</th>
-                                          <th className="px-3 py-2 font-semibold">Budget</th>
-                                          <th className="px-3 py-2 font-semibold">Starg.obj</th>
-                                          <th className="px-3 py-2 font-semibold">Project Manager</th>
-                                          <th className="px-3 py-2 font-semibold">Timeline</th>
-                                          <th className="px-3 py-2 font-semibold">Progress</th>
-                                          <th className="px-3 py-2 font-semibold">Status</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {programProjects.map((project, i) => {
-                                          const projectName =
-                                            String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
-                                          const PRIORITY_MAP_: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
-                                          const GOAL_MAP_: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
-                                          const priorityRaw_ = readProjectField(project, ['new_priorityname', 'new_priority']);
-                                          const priority = PRIORITY_MAP_[Number(priorityRaw_)] ?? priorityRaw_;
-                                          const sponsor = readProjectField(project, ['crcf8_projectsponsorname', 'crcf8_projectsponsor']);
-                                          const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
-                                          const budget = readProjectField(project, ['new_budget']);
-                                          const goalRaw_ = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
-                                          const strategicObj = GOAL_MAP_[Number(goalRaw_)] ?? goalRaw_;
-                                          const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
-                                          const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
-                                          const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
-                                          const progressRaw = Number(project.new_progress ?? NaN);
-                                          const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
-                                          const statusText = String(project.new_projectstatusname ?? '').trim();
-                                          const statusBucket = businessProjectStatusBucket(project);
-                                          const statusLabel =
-                                            statusText
-                                            || (statusBucket === 'completed'
-                                              ? 'Completed'
-                                              : statusBucket === 'delayed'
-                                                ? 'Delayed'
-                                                : statusBucket === 'onTrack'
-                                                  ? 'On Track'
-                                                  : 'To Start');
-                                          const statusKey = statusLabel.toLowerCase();
-                                          return (
-                                            <tr key={`dash-${programKey}-${projectName}-${i}`} className="enj-program-projects-table__row">
-                                              <td className={`px-3 py-2 font-medium ${enj.tableLink}`}>{projectName}</td>
-                                              <td className="px-3 py-2">{priority}</td>
-                                              <td className="px-3 py-2">{sponsor}</td>
-                                              <td className="px-3 py-2">{projectType}</td>
-                                              <td className="px-3 py-2"><TableBudgetDisplay value={budget} /></td>
-                                              <td className="px-3 py-2">{strategicObj}</td>
-                                              <td className="px-3 py-2">{manager}</td>
-                                              <td className="px-3 py-2">
-                                                <div className="enj-program-projects-table__schedule">
-                                                  <div>
-                                                    <p className="enj-program-projects-table__label">Start date</p>
-                                                    <p className="enj-program-projects-table__value">
-                                                      <Calendar size={12} className="text-[#9CA3AF]" />
-                                                      {startDate}
-                                                    </p>
+                            </td>
+                            <td className="px-3 py-2 w-40">
+                              <div className="flex items-center gap-2">
+                                <div className="enj-table-progress-track flex-1">
+                                  <div className="enj-table-progress-fill" style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }} />
+                                </div>
+                                <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-gray-600">{Math.round(pPct)}%</span>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {isExpanded && (
+                            <>
+                              {programProjects.length === 0 ? (
+                                <tr className="border-t border-gray-100 bg-white">
+                                  <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">No projects found for this program.</td>
+                                </tr>
+                              ) : (
+                                <tr className="border-t border-gray-100 bg-[#f9fafc]">
+                                  <td colSpan={8} className="px-3 py-2.5">
+                                    <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
+                                      <table className={`${enj.table} min-w-[1140px] text-left text-[11px]`}>
+                                        <thead>
+                                          <tr>
+                                            <th className="px-3 py-1.5 font-semibold">Project</th>
+                                            <th className="px-3 py-1.5 font-semibold">Priority</th>
+                                            <th className="px-3 py-1.5 font-semibold">Sponsor</th>
+                                            <th className="px-3 py-1.5 font-semibold">Type</th>
+                                            <th className="px-3 py-1.5 font-semibold">Budget</th>
+                                            <th className="px-3 py-1.5 font-semibold">Strat.goal</th>
+                                            <th className="px-3 py-1.5 font-semibold">Project Manager</th>
+                                            <th className="px-3 py-1.5 font-semibold">Timeline</th>
+                                            <th className="px-3 py-1.5 font-semibold">Progress</th>
+                                            <th className="px-3 py-1.5 font-semibold">Status</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {programProjects.map((project, i) => {
+                                            const projectName = String(project.new_projectname ?? project.new_name ?? 'Project').trim() || 'Project';
+                                            const PRIORITY_MAP: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+                                            const GOAL_MAP: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+                                            const priorityRaw = readProjectField(project, ['new_priorityname', 'new_priority']);
+                                            const priority = PRIORITY_MAP[Number(priorityRaw)] ?? priorityRaw;
+                                            const sponsor = readProjectField(project, ['crcf8_projectsponsorname', 'crcf8_projectsponsor']);
+                                            const projectType = readProjectField(project, ['new_projectcategoryname', 'new_projectcategory']);
+                                            const budget = readProjectField(project, ['new_budget']);
+                                            const goalRaw = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
+                                            const strategicObj = GOAL_MAP[Number(goalRaw)] ?? goalRaw;
+                                            const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
+                                            const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
+                                            const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                            const progressRaw = Number(project.new_progress ?? NaN);
+                                            const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
+                                            const statusText = String(project.new_projectstatusname ?? '').trim();
+                                            const statusBucket = businessProjectStatusBucket(project);
+                                            const statusLabel = statusText || (statusBucket === 'completed' ? 'Completed' : statusBucket === 'delayed' ? 'Delayed' : statusBucket === 'onTrack' ? 'On Track' : 'To Start');
+                                            const statusKey = statusLabel.toLowerCase();
+                                            return (
+                                              <tr key={`${programKey}-${projectName}-${i}`} className="border-t border-gray-100 bg-white">
+                                                <td className="px-3 py-1 font-medium text-[#374151]">{projectName}</td>
+                                                <td className="px-3 py-1">{priority}</td>
+                                                <td className="px-3 py-1">{sponsor}</td>
+                                                <td className="px-3 py-1">{projectType}</td>
+                                                <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
+                                                <td className="px-3 py-1">{strategicObj}</td>
+                                                <td className="px-3 py-1">{manager}</td>
+                                                <td className="px-3 py-1 text-[10px]">
+                                                  <div className="space-y-0.5">
+                                                    <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
+                                                    <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
                                                   </div>
-                                                  <div className="enj-program-projects-table__schedule-sep" />
-                                                  <div>
-                                                    <p className="enj-program-projects-table__label">End date</p>
-                                                    <p className="enj-program-projects-table__value">
-                                                      <Calendar size={12} className="text-[#9CA3AF]" />
-                                                      {endDate}
-                                                    </p>
+                                                </td>
+                                                <td className="px-3 py-1 w-32">
+                                                  <div className="flex items-center gap-2">
+                                                    <div className="enj-table-progress-track flex-1">
+                                                      <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
+                                                    </div>
+                                                    <span className="w-7 text-right text-[10px] tabular-nums text-gray-600">{Math.round(progress)}%</span>
                                                   </div>
-                                                </div>
-                                              </td>
-                                              <td className="px-3 py-2 w-32">
-                                                <div className="flex items-center gap-2">
-                                                  <div className="enj-table-progress-track flex-1">
-                                                    <div className="enj-table-progress-fill" style={{ width: `${progress}%` }} />
-                                                  </div>
-                                                  <span className="w-7 text-right text-[10px] tabular-nums text-gray-600">
-                                                    {Math.round(progress)}%
-                                                  </span>
-                                                </div>
-                                              </td>
-                                              <td className="px-3 py-2">
-                                                <span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>
-                                                  {statusLabel}
-                                                </span>
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                                                </td>
+                                                <td className="px-3 py-1"><span className={`enj-table-status ${portfolioProjectStatusBadgeClass(statusKey, statusBucket as string)}`}>{statusLabel}</span></td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
             </>
           )}
           </div>
@@ -6712,6 +6640,8 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   const [projectIssueDetailRow, setProjectIssueDetailRow] = useState<Record<string, unknown> | null>(null);
   const [showProjectSubIssueForm, setShowProjectSubIssueForm] = useState(false);
   const [projectSubIssueFromDetail, setProjectSubIssueFromDetail] = useState(false);
+  const [showProjectSubTaskForm, setShowProjectSubTaskForm] = useState(false);
+  const [projectSubTaskFromDetail, setProjectSubTaskFromDetail] = useState(false);
   const [projectDashToast, setProjectDashToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [dashboardProjects, setDashboardProjects] = useState<Array<Record<string, unknown>>>([]);
   const [dashboardTasks, setDashboardTasks] = useState<Array<Record<string, unknown>>>([]);
@@ -6741,7 +6671,6 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
     { name: 'Issues', icon: <AlertCircle size={16} /> },
     { name: 'Meetings', icon: <Calendar size={16} /> },
     { name: 'Deliverables', icon: <FolderOpen size={16} /> },
-    { name: 'Test', icon: <Sparkles size={16} /> },
   ];
   const teamTabs = ['Workload', 'Performance', 'Evaluation'];
   const teamWorkloadBarColors = [
@@ -7783,7 +7712,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
             }
           >
           {issueDeleteCandidate && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/35 px-4">
               <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
                 <h3 className={enj.sectionTitle}>Delete issue?</h3>
                 <p className="mt-2 text-sm text-gray-600">
@@ -7815,7 +7744,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           )}
           {projectTaskDeleteCandidate && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/35 px-4">
               <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
                 <h3 className={enj.sectionTitle}>Delete task?</h3>
                 <p className="mt-2 text-sm text-gray-600">
@@ -7862,11 +7791,34 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                     onSaved={() => setTaskListRefresh((k) => k + 1)}
                   />
                 </div>
+              ) : showProjectSubTaskForm && projectTaskDetailRow ? (
+                <TeamSubTaskFormPanel
+                  parentTask={projectTaskDetailRow}
+                  onBack={() => {
+                    setShowProjectSubTaskForm(false);
+                    if (projectSubTaskFromDetail) {
+                      setProjectTaskDetailRow(projectTaskDetailRow);
+                    } else {
+                      setProjectTaskDetailRow(null);
+                    }
+                    setProjectSubTaskFromDetail(false);
+                  }}
+                  onRefresh={() => { setTaskListRefresh((k) => k + 1); }}
+                  onNotify={(type, message) => {
+                    setProjectDashToast({ type, message });
+                  }}
+                  onSaved={() => {
+                    setTaskListRefresh((k) => k + 1);
+                  }}
+                />
               ) : projectTaskDetailRow ? (
                 <div className="min-h-0 w-full min-w-0 max-h-[min(calc(100dvh-7rem),56rem)] flex-1 overflow-y-auto pr-0.5">
                   <ProjectTaskDetailView
                     task={projectTaskDetailRow}
-                    onBack={() => setProjectTaskDetailRow(null)}
+                    onBack={() => {
+                      setProjectTaskDetailRow(null);
+                      setProjectSubTaskFromDetail(false);
+                    }}
                     onTaskRefreshed={setProjectTaskDetailRow}
                     onListRefresh={() => setTaskListRefresh((k) => k + 1)}
                     onNotify={(type, message) => setProjectDashToast({ type, message })}
@@ -8004,8 +7956,6 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 />
               )}
             </>
-          ) : activeNav === 'Test' ? (
-            <TestDonutChart />
           ) : activeNav === 'Issues' ? (
             <section className={`relative min-w-0 max-w-full ${enj.panelBg}`}>
               {!showAddIssueForm &&
@@ -8150,8 +8100,8 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                     />
 
                     <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-2xl font-semibold text-primary mb-2">Issues vs Projects</h3>
-                      <p className="text-xs text-gray-500 mb-1">Top projects by number of issues</p>
+                      <h3 className="text-sm font-semibold text-gray-800 mb-2">Issues vs Projects</h3>
+                      <p className="text-[10px] text-gray-500 mb-2">Top projects by number of issues</p>
                       <svg viewBox="0 0 220 140" className="w-full h-40 chart-svg">
                         {issueCharts.projectTicks.map((v) => (
                           <g key={v}>
@@ -8430,7 +8380,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
 
               <section className="bg-white rounded-xl p-4 shadow-sm mb-4">
-                <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-4">
+                <div className="grid grid-cols-1 xl:grid-cols-[65fr_35fr] gap-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-lg font-semibold text-primary">{teamTab === 'Evaluation' ? 'Team Evaluation' : 'Team Workload'}</h3>

@@ -141,6 +141,37 @@
           "required": true,
           "maxLength": 100
         },
+        "new_gender": {
+          "type": "string",
+          "title": "Gender",
+          "x-ms-dataverse-attribute": "new_gender",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "new_Gender",
+          "enum": [
+            "Male",
+            "Female"
+          ],
+          "x-ms-enum-values": [
+            100000000,
+            100000001
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "9e923620-803d-f111-88b4-70a8a51df0bb",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Gender",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "new_gendername": {
+          "type": "string",
+          "title": "new_gendername",
+          "x-ms-dataverse-attribute": "new_gendername",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "new_genderName",
+          "x-ms-read-only": true
+        },
         "new_lastloggedapp": {
           "type": "string",
           "title": "LastLoggedApp",
@@ -175,9 +206,26 @@
           "x-ms-schema-name": "new_OnboardedDate",
           "maxLength": 100
         },
+        "new_resume": {
+          "type": "string",
+          "title": "Resume",
+          "x-ms-dataverse-attribute": "new_resume",
+          "x-ms-dataverse-type": "FileType",
+          "x-ms-schema-name": "new_Resume",
+          "x-ms-read-only": true
+        },
+        "new_resume_name": {
+          "type": "string",
+          "title": "new_resume_name",
+          "x-ms-dataverse-attribute": "new_resume_name",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_Resume_Name",
+          "x-ms-read-only": true,
+          "maxLength": 200
+        },
         "new_role": {
           "type": "string",
-          "title": "Role",
+          "title": "Department",
           "x-ms-dataverse-attribute": "new_role",
           "x-ms-dataverse-type": "PicklistType",
           "x-ms-schema-name": "new_Role",
@@ -253,6 +301,38 @@
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "new_UserID",
           "maxLength": 100
+        },
+        "new_userimage": {
+          "type": "string",
+          "title": "User Image",
+          "x-ms-dataverse-attribute": "new_userimage",
+          "x-ms-dataverse-type": "ImageType",
+          "x-ms-schema-name": "new_UserImage"
+        },
+        "new_userimage_timestamp": {
+          "type": "string",
+          "title": "new_userimage_timestamp",
+          "x-ms-dataverse-attribute": "new_userimage_timestamp",
+          "x-ms-dataverse-type": "BigIntType",
+          "x-ms-schema-name": "new_UserImage_Timestamp",
+          "x-ms-read-only": true
+        },
+        "new_userimage_url": {
+          "type": "string",
+          "title": "new_userimage_url",
+          "x-ms-dataverse-attribute": "new_userimage_url",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_UserImage_URL",
+          "x-ms-read-only": true,
+          "maxLength": 200
+        },
+        "new_userimageid": {
+          "type": "string",
+          "title": "new_userimageid",
+          "x-ms-dataverse-attribute": "new_userimageid",
+          "x-ms-dataverse-type": "UniqueidentifierType",
+          "x-ms-schema-name": "new_UserImageId",
+          "x-ms-read-only": true
         },
         "new_usersid": {
           "type": "string",

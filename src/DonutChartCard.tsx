@@ -55,7 +55,7 @@ export function DonutChartCard({
         </div>
       )}
 
-      <div className="flex flex-1 min-w-0 min-h-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-1 min-w-0 min-h-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center ml-3">
         {/* LEFT: Donut chart */}
         <div className="flex shrink-0 items-center justify-center">
           <DonutChart
@@ -71,7 +71,7 @@ export function DonutChartCard({
         </div>
 
         {/* RIGHT: Legend list */}
-        <ul className="flex w-full min-w-0 flex-1 flex-col gap-1 sm:max-h-44 sm:overflow-y-auto sm:pr-1">
+        <ul className="flex w-full min-w-0 flex-1 max-w-xs flex-col gap-1 sm:max-h-44 sm:overflow-y-auto sm:pr-1">
           {slices.length === 0 ? (
             <li className="text-[10px] text-gray-400">No data</li>
           ) : (

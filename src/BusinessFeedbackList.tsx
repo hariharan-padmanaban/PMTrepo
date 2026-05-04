@@ -9,7 +9,6 @@ import { DonutChart } from './DonutChart';
 import { PagerBar } from './PagerBar';
 import { New_feedbacksService } from './generated/services/New_feedbacksService';
 import { New_projectsService } from './generated/services/New_projectsService';
-import { New_projectsnew_projectsponsor } from './generated/models/New_projectsModel';
 import { NewUsersService } from './services/NewUsersService';
 import type { New_feedbacks } from './generated/models/New_feedbacksModel';
 import { ScreenLoader } from './ScreenLoader';
@@ -67,28 +66,8 @@ function readProjectSponsorLabel(row: ProjectRow): string {
 function readProjectSponsorFromProject(row: ProjectRow): string {
   const t = (v: unknown) => String(v ?? '').trim();
 
-  const crcf8 = t(row.crcf8_projectsponsor);
-  if (crcf8) {
-    const asNum = Number(crcf8);
-    if (Number.isFinite(asNum)) {
-      const opt = (New_projectsnew_projectsponsor as Record<number, string>)[asNum];
-      if (opt) {
-        return opt === 'LegalAffairs' ? 'Legal Affairs' : clip(String(opt).replace(/_/g, ' '), 100);
-      }
-    }
-    return clip(crcf8, 100);
-  }
-
   const crcf8n = t(row.crcf8_projectsponsorname);
   if (crcf8n) return clip(crcf8n, 100);
-
-  const n = Number(row.new_projectsponsor);
-  if (Number.isFinite(n)) {
-    const raw = (New_projectsnew_projectsponsor as Record<number, string>)[n];
-    if (raw) {
-      return raw === 'LegalAffairs' ? 'Legal Affairs' : clip(String(raw).replace(/_/g, ' '), 100);
-    }
-  }
 
   return readProjectSponsorLabel(row);
 }

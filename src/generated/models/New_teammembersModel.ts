@@ -44,8 +44,6 @@ export interface New_teammembersBase {
   new_evaluation?: New_teammembersnew_evaluation;
   new_fullname: string;
   new_kpi?: number;
-  /** Canvas / Dataverse “KPI Text” column (free text). */
-  new_kpittext?: string;
   new_performance?: New_teammembersnew_performance;
   new_projectcategory?: string;
   new_projectid?: string;

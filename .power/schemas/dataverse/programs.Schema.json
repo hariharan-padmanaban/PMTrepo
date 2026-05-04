@@ -10,6 +10,13 @@
       "x-ms-dataverse-primary-id": "new_programid",
       "x-ms-dataverse-primary-name": "new_name",
       "properties": {
+        "crcf8_budget": {
+          "type": "string",
+          "title": "Budget",
+          "x-ms-dataverse-attribute": "crcf8_budget",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "crcf8_Budget"
+        },
         "createdby": {
           "type": "string",
           "title": "Created By",
@@ -141,6 +148,14 @@
           "required": true,
           "maxLength": 100
         },
+        "new_benefits": {
+          "type": "string",
+          "title": "Benefits",
+          "x-ms-dataverse-attribute": "new_benefits",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_Benefits",
+          "maxLength": 100
+        },
         "new_description": {
           "type": "string",
           "title": "Description",
@@ -156,9 +171,17 @@
           "x-ms-dataverse-type": "DateTimeType",
           "x-ms-schema-name": "new_EndDate"
         },
+        "new_kpi": {
+          "type": "string",
+          "title": "KPI",
+          "x-ms-dataverse-attribute": "new_kpi",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_KPI",
+          "maxLength": 100
+        },
         "new_name": {
           "type": "string",
-          "title": "Name",
+          "title": "Program Name",
           "x-ms-dataverse-attribute": "new_name",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "new_Name",
@@ -184,13 +207,70 @@
         },
         "new_programid": {
           "type": "string",
-          "title": "Program",
+          "title": "Program ID",
           "x-ms-dataverse-attribute": "new_programid",
           "x-ms-dataverse-type": "UniqueidentifierType",
           "x-ms-schema-name": "new_ProgramId",
           "x-ms-dataverse-primary-id": true,
           "required": true,
           "x-ms-keyType": "primary"
+        },
+        "new_programmanager": {
+          "type": "string",
+          "title": "Program Manager",
+          "x-ms-dataverse-attribute": "new_programmanager",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_ProgramManager",
+          "maxLength": 100
+        },
+        "new_programstatus": {
+          "type": "string",
+          "title": "Program Status",
+          "x-ms-dataverse-attribute": "new_programstatus",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "new_ProgramStatus",
+          "enum": [
+            "To Start",
+            "On Hold",
+            "Delayed"
+          ],
+          "x-ms-enum-values": [
+            100000000,
+            100000001,
+            100000002
+          ],
+          "Color": [
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "99229cbc-a33d-f111-88b4-70a8a51df0bb",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Program Status",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "new_programstatusname": {
+          "type": "string",
+          "title": "new_programstatusname",
+          "x-ms-dataverse-attribute": "new_programstatusname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "new_programstatusName",
+          "x-ms-read-only": true
+        },
+        "new_progresslevel": {
+          "type": "string",
+          "title": "Progress Level",
+          "x-ms-dataverse-attribute": "new_progresslevel",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "new_ProgressLevel"
+        },
+        "new_roi": {
+          "type": "string",
+          "title": "ROI",
+          "x-ms-dataverse-attribute": "new_roi",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_ROI",
+          "maxLength": 100
         },
         "new_startdate": {
           "type": "string",
@@ -206,9 +286,9 @@
           "x-ms-dataverse-type": "PicklistType",
           "x-ms-schema-name": "new_Status",
           "enum": [
-            "Planned",
-            "Active",
-            "Completed"
+            "To Start",
+            "On Hold",
+            "Delayed"
           ],
           "x-ms-enum-values": [
             100000000,

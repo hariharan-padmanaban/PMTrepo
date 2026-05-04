@@ -1,33 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Paperclip, RefreshCw } from 'lucide-react';
 import { enj } from './ui/enjForm';
-import { New_issuesnew_issuestatus } from './generated/models/New_issuesModel';
-import { New_issuesService } from './generated/services/New_issuesService';
+import { New_tasksnew_taskstatus } from './generated/models/New_tasksModel';
+import { New_tasksService } from './generated/services/New_tasksService';
 import type { ToastType } from './NotificationToast';
 import { ScreenLoader } from './ScreenLoader';
-import { IssueLogsModal } from './IssueLogsModal';
 import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
 
 type Props = {
-  issue: Record<string, unknown> | null;
+  task: Record<string, unknown> | null;
   onBack: () => void;
   onRefreshWorkspace: () => void;
-  onOpenSubIssue: () => void;
+  onOpenSubTask: () => void;
   onNotify?: (type: ToastType, message: string) => void;
-  onIssueUpdated?: (row: Record<string, unknown>) => void;
+  onTaskUpdated?: (row: Record<string, unknown>) => void;
 };
 
 const labelGold = 'text-[11px] font-medium text-secondary mb-1 block';
 const inputBase = enj.control;
 const areaCls = `${enj.textarea} min-h-[6.5rem] resize-y`;
 
-const ISSUE_STATUS_ORDER: { value: New_issuesnew_issuestatus; label: string }[] = [
-  { value: 100000000, label: 'Open' },
-  { value: 100000003, label: 'Closed' },
+const TASK_STATUS_ORDER: { value: New_tasksnew_taskstatus; label: string }[] = [
+  { value: 100000000, label: 'Not Started' },
+  { value: 100000001, label: 'In Progress' },
+  { value: 100000002, label: 'Completed' },
+  { value: 100000003, label: 'On Hold' },
 ];
 
-function displayIssueId(row: Record<string, unknown>): string {
-  const raw = String(row.new_issueid ?? '').replace(/[{}]/g, '');
+function displayTaskId(row: Record<string, unknown>): string {
+  const raw = String(row.new_taskid ?? '').replace(/[{}]/g, '');
   if (raw.length >= 6) return raw.slice(0, 8).toUpperCase();
   return raw || '—';
 }
@@ -66,38 +67,37 @@ function ReadonlyCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpenSubIssue, onNotify, onIssueUpdated }: Props) {
-  const [showIssueLogs, setShowIssueLogs] = useState(false);
+export function TeamTaskDetailPanel({ task, onBack, onRefreshWorkspace, onOpenSubTask, onNotify, onTaskUpdated }: Props) {
   const [saving, setSaving] = useState(false);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [existingAttachments, setExistingAttachments] = useState<AttachmentFile[]>([]);
   const [form, setForm] = useState({
-    status: 100000000 as New_issuesnew_issuestatus,
-    impacted: '',
-    response: '',
+    status: 100000000 as New_tasksnew_taskstatus,
+    priority: '',
+    progress: '',
     description: '',
-    issueDate: toDateInputValue(null),
+    endDate: toDateInputValue(null),
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const id = issue ? String(issue.new_issueid ?? '').replace(/[{}]/g, '').trim() : '';
+  const id = task ? String(task.new_taskid ?? '').replace(/[{}]/g, '').trim() : '';
 
-  const resetFromIssue = useCallback(() => {
-    if (!issue) return;
-    const st = issue.new_issuestatus;
+  const resetFromTask = useCallback(() => {
+    if (!task) return;
+    const st = task.new_taskstatus;
     const n = typeof st === 'number' ? st : Number(st);
     setForm({
-      status: (Number.isFinite(n) ? n : 100000000) as New_issuesnew_issuestatus,
-      impacted: String(issue.new_issueimpactedarea ?? ''),
-      response: String(issue.new_issueresponse ?? ''),
-      description: String(issue.new_description ?? ''),
-      issueDate: toDateInputValue(issue.new_issuedate ?? issue.createdon),
+      status: (Number.isFinite(n) ? n : 100000000) as New_tasksnew_taskstatus,
+      priority: String(task.new_priorityname ?? ''),
+      progress: String(task.new_progresslevel ?? ''),
+      description: String(task.new_description ?? ''),
+      endDate: toDateInputValue(task.new_enddate ?? task.createdon),
     });
     setErrors({});
     setAttachmentFiles([]);
 
-    const attachmentId = String(issue.new_attachmentid ?? '').trim();
+    const attachmentId = String(task.new_attachmentid ?? '').trim();
     if (attachmentId) {
       fetchAttachments(attachmentId)
         .then(setExistingAttachments)
@@ -105,7 +105,7 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
     } else {
       setExistingAttachments([]);
     }
-  }, [issue]);
+  }, [task]);
 
   const addFilesFromList = (fileList: FileList) => {
     const newFiles = Array.from(fileList).filter(
@@ -115,49 +115,30 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
   };
 
   useEffect(() => {
-    resetFromIssue();
-  }, [resetFromIssue]);
+    resetFromTask();
+  }, [resetFromTask]);
 
-  const readOnly = issue
+  const readOnly = task
     ? {
-        id: displayIssueId(issue),
-        severity: String(issue.new_issueseverityname ?? '—'),
-        linkTo: String(issue.new_raisedissue ?? issue.new_projectname ?? '—'),
-        title: String(issue.new_issuetitle ?? '—'),
-        raised: formatShortDate(issue.new_issuedate ?? issue.createdon),
-        raisedBy: String(issue.createdbyname ?? '—'),
-        owner: String(issue.new_issueowner ?? '—'),
-        resolved:
-          [100000002, 100000003].includes(Number(issue.new_issuestatus))
-            ? formatShortDate(issue.modifiedon)
-            : '—',
-        assign: String(issue.new_assigntoteammember ?? '—'),
+        id: displayTaskId(task),
+        project: String(task.new_projectname ?? task.new_taskprojectname ?? '—'),
+        title: String(task.new_tasktitle ?? '—'),
+        created: formatShortDate(task.createdon),
+        createdBy: String(task.createdbyname ?? '—'),
+        assignee: String(task.new_assigntoteammember ?? '—'),
+        completed: [100000002].includes(Number(task.new_taskstatus)) ? formatShortDate(task.new_taskcompleteddate ?? task.modifiedon) : '—',
       }
     : null;
 
   const save = async () => {
-    if (!id || !issue) {
-      onNotify?.('error', 'No issue selected.');
+    if (!id || !task) {
+      onNotify?.('error', 'No task selected.');
       return;
     }
 
     // Comprehensive validation
     const next: Record<string, string> = {};
-    const trimmedImpacted = form.impacted.trim();
-    const trimmedResponse = form.response.trim();
     const trimmedDesc = form.description.trim();
-
-    if (!trimmedImpacted) {
-      next.impacted = 'Impacted Area is required';
-    } else if (trimmedImpacted.length > 500) {
-      next.impacted = 'Impacted Area cannot exceed 500 characters';
-    }
-
-    if (!trimmedResponse) {
-      next.response = 'Response is required';
-    } else if (trimmedResponse.length > 500) {
-      next.response = 'Response cannot exceed 500 characters';
-    }
 
     if (!trimmedDesc) {
       next.description = 'Description is required';
@@ -165,12 +146,12 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
       next.description = 'Description cannot exceed 2000 characters';
     }
 
-    if (!form.issueDate) {
-      next.issueDate = 'Issue Date is required';
+    if (!form.endDate) {
+      next.endDate = 'End Date is required';
     } else {
-      const selectedDate = new Date(`${form.issueDate}T12:00:00`);
+      const selectedDate = new Date(`${form.endDate}T12:00:00`);
       if (Number.isNaN(selectedDate.getTime())) {
-        next.issueDate = 'Invalid date format';
+        next.endDate = 'Invalid date format';
       }
     }
 
@@ -184,25 +165,23 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
     setErrors({});
     setSaving(true);
     try {
-      const attachmentId = String(issue.new_attachmentid ?? '').trim() ||
+      const attachmentId = String(task.new_attachmentid ?? '').trim() ||
         (globalThis.crypto?.randomUUID?.() ?? `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`);
 
-      const payload: Parameters<typeof New_issuesService.update>[1] = {
-        new_issuestatus: form.status,
-        new_issueimpactedarea: trimmedImpacted,
-        new_issueresponse: trimmedResponse,
+      const payload: Parameters<typeof New_tasksService.update>[1] = {
+        new_taskstatus: form.status,
         new_description: trimmedDesc,
-        new_issuedate: toIsoNoon(form.issueDate),
+        new_enddate: toIsoNoon(form.endDate),
       };
 
-      if (attachmentFiles.length > 0 || !String(issue.new_attachmentid ?? '').trim()) {
+      if (attachmentFiles.length > 0 || !String(task.new_attachmentid ?? '').trim()) {
         (payload as Record<string, unknown>).new_attachmentid = attachmentId;
       }
 
-      const res = await New_issuesService.update(id, payload);
+      const res = await New_tasksService.update(id, payload);
       if (!res.success) {
         const errorMsg = res.error?.message ?? 'Update failed';
-        throw new Error(`Issue update failed: ${errorMsg}`);
+        throw new Error(`Task update failed: ${errorMsg}`);
       }
       const data = res.data;
 
@@ -212,33 +191,33 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
           setExistingAttachments(await fetchAttachments(attachmentId));
         }
         if (uploaded.length > 0 && uploadErrs.length === 0) {
-          onNotify?.('success', 'Issue saved and files uploaded.');
+          onNotify?.('success', 'Task saved and files uploaded.');
         } else if (uploaded.length > 0 && uploadErrs.length > 0) {
-          onNotify?.('info', `Issue saved. ${uploaded.length} file(s) uploaded; some failed.`);
+          onNotify?.('info', `Task saved. ${uploaded.length} file(s) uploaded; some failed.`);
         } else if (uploadErrs.length > 0) {
-          onNotify?.('info', `Issue saved. No files uploaded — ${uploadErrs[0] ?? ''}`);
+          onNotify?.('info', `Task saved. No files uploaded — ${uploadErrs[0] ?? ''}`);
         } else {
-          onNotify?.('success', 'Issue saved successfully.');
+          onNotify?.('success', 'Task saved successfully.');
         }
       } else {
-        onNotify?.('success', 'Issue saved successfully.');
+        onNotify?.('success', 'Task saved successfully.');
       }
 
       if (data) {
-        onIssueUpdated?.({ ...issue, ...data, new_attachmentid: attachmentId } as Record<string, unknown>);
+        onTaskUpdated?.({ ...task, ...data, new_attachmentid: attachmentId } as Record<string, unknown>);
       } else {
         onRefreshWorkspace();
       }
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : 'An unexpected error occurred';
       onNotify?.('error', errorMsg);
-      console.error('Issue save error:', e);
+      console.error('Task save error:', e);
     } finally {
       setSaving(false);
     }
   };
 
-  if (!issue || !readOnly) {
+  if (!task || !readOnly) {
     return null;
   }
 
@@ -249,10 +228,10 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-[16px] font-bold text-primary">
           <button type="button" className="font-bold text-primary underline" onClick={onBack}>
-            Issues
+            Tasks
           </button>
           <span className="text-gray-300"> / </span>
-          <span className="text-primary">Issue Details</span>
+          <span className="text-primary">Task Details</span>
         </p>
         <button
           type="button"
@@ -268,39 +247,26 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
         <div className="p-4 sm:p-5 border-b border-gray-100">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             <div className="space-y-3">
-              <ReadonlyCell label="Issue ID" value={readOnly.id} />
-              <ReadonlyCell label="Issue Severity" value={readOnly.severity} />
-              <ReadonlyCell label="Link to" value={readOnly.linkTo} />
+              <ReadonlyCell label="Task ID" value={readOnly.id} />
+              <ReadonlyCell label="Project" value={readOnly.project} />
             </div>
             <div className="space-y-3">
-              <ReadonlyCell label="Issue Title" value={readOnly.title} />
-              <ReadonlyCell label="Raised Date" value={readOnly.raised} />
-              <ReadonlyCell label="Issue raised by" value={readOnly.raisedBy} />
+              <ReadonlyCell label="Task Title" value={readOnly.title} />
+              <ReadonlyCell label="Created Date" value={readOnly.created} />
             </div>
             <div className="space-y-3">
-              <ReadonlyCell label="Issue Owner" value={readOnly.owner} />
-              <ReadonlyCell label="Date Resolved" value={readOnly.resolved} />
-              <ReadonlyCell label="Assign to" value={readOnly.assign} />
+              <ReadonlyCell label="Created By" value={readOnly.createdBy} />
+              <ReadonlyCell label="Assigned To" value={readOnly.assignee} />
             </div>
           </div>
 
           <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => {
-                if (id) setShowIssueLogs(true);
-                else onNotify?.('error', 'Cannot open issue logs: missing issue id.');
-              }}
-              className="h-9 min-w-[6rem] rounded-md border border-gray-300 bg-white px-4 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              Issue Logs
-            </button>
-            <button
-              type="button"
-              onClick={onOpenSubIssue}
+              onClick={onOpenSubTask}
               className={`${enj.btnOutline} min-w-[6rem] text-xs`}
             >
-              Sub Issue
+              Sub Task
             </button>
           </div>
         </div>
@@ -309,18 +275,18 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className={labelGold}>
-                Issue Status <span className="text-rose-500">*</span>
+                Task Status <span className="text-rose-500">*</span>
               </label>
               <select
                 className={inputBase}
                 value={String(form.status)}
                 onChange={(e) => {
-                  setForm((f) => ({ ...f, status: Number(e.target.value) as New_issuesnew_issuestatus }));
+                  setForm((f) => ({ ...f, status: Number(e.target.value) as New_tasksnew_taskstatus }));
                   setErrors((e0) => ({ ...e0, status: '' }));
                 }}
                 disabled={saving}
               >
-                {ISSUE_STATUS_ORDER.map((o) => (
+                {TASK_STATUS_ORDER.map((o) => (
                   <option key={o.value} value={String(o.value)}>
                     {o.label}
                   </option>
@@ -328,51 +294,36 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
               </select>
             </div>
             <div>
-              <label className={labelGold}>
-                Issue Impacted Area <span className="text-rose-500">*</span>
-              </label>
+              <label className={labelGold}>Priority</label>
               <input
                 className={inputBase}
-                placeholder="Eg: Front-End"
-                value={form.impacted}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, impacted: e.target.value }));
-                  setErrors((e0) => ({ ...e0, impacted: '' }));
-                }}
-                disabled={saving}
+                value={form.priority}
+                disabled
               />
-              {errors.impacted && <p className="mt-1 text-[11px] text-rose-600">{errors.impacted}</p>}
             </div>
             <div>
               <label className={labelGold}>
-                Issue Response <span className="text-rose-500">*</span>
-              </label>
-              <input
-                className={inputBase}
-                value={form.response}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, response: e.target.value }));
-                  setErrors((e0) => ({ ...e0, response: '' }));
-                }}
-                disabled={saving}
-              />
-              {errors.response && <p className="mt-1 text-[11px] text-rose-600">{errors.response}</p>}
-            </div>
-            <div>
-              <label className={labelGold}>
-                Issue Raised Date <span className="text-rose-500">*</span>
+                End Date <span className="text-rose-500">*</span>
               </label>
               <input
                 type="date"
                 className={`${inputBase} [color-scheme:light]`}
-                value={form.issueDate}
+                value={form.endDate}
                 onChange={(e) => {
-                  setForm((f) => ({ ...f, issueDate: e.target.value }));
-                  setErrors((e0) => ({ ...e0, issueDate: '' }));
+                  setForm((f) => ({ ...f, endDate: e.target.value }));
+                  setErrors((e0) => ({ ...e0, endDate: '' }));
                 }}
                 disabled={saving}
               />
-              {errors.issueDate && <p className="mt-1 text-[11px] text-rose-600">{errors.issueDate}</p>}
+              {errors.endDate && <p className="mt-1 text-[11px] text-rose-600">{errors.endDate}</p>}
+            </div>
+            <div>
+              <label className={labelGold}>Progress</label>
+              <input
+                className={inputBase}
+                value={form.progress}
+                disabled
+              />
             </div>
           </div>
           <div>
@@ -477,7 +428,7 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-100 bg-white px-4 py-3 sm:px-5">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-100 bg-white px-4 py-3 sm:px-5 shrink-0">
           <button
             type="button"
             onClick={() => !saving && onBack()}
@@ -496,8 +447,6 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
           </button>
         </div>
       </div>
-
-      {showIssueLogs && id ? <IssueLogsModal issueId={id} onClose={() => setShowIssueLogs(false)} /> : null}
     </section>
   );
 }

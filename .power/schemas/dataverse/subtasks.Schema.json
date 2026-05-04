@@ -141,12 +141,28 @@
           "required": true,
           "maxLength": 100
         },
+        "new_attachmentid": {
+          "type": "string",
+          "title": "AttachmentID",
+          "x-ms-dataverse-attribute": "new_attachmentid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_AttachmentID",
+          "maxLength": 100
+        },
         "new_description": {
           "type": "string",
           "title": "Description",
           "x-ms-dataverse-attribute": "new_description",
           "x-ms-dataverse-type": "MemoType",
           "x-ms-schema-name": "new_Description",
+          "maxLength": 100
+        },
+        "new_duedate": {
+          "type": "string",
+          "title": "DueDate",
+          "x-ms-dataverse-attribute": "new_duedate",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_DueDate",
           "maxLength": 100
         },
         "new_duration": {
@@ -220,6 +236,22 @@
           "x-ms-dataverse-type": "VirtualType",
           "x-ms-schema-name": "new_subtaskstatusName",
           "x-ms-read-only": true
+        },
+        "new_taskid": {
+          "type": "string",
+          "title": "TaskID",
+          "x-ms-dataverse-attribute": "new_taskid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_TaskID",
+          "maxLength": 100
+        },
+        "new_taskname": {
+          "type": "string",
+          "title": "TaskName",
+          "x-ms-dataverse-attribute": "new_taskname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "new_TaskName",
+          "maxLength": 100
         },
         "overriddencreatedon": {
           "type": "string",

@@ -785,24 +785,21 @@ export function ProgramProjectsSection({
     const attachmentId = String(row.crcf8_attachmentid ?? '').trim();
     const projectName = String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
 
-    if (!attachmentId) {
-      onToast({ type: 'info', message: 'No attachments found for this project.' });
-      return;
-    }
-
-    setProjectFilesModal({ projectId: attachmentId, projectName });
+    setProjectFilesModal({ projectId: attachmentId || 'none', projectName });
     setProjectFilesRows([]);
     setProjectFilesLoading(true);
 
     try {
+      if (!attachmentId) {
+        setProjectFilesRows([]);
+        return;
+      }
+
       const files = await fetchAttachments(attachmentId);
       setProjectFilesRows(files);
-
-      if (files.length === 0) {
-        onToast({ type: 'info', message: 'No files uploaded for this project yet.' });
-      }
     } catch (error) {
       onToast({ type: 'error', message: error instanceof Error ? error.message : 'Failed to load project files' });
+      setProjectFilesRows([]);
     } finally {
       setProjectFilesLoading(false);
     }
@@ -1734,7 +1731,7 @@ export function ProgramProjectsSection({
     />
   )}
   {projectFilesModal && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/35 px-4">
       <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
           <div>
@@ -1785,7 +1782,7 @@ export function ProgramProjectsSection({
   )}
 
   {editProjectRow && (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/40 px-3 py-6 sm:px-4">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-3 py-6 sm:px-4">
       <div
         className="w-full max-w-5xl max-h-[min(calc(100dvh-4rem),56rem)] overflow-y-auto rounded-xl bg-white p-5 sm:p-6 shadow-2xl"
         role="dialog"

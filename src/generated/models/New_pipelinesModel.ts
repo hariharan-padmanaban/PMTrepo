@@ -17,8 +17,6 @@ export interface New_pipelinesBase {
   importsequencenumber?: number;
   new_benefits?: string;
   new_clientname?: string;
-  /** Display name "Pipeline" in Dataverse — prospect / account name. */
-  new_pipelinename?: string;
   new_opportunityname: string;
   new_pipelineid: string;
   new_potentialvalue?: number;

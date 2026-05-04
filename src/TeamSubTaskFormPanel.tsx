@@ -1,32 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, Paperclip, X } from 'lucide-react';
-import type { New_subissues } from './generated/models/New_subissuesModel';
-import { New_subissuesnew_subissuestatus } from './generated/models/New_subissuesModel';
-import { New_subissuesService } from './generated/services/New_subissuesService';
 import type { ToastType } from './NotificationToast';
 import { ScreenLoader } from './ScreenLoader';
 import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
+import { New_subtasksService } from './generated/services/New_subtasksService';
 
 type Props = {
-  parentIssue: Record<string, unknown> | null;
+  parentTask: Record<string, unknown> | null;
   onBack: () => void;
   onRefresh?: () => void;
   onNotify?: (type: ToastType, message: string) => void;
   onSaved?: () => void;
 };
 
-function formatDateDisplay(v: unknown): string {
-  const s = String(v ?? '').trim();
-  if (!s) return '—';
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return s.slice(0, 10);
-  return d.toLocaleDateString();
-}
+type SubTask = Record<string, unknown>;
 
-function toIsoDate(d: Date): string {
-  return d.toISOString();
-}
 
 function dateInputValue(d: Date): string {
   const y = d.getFullYear();
@@ -35,23 +24,12 @@ function dateInputValue(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-const SUB_ISSUE_STATUS_OPTIONS: { value: New_subissuesnew_subissuestatus; label: string }[] = [
-  { value: 100000000, label: 'To Do' },
-  { value: 100000001, label: 'In Progress' },
-  { value: 100000002, label: 'Delayed' },
-  { value: 100000003, label: 'Done' },
-];
-
-/** Gold labels/accents; field chrome matches `BusinessPipelineScreen` (plain border, native date/select). */
 const GOLD = '#B09762';
 const labelCls = 'text-[11px] font-medium mb-1.5 block';
 const labelStyle = { color: GOLD } as const;
 const fieldTextCls = 'h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800';
 const fieldDateCls = 'h-9 w-full rounded-md border border-gray-200 bg-white px-3 pr-9 text-sm text-gray-800 [color-scheme:light]';
-const fieldSelectCls =
-  'h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800 disabled:cursor-not-allowed disabled:bg-gray-100';
-const fieldTextareaCls =
-  'w-full min-h-[6.5rem] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 resize-y';
+const fieldTextareaCls = 'w-full min-h-[6.5rem] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 resize-y';
 
 function formatDdMmYyyy(yyyyMmDd: string) {
   const p = yyyyMmDd.split('-');
@@ -59,74 +37,19 @@ function formatDdMmYyyy(yyyyMmDd: string) {
   return `${p[2]}/${p[1]}/${p[0]}`;
 }
 
-function normalizeGuid(s: string): string {
-  return s.replace(/[{}]/g, '').toLowerCase().trim();
-}
-
-/** Parent issue "end" / resolution cap (Power Apps: duration ≤ task end). Uses first date found on the row. */
-function getParentDurationCapDate(parent: Record<string, unknown> | null): Date | null {
-  if (!parent) return null;
-  const keys = [
-    'new_issueresolutiondate',
-    'new_issuedateresolved',
-    'new_targetdate',
-    'new_duedate',
-    'new_enddate',
-    'new_issuedate',
-  ];
-  for (const k of keys) {
-    const v = parent[k];
-    if (v == null || v === '') continue;
-    const d = new Date(String(v));
-    if (Number.isNaN(d.getTime())) continue;
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  }
-  return null;
-}
-
-function atDayBoundary(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-function applySubRecordToForm(sub: New_subissues, setters: {
-  setSubIssueName: (s: string) => void;
-  setDurationDate: (s: string) => void;
-  setDescription: (s: string) => void;
-  setSubIssueStatus: (v: New_subissuesnew_subissuestatus) => void;
-}) {
-  setters.setSubIssueName(String(sub.new_subissuename ?? ''));
-  const dur = sub.new_issuedurationdate;
-  if (dur) {
-    const d = new Date(String(dur));
-    if (!Number.isNaN(d.getTime())) setters.setDurationDate(dateInputValue(d));
-  }
-  setters.setDescription(String(sub.new_description ?? ''));
-  const st = sub.new_subissuestatus;
-  if (st !== undefined && st !== null && Number.isFinite(Number(st))) {
-    setters.setSubIssueStatus(Number(st) as New_subissuesnew_subissuestatus);
-  }
-}
-
-function statusLabel(v: New_subissuesnew_subissuestatus | undefined): string {
-  if (v == null) return '—';
-  return SUB_ISSUE_STATUS_OPTIONS.find((o) => o.value === v)?.label ?? String(v);
-}
-
-function SubIssueListCard({
+function SubTaskCard({
   sub,
   onSelect,
   disabled,
 }: {
-  sub: New_subissues;
-  onSelect: (sub: New_subissues) => void;
+  sub: SubTask;
+  onSelect: (sub: SubTask) => void;
   disabled?: boolean;
 }) {
-  const name = String(sub.new_subissuename ?? '—');
+  const name = String(sub.new_subtaskname ?? '—');
   const desc = String(sub.new_description ?? '—');
-  const status = statusLabel(sub.new_subissuestatus);
-  const dur = sub.new_issuedurationdate
-    ? formatDateDisplay(sub.new_issuedurationdate)
-    : '—';
+  const due = sub.new_duedate ? new Date(String(sub.new_duedate)).toLocaleDateString() : '—';
+
   return (
     <div
       className="flex gap-2 rounded-lg border p-2.5 shadow-sm"
@@ -134,18 +57,14 @@ function SubIssueListCard({
     >
       <div className="min-w-0 flex-1 grid grid-cols-2 gap-x-2 gap-y-1.5 text-[10px] sm:text-[11px]">
         <div>
-          <p className="text-[9px] font-medium uppercase text-gray-500">Sub issue name</p>
+          <p className="text-[9px] font-medium uppercase text-gray-500">Sub task name</p>
           <p className="font-medium text-gray-900 line-clamp-1">{name}</p>
         </div>
         <div>
-          <p className="text-[9px] font-medium uppercase text-gray-500">Sub issue status</p>
-          <p className="text-gray-800">{status}</p>
+          <p className="text-[9px] font-medium uppercase text-gray-500">Due Date</p>
+          <p className="text-gray-800">{due}</p>
         </div>
-        <div>
-          <p className="text-[9px] font-medium uppercase text-gray-500">Duration</p>
-          <p className="tabular-nums text-gray-800">{dur}</p>
-        </div>
-        <div className="min-w-0">
+        <div className="col-span-2">
           <p className="text-[9px] font-medium uppercase text-gray-500">Description</p>
           <p className="line-clamp-2 break-words text-gray-800">{desc}</p>
         </div>
@@ -163,101 +82,99 @@ function SubIssueListCard({
   );
 }
 
-export function TeamSubIssueFormPanel({ parentIssue, onBack, onRefresh, onNotify, onSaved }: Props) {
-  const [subIssueName, setSubIssueName] = useState('');
-  const [durationDate, setDurationDate] = useState(() => dateInputValue(new Date()));
+export function TeamSubTaskFormPanel({ parentTask, onBack, onRefresh, onNotify, onSaved }: Props) {
+  const [subTaskName, setSubTaskName] = useState('');
+  const [dueDate, setDueDate] = useState(() => dateInputValue(new Date()));
   const [description, setDescription] = useState('');
-  const [subIssueStatus, setSubIssueStatus] = useState<New_subissuesnew_subissuestatus>(100000000);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [subIssues, setSubIssues] = useState<New_subissues[]>([]);
-  const [subIssuesLoading, setSubIssuesLoading] = useState(false);
-  const [editingSubIssueId, setEditingSubIssueId] = useState<string | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [subTasks, setSubTasks] = useState<SubTask[]>([]);
+  const [subTasksLoading, setSubTasksLoading] = useState(false);
+  const [editingSubTaskId, setEditingSubTaskId] = useState<string | null>(null);
   const [existingAttachments, setExistingAttachments] = useState<AttachmentFile[]>([]);
+
 
   const initFromParent = useCallback(() => {
     // Reset form to empty state
-    setSubIssueName('');
-    setDurationDate(dateInputValue(new Date()));
+    setSubTaskName('');
+    setDueDate(dateInputValue(new Date()));
     setDescription('');
-    setSubIssueStatus(100000000);
   }, []);
 
-  const parentId = parentIssue ? String(parentIssue.new_issueid ?? '').trim() : '';
+  const parentId = parentTask ? String(parentTask.new_taskid ?? '').trim() : '';
 
-  useEffect(() => {
-    setEditingSubIssueId(null);
-    initFromParent();
-  }, [initFromParent]);
-
-  const loadSubIssues = useCallback(async () => {
+  const loadSubTasks = useCallback(async () => {
     if (!parentId) {
-      setSubIssues([]);
+      setSubTasks([]);
       return;
     }
-    setSubIssuesLoading(true);
+    setSubTasksLoading(true);
     try {
-      console.log('Loading sub-issues for parent ID:', parentId);
-      const pid = normalizeGuid(parentId);
-
       // Try fetching with filter first
-      const res = await New_subissuesService.getAll({
-        filter: `_new_issueid_value eq '${pid}'`,
+      const res = await New_subtasksService.getAll({
+        filter: `_new_taskid_value eq '${parentId}'`,
       });
-      let rows: New_subissues[] = res.success && res.data ? res.data : [];
-      console.log('Filtered results:', rows.length);
+
+      let rows: SubTask[] = res.success && res.data ? (res.data as any) : [];
 
       // If filter didn't work, fetch all and filter manually
       if (rows.length === 0) {
-        console.log('No filtered results, fetching all sub-issues...');
-        const all = await New_subissuesService.getAll();
+        const all = await New_subtasksService.getAll();
         if (all.success && all.data?.length) {
-          rows = all.data.filter((r) => {
-            const issueId = normalizeGuid(String((r as any).new_issueid ?? (r as any)._new_issueid_value ?? ''));
-            return issueId === pid;
+          const normalizedParentId = String(parentId).toLowerCase().trim();
+          rows = (all.data as any).filter((r: any) => {
+            const taskId = String(r.new_taskid ?? r._new_taskid_value ?? '').toLowerCase().trim();
+            return taskId === normalizedParentId;
           });
-          console.log('Manual filter found:', rows.length);
         }
       }
 
-      const rank = (r: New_subissues) => new Date(String(r.modifiedon ?? r.createdon ?? 0)).getTime();
-      rows.sort((a, b) => rank(b) - rank(a));
-      setSubIssues(rows);
+      // Sort by most recent first
+      rows.sort((a, b) => {
+        const aTime = new Date(String(a.modifiedon ?? a.createdon ?? 0)).getTime();
+        const bTime = new Date(String(b.modifiedon ?? b.createdon ?? 0)).getTime();
+        return bTime - aTime;
+      });
+
+      setSubTasks(rows);
     } catch (e) {
-      console.error('Error loading sub-issues:', e);
-      setSubIssues([]);
+      setSubTasks([]);
     } finally {
-      setSubIssuesLoading(false);
+      setSubTasksLoading(false);
     }
   }, [parentId]);
 
   useEffect(() => {
-    void loadSubIssues();
-  }, [loadSubIssues]);
+    setEditingSubTaskId(null);
+    initFromParent();
+  }, [initFromParent]);
 
-  const beginNewSubIssue = useCallback(() => {
+  useEffect(() => {
+    void loadSubTasks();
+  }, [loadSubTasks]);
+
+  const beginNewSubTask = useCallback(() => {
     setErrors({});
-    setEditingSubIssueId(null);
+    setEditingSubTaskId(null);
     initFromParent();
     setAttachmentFiles([]);
     setExistingAttachments([]);
   }, [initFromParent]);
 
-  const addFilesFromList = (fileList: FileList) => {
-    const newFiles = Array.from(fileList).filter(
-      (f) => !attachmentFiles.some((existing) => existing.name === f.name),
-    );
-    if (newFiles.length > 0) setAttachmentFiles((prev) => [...prev, ...newFiles]);
-  };
-
   const selectSubForEdit = useCallback(
-    (sub: New_subissues) => {
-      const id = String(sub.new_subissueid ?? '').trim();
+    (sub: SubTask) => {
+      const id = String(sub.new_subtaskid ?? '').trim();
       if (!id) return;
-      setEditingSubIssueId(id);
-      applySubRecordToForm(sub, { setSubIssueName, setDurationDate, setDescription, setSubIssueStatus });
+      setEditingSubTaskId(id);
+      setSubTaskName(String(sub.new_subtaskname ?? '').trim());
+      const dur = sub.new_duedate;
+      if (dur) {
+        const d = new Date(String(dur));
+        if (!Number.isNaN(d.getTime())) setDueDate(dateInputValue(d));
+      }
+      setDescription(String(sub.new_description ?? ''));
       setErrors({});
       setAttachmentFiles([]);
 
@@ -281,131 +198,87 @@ export function TeamSubIssueFormPanel({ parentIssue, onBack, onRefresh, onNotify
     return () => window.removeEventListener('keydown', onKey);
   }, [onBack, saving]);
 
+  const addFilesFromList = (fileList: FileList) => {
+    const newFiles = Array.from(fileList).filter(
+      (f) => !attachmentFiles.some((existing) => existing.name === f.name),
+    );
+    if (newFiles.length > 0) setAttachmentFiles((prev) => [...prev, ...newFiles]);
+  };
+
   const submit = async () => {
-    if (!parentIssue || !parentId) {
-      onNotify?.('error', 'No parent issue selected.');
-      return;
-    }
+    try {
+      const name = subTaskName.trim();
+      const date = dueDate.trim();
 
-    // Comprehensive validation
-    const next: Record<string, string> = {};
-    const trimmedName = subIssueName.trim();
-    const trimmedDesc = description.trim();
-
-    if (!trimmedName) {
-      next.subIssueName = 'Sub Issue Name is required';
-    } else if (trimmedName.length > 850) {
-      next.subIssueName = 'Sub Issue Name cannot exceed 850 characters';
-    }
-
-    if (!durationDate) {
-      next.durationDate = 'Duration Date is required';
-    } else {
-      const selectedDate = new Date(`${durationDate}T12:00:00`);
-      if (Number.isNaN(selectedDate.getTime())) {
-        next.durationDate = 'Invalid date format';
-      }
-    }
-
-    if (!trimmedDesc) {
-      next.description = 'Description is required';
-    } else if (trimmedDesc.length > 2000) {
-      next.description = 'Description cannot exceed 2000 characters';
-    }
-
-    if (Object.keys(next).length > 0) {
-      setErrors(next);
-      const errorList = Object.values(next).join(', ');
-      onNotify?.('error', `Validation failed: ${errorList}`);
-      return;
-    }
-
-    // Check parent duration cap
-    const cap = getParentDurationCapDate(parentIssue);
-    if (cap) {
-      const picked = atDayBoundary(new Date(`${durationDate}T12:00:00`));
-      const capT = atDayBoundary(cap);
-      if (picked > capT) {
-        const endLabel = cap.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const errorMsg = `Duration date must be on or before parent issue end date (${endLabel})`;
-        onNotify?.('error', errorMsg);
-        setErrors((e) => ({ ...e, durationDate: errorMsg }));
+      // Validate
+      if (!name || !date) {
+        onNotify?.('error', 'Sub Task Name and Due Date are required');
         return;
       }
-    }
 
-    setErrors({});
-    setSaving(true);
-    try {
-      const raisedIso = toIsoDate(new Date(`${durationDate}T12:00:00`));
+      if (!parentId) {
+        onNotify?.('error', 'Parent task information is missing');
+        return;
+      }
 
-      const subPayload: Record<string, unknown> = {
-        new_subissuename: trimmedName.slice(0, 850),
-        new_issueid: parentId,
-        new_description: trimmedDesc,
-        new_issuedurationdate: raisedIso,
-        new_subissuestatus: subIssueStatus,
-        statecode: 0,
-      };
+      setSaving(true);
 
-      const attachmentId = editingSubIssueId
-        ? String((subIssues.find((s) => String(s.new_subissueid ?? '').trim() === editingSubIssueId) as any)?.new_attachmentid ?? '').trim() ||
-          (globalThis.crypto?.randomUUID?.() ?? `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`)
-        : (globalThis.crypto?.randomUUID?.() ?? `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`);
+      // Generate attachment ID
+      const attachmentId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
-      if (editingSubIssueId) {
+      if (editingSubTaskId) {
+        // UPDATE
         const updatePayload: Record<string, unknown> = {
-          new_subissuename: trimmedName.slice(0, 850),
-          new_description: trimmedDesc,
-          new_issuedurationdate: raisedIso,
-          new_subissuestatus: subIssueStatus,
+          new_subtaskname: name,
+          new_duedate: new Date(`${date}T12:00:00`).toISOString(),
+          new_description: description.trim(),
         };
         if (attachmentFiles.length > 0) {
           updatePayload.new_attachmentid = attachmentId;
         }
-        const subRes = await New_subissuesService.update(
-          editingSubIssueId,
-          updatePayload as Parameters<typeof New_subissuesService.update>[1],
-        );
-        if (!subRes.success) {
-          const errorMsg = subRes.error?.message ?? 'Failed to update sub issue';
-          throw new Error(`Update failed: ${errorMsg}`);
-        }
-        onNotify?.('success', 'Sub issue has been successfully updated.');
+
+        const res = await New_subtasksService.update(editingSubTaskId, updatePayload as any);
+        if (!res.success) throw new Error(res.error?.message || 'Update failed');
+        onNotify?.('success', 'Sub-task updated successfully');
       } else {
-        subPayload.new_attachmentid = attachmentId;
-        const subRes = await New_subissuesService.create(
-          subPayload as Parameters<typeof New_subissuesService.create>[0],
-        );
-        if (!subRes.success) {
-          const errorMsg = subRes.error?.message ?? 'Failed to create sub issue';
-          throw new Error(`Creation failed: ${errorMsg}`);
+        // CREATE
+        const payload: Record<string, unknown> = {
+          new_subtaskname: name,
+          new_taskid: parentId,
+          new_duedate: new Date(`${date}T12:00:00`).toISOString(),
+        };
+
+        if (description.trim()) {
+          payload.new_description = description.trim();
         }
-        onNotify?.('success', 'Sub issue has been successfully created.');
+
+        if (attachmentId) {
+          payload.new_attachmentid = attachmentId;
+        }
+
+        const res = await New_subtasksService.create(payload as any);
+
+        if (!res.success) {
+          const errorDetail = res.error?.message || JSON.stringify(res.error) || 'Unknown error';
+          throw new Error(errorDetail);
+        }
+
+        onNotify?.('success', 'Sub-task created successfully');
       }
 
+      // Handle attachments
       if (attachmentFiles.length > 0) {
-        const { uploaded, errors: uploadErrs } = await uploadAttachments(attachmentId, attachmentFiles);
-        if (uploaded.length > 0) {
-          setExistingAttachments(await fetchAttachments(attachmentId));
-        }
-        if (uploaded.length > 0 && uploadErrs.length === 0) {
-          onNotify?.('success', 'Sub issue saved and files uploaded.');
-        } else if (uploaded.length > 0 && uploadErrs.length > 0) {
-          onNotify?.('info', `Sub issue saved. ${uploaded.length} file(s) uploaded; some failed.`);
-        } else if (uploadErrs.length > 0) {
-          onNotify?.('info', `Sub issue saved. No files uploaded — ${uploadErrs[0] ?? ''}`);
-        }
+        const { uploaded } = await uploadAttachments(attachmentId, attachmentFiles);
+        onNotify?.('info', `${uploaded.length} file(s) uploaded`);
       }
 
+      await loadSubTasks();
+      beginNewSubTask();
       onRefresh?.();
       onSaved?.();
-      await loadSubIssues();
-      beginNewSubIssue();
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : 'An unexpected error occurred';
-      onNotify?.('error', errorMsg);
-      console.error('SubIssue submission error:', e);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      onNotify?.('error', msg);
     } finally {
       setSaving(false);
     }
@@ -416,7 +289,7 @@ export function TeamSubIssueFormPanel({ parentIssue, onBack, onRefresh, onNotify
       className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="team-sub-issue-title"
+      aria-labelledby="team-sub-task-title"
     >
       <button
         type="button"
@@ -428,35 +301,35 @@ export function TeamSubIssueFormPanel({ parentIssue, onBack, onRefresh, onNotify
         {saving && <ScreenLoader overlay className="rounded-xl" />}
 
         <div className="flex min-h-0 flex-1 flex-col md:min-h-[20rem] md:flex-row">
-          {/* Left ~40%: preview / parent context */}
+          {/* Left: sub-tasks list */}
           <aside className="order-2 flex min-h-[11rem] max-h-[40vh] flex-col border-t border-gray-200/80 bg-gray-50/30 md:order-1 md:max-h-none md:w-[40%] md:min-w-[14rem] md:border-t-0 md:border-r md:border-gray-200/80">
             <div className="flex min-h-0 flex-1 items-stretch p-3 sm:p-4">
               {!parentId ? (
                 <div className="flex w-full min-h-[10rem] flex-1 items-center justify-center rounded-lg border border-gray-200/90 bg-white px-4 text-sm text-gray-400">
                   No Data Found
                 </div>
-              ) : subIssuesLoading ? (
+              ) : subTasksLoading ? (
                 <div className="flex w-full min-h-[10rem] flex-1 items-center justify-center rounded-lg border border-dashed border-gray-200/90 bg-white text-sm text-gray-500">
-                  Loading sub issues…
+                  Loading sub tasks…
                 </div>
-              ) : subIssues.length === 0 ? (
+              ) : subTasks.length === 0 ? (
                 <div className="flex w-full min-h-[10rem] flex-1 items-center justify-center rounded-lg border border-gray-200/90 bg-white px-4 text-center text-sm text-gray-400">
-                  No sub issues yet. Use the form to add one.
+                  No sub tasks yet. Use the form to add one.
                 </div>
               ) : (
                 <div className="w-full min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-0.5">
-                  {subIssues.map((s) => {
-                    const sid = String(s.new_subissueid ?? '');
+                  {subTasks.map((s) => {
+                    const sid = String(s.new_subtaskid ?? '');
                     return (
                       <div
                         key={sid}
                         className={
-                          editingSubIssueId && sid === editingSubIssueId
+                          editingSubTaskId && sid === editingSubTaskId
                             ? 'ring-1 ring-[#B09762]/60 ring-offset-1 rounded-lg'
                             : undefined
                         }
                       >
-                        <SubIssueListCard
+                        <SubTaskCard
                           sub={s}
                           onSelect={selectSubForEdit}
                           disabled={saving}
@@ -469,27 +342,27 @@ export function TeamSubIssueFormPanel({ parentIssue, onBack, onRefresh, onNotify
             </div>
           </aside>
 
-          {/* Right: title row + form */}
+          {/* Right: form */}
           <div className="order-1 flex min-h-0 min-w-0 flex-1 flex-col md:order-2">
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100/90 px-4 pb-3 pt-4 sm:px-5">
               <h2
-                id="team-sub-issue-title"
+                id="team-sub-task-title"
                 className="text-base font-bold leading-tight text-gray-900 sm:text-lg"
               >
-                {editingSubIssueId ? 'Edit Sub Issue' : 'Add New Sub Issue'}
+                {editingSubTaskId ? 'Edit Sub Task' : 'Add New Sub Task'}
               </h2>
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    if (!saving) beginNewSubIssue();
+                    if (!saving) beginNewSubTask();
                   }}
                   className="inline-flex h-8 items-center rounded-md border px-2.5 text-[11px] font-semibold transition-colors enabled:hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50"
                   style={{ borderColor: GOLD, color: GOLD }}
                   disabled={saving}
-                  title="Clear form to add another sub issue"
+                  title="Clear form to add another sub task"
                 >
-                  + Add Sub Issue
+                  + Add Sub Task
                 </button>
                 <button
                   type="button"
@@ -506,48 +379,47 @@ export function TeamSubIssueFormPanel({ parentIssue, onBack, onRefresh, onNotify
               <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
                 <div>
                   <label className={labelCls} style={labelStyle}>
-                    Sub Issue Name <span className="text-rose-500">*</span>
+                    Sub Task Name <span className="text-rose-500">*</span>
                   </label>
                   <input
                     className={fieldTextCls}
-                    value={subIssueName}
+                    value={subTaskName}
                     onChange={(e) => {
-                      setSubIssueName(e.target.value);
-                      setErrors((e0) => ({ ...e0, subIssueName: '' }));
+                      setSubTaskName(e.target.value);
+                      setErrors((e0) => ({ ...e0, subTaskName: '' }));
                     }}
                     disabled={saving}
                     maxLength={850}
-                    placeholder=""
                   />
-                  {errors.subIssueName && <p className="mt-1 text-[11px] text-rose-600">{errors.subIssueName}</p>}
+                  {errors.subTaskName && <p className="mt-1 text-[11px] text-rose-600">{errors.subTaskName}</p>}
                 </div>
                 <div>
                   <label className={labelCls} style={labelStyle}>
-                    Issue Duration Date <span className="text-rose-500">*</span>
+                    Due Date <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <input
                       type="date"
                       className={fieldDateCls}
-                      value={durationDate}
+                      value={dueDate}
                       onChange={(e) => {
-                        setDurationDate(e.target.value);
-                        setErrors((e0) => ({ ...e0, durationDate: '' }));
+                        setDueDate(e.target.value);
+                        setErrors((e0) => ({ ...e0, dueDate: '' }));
                       }}
                       disabled={saving}
                     />
                   </div>
-                  {durationDate ? (
+                  {dueDate ? (
                     <p className="mt-1.5 text-[10px] tabular-nums text-gray-500" aria-hidden>
-                      {formatDdMmYyyy(durationDate)}
+                      {formatDdMmYyyy(dueDate)}
                     </p>
                   ) : null}
-                  {errors.durationDate && <p className="mt-1 text-[11px] text-rose-600">{errors.durationDate}</p>}
+                  {errors.dueDate && <p className="mt-1 text-[11px] text-rose-600">{errors.dueDate}</p>}
                 </div>
 
-                <div className="min-w-0 sm:col-span-1">
+                <div className="min-w-0 sm:col-span-2">
                   <label className={labelCls} style={labelStyle}>
-                    Description <span className="text-rose-500">*</span>
+                    Description
                   </label>
                   <textarea
                     className={fieldTextareaCls}
@@ -559,26 +431,6 @@ export function TeamSubIssueFormPanel({ parentIssue, onBack, onRefresh, onNotify
                     disabled={saving}
                   />
                   {errors.description && <p className="mt-1 text-[11px] text-rose-600">{errors.description}</p>}
-                </div>
-                <div className="min-w-0 sm:col-span-1">
-                  <label className={labelCls} style={labelStyle}>
-                    Sub Issue Status <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    className={fieldSelectCls}
-                    value={String(subIssueStatus)}
-                    onChange={(e) => {
-                      const n = Number(e.target.value) as New_subissuesnew_subissuestatus;
-                      if (Number.isFinite(n)) setSubIssueStatus(n);
-                    }}
-                    disabled={saving}
-                  >
-                    {SUB_ISSUE_STATUS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
 

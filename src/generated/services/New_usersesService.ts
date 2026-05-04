@@ -6,7 +6,7 @@
 import type { GetEntityMetadataOptions, EntityMetadata } from '@microsoft/power-apps/data/metadata/dataverse';
 import type { IGetOptions, IGetAllOptions } from '../models/CommonModels';
 import type { IOperationResult } from '@microsoft/power-apps/data';
-import type { New_usersesBase, New_userses } from '../models/New_usersesModel';
+import type { New_usersesBase, New_userses, New_usersesFileColumnName, New_usersesImageColumnName, New_usersesUploadColumnName } from '../models/New_usersesModel';
 import { dataSourcesInfo } from '../../../.power/schemas/appschemas/dataSourcesInfo';
 import { getClient } from '@microsoft/power-apps/data';
 
@@ -68,5 +68,46 @@ export class New_usersesService {
         },
       },
     });
+  }
+
+  public static async upload(id: string, columnName: New_usersesUploadColumnName, file: File, fileDisplayName?: string): Promise<IOperationResult<void>> {
+    const arrayBuffer = await file.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    const result = await New_usersesService.client.uploadFileToRecord(
+      New_usersesService.dataSourceName,
+      id,
+      columnName,
+      fileDisplayName || file.name,
+      data,
+    );
+    return result;
+  }
+
+  public static async downloadFile(id: string, columnName: New_usersesFileColumnName): Promise<IOperationResult<Uint8Array>> {
+    const result = await New_usersesService.client.downloadFileFromRecord(
+      New_usersesService.dataSourceName,
+      id,
+      columnName,
+    );
+    return result;
+  }
+
+  public static async downloadImage(id: string, columnName: New_usersesImageColumnName, fullSize: boolean = false): Promise<IOperationResult<Uint8Array>> {
+    const result = await New_usersesService.client.downloadImageFromRecord(
+      New_usersesService.dataSourceName,
+      id,
+      columnName,
+      fullSize,
+    );
+    return result;
+  }
+
+  public static async deleteFileOrImage(id: string, columnName: New_usersesUploadColumnName): Promise<IOperationResult<void>> {
+    const result = await New_usersesService.client.deleteFileOrImageFromRecord(
+      New_usersesService.dataSourceName,
+      id,
+      columnName,
+    );
+    return result;
   }
 }

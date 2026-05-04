@@ -16,6 +16,7 @@ export type New_reportsstatuscode = keyof typeof New_reportsstatuscode;
 export interface New_reportsBase {
   importsequencenumber?: number;
   new_assigntomanagementmember?: string;
+  new_attachmentid?: string;
   new_program?: string;
   new_programid?: string;
   new_programstatus?: string;
@@ -46,6 +47,8 @@ export interface New_reports extends New_reportsBase {
   modifiedon?: string;
   modifiedonbehalfbyname?: string;
   modifiedonbehalfbyyominame: string;
+  new_attachments?: string;
+  new_attachments_name?: string;
   owneridname: string;
   owneridyominame: string;
   owningbusinessunitname: string;
@@ -67,3 +70,6 @@ export interface New_reports extends New_reportsBase {
   owninguser?: object;
   _owninguser_value?: string;
 }
+export type New_reportsFileColumnName = 'new_attachments';
+
+export type New_reportsUploadColumnName = New_reportsFileColumnName;

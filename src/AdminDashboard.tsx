@@ -390,11 +390,12 @@ function OnboardingByMonthChart({ rows }: { rows: NewUserRow[] }) {
   );
 }
 
-type AdminNavId = 'Dashboard' | 'mm-reference' | 'audit-logs';
+type AdminNavId = 'Dashboard' | 'mm-reference' | 'audit-logs' | 'test';
 
 const REFERENCE_DATA_SUB: { id: AdminNavId; label: string; icon: ReactNode }[] = [
   { id: 'mm-reference', label: 'Manage Data', icon: <FileSpreadsheet size={16} /> },
   { id: 'audit-logs', label: 'Audit Logs', icon: <ClipboardList size={16} /> },
+  { id: 'test', label: 'Test Screen', icon: <Activity size={16} /> },
 ];
 
 export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
@@ -504,6 +505,36 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 onRefreshUsers={fetchUsers}
                 ownUserRecordId={sessionMatchedUser?.new_usersid ? String(sessionMatchedUser.new_usersid) : null}
               />
+            </div>
+          ) : activeNav === 'test' ? (
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+              <h2 className={enj.pageTitle}>Test Screen</h2>
+              <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Welcome to Test Screen</h3>
+                    <p className="text-sm text-gray-600">This is a test screen for admin testing and debugging purposes.</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-xs font-semibold text-blue-900 mb-1">Test Card 1</p>
+                      <p className="text-lg font-bold text-blue-600">42</p>
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                      <p className="text-xs font-semibold text-green-900 mb-1">Test Card 2</p>
+                      <p className="text-lg font-bold text-green-600">98</p>
+                    </div>
+                    <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                      <p className="text-xs font-semibold text-purple-900 mb-1">Test Card 3</p>
+                      <p className="text-lg font-bold text-purple-600">156</p>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs font-mono text-gray-600">Current User: {currentUser.name}</p>
+                    <p className="text-xs font-mono text-gray-600 mt-1">Active Nav: {activeNav}</p>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">

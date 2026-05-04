@@ -22,6 +22,7 @@ export type New_subissuesstatuscode = keyof typeof New_subissuesstatuscode;
 
 export interface New_subissuesBase {
   importsequencenumber?: number;
+  new_attachmentid?: string;
   new_description?: string;
   new_issuedurationdate?: string;
   new_issueid?: string;
