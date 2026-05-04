@@ -222,10 +222,10 @@ export function TeamTaskDetailPanel({ task, onBack, onRefreshWorkspace, onOpenSu
   }
 
   return (
-    <section className="relative w-full max-w-6xl">
+    <section className="relative w-full max-w-6xl mx-auto">
       {saving && <ScreenLoader overlay className="rounded-xl" />}
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-4 sm:px-0">
         <p className="text-[16px] font-bold text-primary">
           <button type="button" className="font-bold text-primary underline" onClick={onBack}>
             Tasks
@@ -243,7 +243,7 @@ export function TeamTaskDetailPanel({ task, onBack, onRefreshWorkspace, onOpenSu
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200/90 shadow-sm overflow-hidden">
+      <div className="mx-4 sm:mx-0 bg-white rounded-xl border border-gray-200/90 shadow-sm overflow-hidden">
         <div className="p-4 sm:p-5 border-b border-gray-100">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             <div className="space-y-3">
@@ -447,6 +447,8 @@ export function TeamTaskDetailPanel({ task, onBack, onRefreshWorkspace, onOpenSu
           </button>
         </div>
       </div>
+
+      <div className="pb-6" />
     </section>
   );
 }
