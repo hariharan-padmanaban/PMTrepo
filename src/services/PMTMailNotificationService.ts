@@ -11,17 +11,24 @@ export interface EmailNotificationPayload {
 }
 
 /**
- * Maps our email payload to the PMTMailNotify flow's generic text fields.
- * Adjust field assignments based on your flow's actual input mapping.
+ * Maps our email payload to the PMTMailNotify flow's input parameters.
+ *
+ * Schema mapping (from .power/schemas/logicflows/PMTMailNotify.Schema.json):
+ * - text: ActionType (e.g., "Email")
+ * - text_1: RecipientEmail (recipient email address)
+ * - text_2: Subject (email subject)
+ * - text_3: BodyContent (email HTML body)
+ * - text_4: RecordID (optional)
+ * - text_5: RecordData (optional)
  */
 function mapPayloadToFlowInput(payload: EmailNotificationPayload): ManualTriggerInput {
   return {
-    text: payload.toEmail,              // Recipient email(s)
-    text_1: payload.subject,            // Subject
-    text_2: payload.htmlBody,           // HTML body
-    text_3: payload.ccEmail || '',      // CC (optional)
-    text_4: payload.bccEmail || '',     // BCC (optional)
-    text_5: payload.fromEmail || 'noreply@enjaz.com', // From email
+    text: 'Email',                                      // ActionType
+    text_1: payload.toEmail,                           // RecipientEmail (REQUIRED)
+    text_2: payload.subject,                           // Subject
+    text_3: payload.htmlBody,                          // BodyContent
+    text_4: '',                                         // RecordID (optional)
+    text_5: '',                                         // RecordData (optional)
   };
 }
 
