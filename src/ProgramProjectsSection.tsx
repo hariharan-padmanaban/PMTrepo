@@ -13,6 +13,7 @@ import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/Enja
 import { NewUsersService } from './services/NewUsersService';
 import { SponsorsService, type SponsorRow } from './services/SponsorsService';
 import { type ToastType } from './NotificationToast';
+import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import { AllocateTeamMemberModal } from './AllocateTeamMemberModal';
 import { AgileSprintPanel } from './AgileSprintPanel';
 import { WaterfallSprintPanel } from './WaterfallSprintPanel';
@@ -935,6 +936,33 @@ export function ProgramProjectsSection({
       // Create project with attachment ID
       const res = await New_projectsService.create(payload as Parameters<typeof New_projectsService.create>[0]);
       if (!res.success) throw new Error(res.error?.message ?? 'Failed to create project');
+
+      // Send email notification for new project
+      const projectManagerEmail = projectForm.assignToProjectManager?.trim();
+      if (projectManagerEmail && projectManagerEmail.includes('@')) {
+        const emailTemplate = generateEmailTemplate(
+          'New Project Created',
+          'Dear Project Manager,',
+          'A new project has been successfully created in the system. Please review the details below and take necessary actions.',
+          [
+            { label: 'Project Name', value: projectForm.projectName },
+            { label: 'Program', value: projectForm.programName },
+            { label: 'Status', value: 'Active' },
+            { label: 'Start Date', value: projectForm.startDate },
+            { label: 'End Date', value: projectForm.endDate },
+            { label: 'Budget', value: projectForm.budget || '-' },
+            { label: 'Department', value: projectForm.department || '-' },
+          ],
+        );
+
+        sendEmailNotification({
+          toEmail: projectManagerEmail,
+          subject: `New Project Created: ${projectForm.projectName}`,
+          htmlBody: emailTemplate,
+        }).catch((err) => {
+          console.error('Failed to send project creation email:', err);
+        });
+      }
 
       // Upload attachments if any
       let uploadMessage = '';

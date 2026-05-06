@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { New_projectsService } from './generated/services/New_projectsService';
 import { New_teammembersService } from './generated/services/New_teammembersService';
 import { New_tasksService } from './generated/services/New_tasksService';
+import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import type { ToastType } from './NotificationToast';
 import { ScreenLoader } from './ScreenLoader';
 import { enj } from './ui/enjForm';
@@ -405,6 +406,35 @@ export function AddNewTaskFormPanel({
         );
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to save task');
         onNotify?.('success', 'Task saved successfully.');
+
+        // Send email notification for new task
+        if (assignEmail && assignEmail.includes('@')) {
+          const priorityLabel = Object.entries(PRIORITY_TO_CHOICE).find(([, val]) => val === Number(priority))?.[0] || priority;
+          const statusLabel = Object.entries(STATUS_TO_CHOICE).find(([, val]) => val === Number(taskStatus))?.[0] || taskStatus;
+
+          const emailTemplate = generateEmailTemplate(
+            'New Task Assigned',
+            'Dear Team Member,',
+            'A new task has been assigned to you. Please review the details below and plan your work accordingly.',
+            [
+              { label: 'Task Title', value: taskTitle },
+              { label: 'Project', value: projectName },
+              { label: 'Status', value: statusLabel },
+              { label: 'Priority', value: priorityLabel },
+              { label: 'Start Date', value: startDate || '-' },
+              { label: 'End Date', value: endDate || '-' },
+              { label: 'Link To', value: linkTo || '-' },
+            ],
+          );
+
+          sendEmailNotification({
+            toEmail: assignEmail,
+            subject: `New Task: ${taskTitle}`,
+            htmlBody: emailTemplate,
+          }).catch((err) => {
+            console.error('Failed to send task creation email:', err);
+          });
+        }
       }
       onSaved?.();
       onClose();

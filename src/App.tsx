@@ -49,6 +49,7 @@ import { TeamSubTaskFormPanel } from './TeamSubTaskFormPanel';
 import { ScreenLoader } from './ScreenLoader';
 import { ProgramReportsPanel } from './ProgramReportsPanel';
 import { AddMeetingFormPanel } from './AddMeetingFormPanel';
+import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import { fetchSessionUserProfileFromUsers, getSessionUserEmail, type SessionUserProfile } from './sessionUser';
 import { buildInboxNotifications, NotificationBell } from './NotificationInbox';
 import { ThemeModeToggle } from './themeMode';
@@ -5385,6 +5386,34 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to create program');
         setProgramFormMsg('Program saved successfully.');
         setProgramToast({ type: 'success', message: 'Program created successfully.' });
+
+        // Send email notification for new program
+        const programManagerEmail = programForm.programManager?.trim();
+        if (programManagerEmail && programManagerEmail.includes('@')) {
+          const emailTemplate = generateEmailTemplate(
+            'New Program Created',
+            'Dear Program Manager,',
+            'A new program has been successfully created in the system. Please review the details below and take necessary actions.',
+            [
+              { label: 'Program Name', value: programForm.programName },
+              { label: 'Status', value: statusOptions.find((s) => s.value === Number(programForm.status))?.label || programForm.status },
+              { label: 'Start Date', value: programForm.startDate },
+              { label: 'End Date', value: programForm.endDate },
+              { label: 'Budget', value: programForm.budget || '-' },
+              { label: 'Benefits', value: programForm.benefits || '-' },
+              { label: 'ROI', value: programForm.roi || '-' },
+              { label: 'KPI', value: programForm.kpi || '-' },
+            ],
+          );
+
+          sendEmailNotification({
+            toEmail: programManagerEmail,
+            subject: `New Program Created: ${programForm.programName}`,
+            htmlBody: emailTemplate,
+          }).catch((err) => {
+            console.error('Failed to send program creation email:', err);
+          });
+        }
       }
       clearProgramForm();
       await loadPrograms();

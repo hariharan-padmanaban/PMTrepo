@@ -47,6 +47,25 @@
           "shared_sharepointonline": "b1ed723b-6173-458c-9dff-bef7329deee4"
         }
       }
+    },
+    "a0cee784-efd0-4af2-8f44-75c62849081b": {
+      "id": "/providers/microsoft.powerapps/apis/shared_office365",
+      "displayName": "Office 365 Outlook"
+    },
+    "f42c7573-a678-42af-ab00-214fc323d579": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "pmtmailnotify"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "f407d341-af13-9491-5861-2ea1b8fd5efd",
+        "workflowDisplayName": "PMTMailNotify",
+        "workflowName": "97be8417-17a4-099c-8b93-fd015993dae4",
+        "dependencies": {
+          "shared_office365": "a0cee784-efd0-4af2-8f44-75c62849081b"
+        }
+      }
     }
   },
   "databaseReferences": {

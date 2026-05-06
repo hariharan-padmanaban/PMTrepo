@@ -3,6 +3,7 @@ import { New_issuesnew_issueseverity, New_issuesnew_issuestatus } from './genera
 import { New_issuesService } from './generated/services/New_issuesService';
 import { New_projectsService } from './generated/services/New_projectsService';
 import { NewUsersService } from './services/NewUsersService';
+import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import type { ToastType } from './NotificationToast';
 import { ScreenLoader } from './ScreenLoader';
 import { enj } from './ui/enjForm';
@@ -235,6 +236,34 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to save issue');
         onNotify?.('success', 'Issue saved successfully.');
 
+        // Send email notification for new issue
+        if (assignTeamMember && assignTeamMember.includes('@')) {
+          const severityLabel = Object.entries(ISSUE_SEVERITY_TO_CHOICE).find(([, val]) => val === Number(issueSeverity))?.[0] || issueSeverity;
+          const statusLabel = Object.entries(ISSUE_STATUS_TO_CHOICE).find(([, val]) => val === Number(issueStatus))?.[0] || issueStatus;
+
+          const emailTemplate = generateEmailTemplate(
+            'New Issue Created',
+            'Dear Team,',
+            'A new issue has been created and assigned to you. Please review the details below and take appropriate action.',
+            [
+              { label: 'Project', value: projectName || '-' },
+              { label: 'Title', value: issueTitle },
+              { label: 'Description', value: issueDescription.substring(0, 100) || '-' },
+              { label: 'Severity', value: severityLabel },
+              { label: 'Status', value: statusLabel },
+              { label: 'Assigned To', value: assignTeamMember },
+              { label: 'Progress', value: `${progress || '0'}%` },
+            ],
+          );
+
+          sendEmailNotification({
+            toEmail: assignTeamMember,
+            subject: `New Issue: ${issueTitle}`,
+            htmlBody: emailTemplate,
+          }).catch((err) => {
+            console.error('Failed to send issue creation email:', err);
+          });
+        }
       }
       onSaved?.();
       onClose();

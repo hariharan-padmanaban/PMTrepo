@@ -15,6 +15,7 @@ import {
 } from './pipelineMappers';
 import { New_pipelinesService } from './generated/services/New_pipelinesService';
 import { ScreenLoader } from './ScreenLoader';
+import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import { enj } from './ui/enjForm';
 import type { ToastType } from './NotificationToast';
 
@@ -204,6 +205,36 @@ export default function BusinessPipelineScreen({
           body as unknown as Parameters<typeof New_pipelinesService.create>[0],
         );
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to create pipeline');
+
+        // Send email notification for new pipeline
+        const clientRow = clientOptions.find((c) => c.id === pipelineForm.clientId);
+        if (clientRow?.name) {
+          const recipientEmail = 'pipeline-notifications@enjaz.com';
+          const emailTemplate = generateEmailTemplate(
+            'New Pipeline Created',
+            'Dear Team,',
+            'A new pipeline has been created in the Enjaz Project Management System. Please review the details below.',
+            [
+              { label: 'Pipeline Name', value: pipelineForm.pipelineName },
+              { label: 'Opportunity Name', value: pipelineForm.opportunityName },
+              { label: 'Client', value: String(clientRow.name ?? '') },
+              { label: 'Stage', value: pipelineForm.stage },
+              { label: 'Potential Value', value: pipelineForm.potentialValue },
+              {
+                label: 'Start Date',
+                value: pipelineForm.startDate ? String(pipelineForm.startDate).split('T')[0] : 'N/A',
+              },
+            ],
+          );
+
+          sendEmailNotification({
+            toEmail: recipientEmail,
+            subject: `New Pipeline Created: ${pipelineForm.pipelineName}`,
+            htmlBody: emailTemplate,
+          }).catch((err) => {
+            console.error('Failed to send pipeline creation email:', err);
+          });
+        }
 
       } else {
         const res = await New_pipelinesService.update(

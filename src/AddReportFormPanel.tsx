@@ -12,6 +12,7 @@ import { New_programsnew_status } from './generated/models/New_programsModel';
 import { New_reportsService } from './generated/services/New_reportsService';
 import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/EnjazMasterDataService';
 import { NewUsersService } from './services/NewUsersService';
+import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import { uploadFilesForReport } from './services/reportFileUpload';
 import type { ToastType } from './NotificationToast';
 import { buildProgramIdToNameMap, resolveProjectProgramName } from './programNameResolve';
@@ -326,6 +327,31 @@ export function AddReportFormPanel({
         payload as unknown as Parameters<typeof New_reportsService.create>[0],
       );
       if (!res.success) throw new Error(res.error?.message ?? 'Failed to create report in Dataverse');
+
+      // Send email notification for new report
+      if (assignMember && assignMember.includes('@')) {
+        const emailTemplate = generateEmailTemplate(
+          'New Report Created',
+          'Dear Team,',
+          'A new report has been created in the system. Please review the details below.',
+          [
+            { label: 'Report Title', value: reportTitle },
+            { label: 'Report Type', value: reportType },
+            { label: 'Program', value: programName },
+            { label: 'Project', value: projectName },
+            { label: 'Summary', value: summary.substring(0, 100) || '-' },
+            { label: 'Assigned To', value: assignMember },
+          ],
+        );
+
+        sendEmailNotification({
+          toEmail: assignMember,
+          subject: `New Report Created: ${reportTitle}`,
+          htmlBody: emailTemplate,
+        }).catch((err) => {
+          console.error('Failed to send report creation email:', err);
+        });
+      }
 
       if (attachmentId && attachmentFiles.length > 0) {
         void uploadFilesForReport(attachmentId, attachmentFiles);

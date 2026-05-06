@@ -31,6 +31,7 @@ export * as New_usersesModel from './models/New_usersesModel';
 export * as New_vendorsModel from './models/New_vendorsModel';
 export * as PMTDocumentFetchModel from './models/PMTDocumentFetchModel';
 export * as PMTDocumentUploadModel from './models/PMTDocumentUploadModel';
+export * as PMTMailNotifyModel from './models/PMTMailNotifyModel';
 export * as SharePointModel from './models/SharePointModel';
 
 // Services
@@ -60,4 +61,5 @@ export * from './services/New_usersesService';
 export * from './services/New_vendorsService';
 export * from './services/PMTDocumentFetchService';
 export * from './services/PMTDocumentUploadService';
+export * from './services/PMTMailNotifyService';
 export * from './services/SharePointService';
