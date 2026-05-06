@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Calendar, Paperclip, Pencil } from 'lucide-react';
 import { PagerBar } from './PagerBar';
 import { enj } from './ui/enjForm';
+import { TABLE_STYLES } from './tableStyles';
 import { DonutChart } from './DonutChart';
 import { New_projectsService } from './generated/services/New_projectsService';
 import type { New_programs } from './generated/models/New_programsModel';
@@ -15,7 +16,7 @@ import { New_projectsnew_projectstatus, New_projectsnew_projecttype } from './ge
 import { New_reportsService } from './generated/services/New_reportsService';
 import { EnjazMasterDataService } from './services/EnjazMasterDataService';
 import { NewUsersService } from './services/NewUsersService';
-import { uploadFilesForReport } from './services/reportFileUpload';
+import { uploadFilesForReport, fetchFilesForReport } from './services/reportFileUpload';
 import type { ToastType } from './NotificationToast';
 import { AddReportFormPanel } from './AddReportFormPanel';
 import { buildProgramIdToNameMap, resolveProjectProgramName } from './programNameResolve';
@@ -100,6 +101,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   const [reportEditError, setReportEditError] = useState('');
   const [editingReportId, setEditingReportId] = useState('');
   const [reportEditAttachmentFiles, setReportEditAttachmentFiles] = useState<File[]>([]);
+  const [reportEditExistingFiles, setReportEditExistingFiles] = useState<string[]>([]);
   const reportEditFileInputRef = useRef<HTMLInputElement>(null);
   const [reportTypeMasterOptions, setReportTypeMasterOptions] = useState<string[]>([]);
   const [reportAssigneeEmailOptions, setReportAssigneeEmailOptions] = useState<string[]>([]);
@@ -373,10 +375,16 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   const reportProjectMap = useMemo(() => {
     try {
       const m = new Map<string, Record<string, unknown>>();
-      filteredReportProjects.forEach((p) => m.set(String(p.new_projectname ?? p.new_name ?? '').trim().toLowerCase(), p));
-      return m;
+      const idMap = new Map<string, Record<string, unknown>>();
+      filteredReportProjects.forEach((p) => {
+        const name = String(p.new_projectname ?? p.new_name ?? '').trim().toLowerCase();
+        if (name) m.set(name, p);
+        const id = String(p.new_projectid ?? p.crcf8_projectid ?? p._new_project_value ?? '').trim();
+        if (id) idMap.set(id, p);
+      });
+      return { nameMap: m, idMap };
     } catch {
-      return new Map<string, Record<string, unknown>>();
+      return { nameMap: new Map(), idMap: new Map() };
     }
   }, [filteredReportProjects]);
 
@@ -384,8 +392,17 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     try {
       const rows = reportEntityRows.map((r) => {
         const projectName = String(r.new_projectname ?? '').trim();
-        const project = reportProjectMap.get(projectName.toLowerCase()) ?? null;
+        const projectId = String(r.new_projectid ?? r._new_project_value ?? '').trim();
+
+        // Try to find project by name first, then by ID
+        let project = reportProjectMap.nameMap.get(projectName.toLowerCase()) ?? null;
+        if (!project && projectId) {
+          project = reportProjectMap.idMap.get(projectId) ?? null;
+        }
+
         const status = String(project?.new_projectstatusname ?? 'To Start');
+        const progressValue = Number(project?.new_progress ?? 0);
+
         return {
           id: String(r.new_reportid ?? ''),
           programName: String(
@@ -401,7 +418,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           programStatus: String(r.new_programstatus ?? ''),
           start: String(project?.new_startdate ?? ''),
           end: String(project?.new_enddate ?? ''),
-          progress: Number(project?.new_progress ?? 0),
+          progress: progressValue,
           status,
         };
       });
@@ -411,7 +428,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     }
   }, [reportEntityRows, reportProjectMap, reportProjectFilter, programIdToName]);
 
-  const openEditReport = (row: {
+  const openEditReport = async (row: {
     id: string;
     programName: string;
     reportTitle: string;
@@ -423,6 +440,9 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     remark: string;
     programStatus: string;
   }) => {
+    const reportRow = reportEntityRows.find((r) => String(r.new_reportid ?? '') === row.id);
+    const attachmentId = reportRow ? String(reportRow.new_attachmentid ?? '').trim() : '';
+
     setEditingReportId(row.id);
     setReportEditForm({
       programName: row.programName,
@@ -437,6 +457,14 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     });
     setReportEditAttachmentFiles([]);
     setReportEditError('');
+
+    if (attachmentId) {
+      const existingFiles = await fetchFilesForReport(attachmentId);
+      setReportEditExistingFiles(existingFiles.map((f) => f.fileName));
+    } else {
+      setReportEditExistingFiles([]);
+    }
+
     setShowEditReportModal(true);
   };
 
@@ -494,7 +522,8 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     setReportEditBusy(true);
     setReportEditError('');
     try {
-      const res = await New_reportsService.update(editingReportId, {
+      const attachmentId = reportEditAttachmentFiles.length > 0 ? `ATT-${Date.now()}` : undefined;
+      const updatePayload: Record<string, unknown> = {
         new_program: programName,
         new_report1: title,
         new_projectname: projectName,
@@ -504,31 +533,23 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         new_summary: reportEditForm.summary.trim() || undefined,
         new_remark: reportEditForm.remark.trim() || undefined,
         new_programstatus: reportEditForm.programStatus.trim() || undefined,
-      });
+      };
+
+      if (attachmentId) {
+        updatePayload.new_attachmentid = attachmentId;
+      }
+
+      const res = await New_reportsService.update(editingReportId, updatePayload);
       if (!res.success) throw new Error(res.error?.message ?? 'Failed to update report');
 
-      if (reportEditAttachmentFiles.length > 0) {
-        const { uploaded, errors: uploadErrs } = await uploadFilesForReport(editingReportId, reportEditAttachmentFiles);
-        if (uploadErrs.length > 0 && uploaded.length === 0) {
-          onNotify?.(
-            'info',
-            `Report updated. No files uploaded — set VITE_REPORT_ATTACHMENTS_SITE_URL (SharePoint site) in .env. ${uploadErrs[0] ?? ''}`,
-          );
-        } else if (uploadErrs.length > 0) {
-          onNotify?.(
-            'info',
-            `Report updated. ${uploaded.length} file(s) uploaded; some failed: ${uploadErrs.slice(0, 2).join('; ')}`,
-          );
-        } else if (uploaded.length > 0) {
-          onNotify?.('success', 'Report updated and files uploaded to SharePoint.');
-        } else {
-          onNotify?.('success', 'Report updated.');
-        }
-      } else {
-        onNotify?.('success', 'Report updated successfully.');
+      if (attachmentId && reportEditAttachmentFiles.length > 0) {
+        void uploadFilesForReport(attachmentId, reportEditAttachmentFiles);
       }
+
+      onNotify?.('success', 'Report updated successfully.');
       setShowEditReportModal(false);
       setReportEditAttachmentFiles([]);
+      setReportEditExistingFiles([]);
       const refreshRes = await New_reportsService.getAll({ top: 2000, orderBy: ['createdon desc'] });
       setReportEntityRows(refreshRes.success ? ((refreshRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
     } catch (error) {
@@ -604,48 +625,48 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   );
 
   const reportTableRow = (row: (typeof filteredReportTableRows)[0], idx: number) => (
-    <tr key={`${row.reportTitle}-${idx}`} className="bg-white rounded-[11.9px] hover:shadow-md text-xs text-[#4c556d]">
-      <td className="px-3 py-2 font-normal">{row.reportTitle}</td>
-      <td className="px-3 py-2 font-normal">{row.projectName}</td>
-      <td className="px-3 py-2 font-normal">{row.reportType}</td>
-      <td className="px-3 py-2 font-normal">{row.sector}</td>
-      <td className="px-3 py-2 font-normal">
+    <tr key={`${row.reportTitle}-${idx}`} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+      <td className={`${TABLE_STYLES.dataCell} rounded-l-[11.9px]`}>{row.reportTitle}</td>
+      <td className={TABLE_STYLES.dataCell}>{row.projectName}</td>
+      <td className={TABLE_STYLES.dataCell}>{row.reportType}</td>
+      <td className={TABLE_STYLES.dataCell}>{row.sector}</td>
+      <td className={TABLE_STYLES.dataCell}>
         <div className="flex items-center gap-3">
           <div>
-            <p className="text-[10px] font-normal text-[#6B7280]">Start Date</p>
-            <p className="flex items-center gap-1 text-[10px]">
-              <Calendar size={12} className="text-[#9CA3AF]" />
-              <span className="font-medium text-[#111827]">{safeDateLabel(row.start)}</span>
+            <p className="text-[10px] font-normal text-gray-500">Start Date</p>
+            <p className="flex items-center gap-1 text-[10px] font-medium text-gray-900">
+              <Calendar size={12} className="text-gray-400" />
+              {safeDateLabel(row.start)}
             </p>
           </div>
-          <div className="h-8 w-px bg-[#E5E7EB]" />
+          <div className="h-8 w-px bg-gray-200" />
           <div>
-            <p className="text-[10px] font-normal text-[#6B7280]">End Date</p>
-            <p className="flex items-center gap-1 text-[10px]">
-              <Calendar size={12} className="text-[#9CA3AF]" />
-              <span className="font-medium text-[#111827]">{safeDateLabel(row.end)}</span>
+            <p className="text-[10px] font-normal text-gray-500">End Date</p>
+            <p className="flex items-center gap-1 text-[10px] font-medium text-gray-900">
+              <Calendar size={12} className="text-gray-400" />
+              {safeDateLabel(row.end)}
             </p>
           </div>
         </div>
       </td>
-      <td className="px-3 py-2 font-normal">
+      <td className={TABLE_STYLES.dataCell}>
         <div className="w-[150px]">
-          <p className="mb-1 text-right text-[11px] text-[#6B7280]">{row.progress}%</p>
+          <p className="mb-1 text-right text-[11px] text-gray-600">{row.progress}%</p>
           <div className="enj-table-progress-track w-full max-w-[150px]">
             <div className="enj-table-progress-fill" style={{ width: `${row.progress}%` }} />
           </div>
         </div>
       </td>
-      <td className="px-3 py-2">
+      <td className={TABLE_STYLES.dataCell}>
         <span className={`inline-block min-w-[90px] text-center text-[11px] ${reportStatusBadge(String(row.status))}`}>
           {row.status}
         </span>
       </td>
       {showTableEdit && (
-        <td className="sticky right-0 z-10 w-[1%] min-w-[3rem] whitespace-nowrap border-l border-transparent bg-white px-3 py-2">
+        <td className={`${TABLE_STYLES.dataCell} sticky right-0 z-10 w-[1%] min-w-[3rem] whitespace-nowrap rounded-r-[11.9px]`}>
           <button
             type="button"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 hover:border-[#A08149] hover:text-[#A08149] transition-colors"
+            className={TABLE_STYLES.actionButton}
             onClick={() => openEditReport(row)}
             title="Edit"
           >
@@ -659,15 +680,15 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   const reportTableHead = (
     <thead>
       <tr className="bg-[rgba(225,227,236,1)]">
-        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Report Title</th>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Project Name</th>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Report Type</th>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Sector</th>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Schedule</th>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Progress Level</th>
-        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
+        <th className={`${TABLE_STYLES.headerCell} rounded-l-[11.9px]`}>Report Title</th>
+        <th className={TABLE_STYLES.headerCell}>Project Name</th>
+        <th className={TABLE_STYLES.headerCell}>Report Type</th>
+        <th className={TABLE_STYLES.headerCell}>Sector</th>
+        <th className={TABLE_STYLES.headerCell}>Schedule</th>
+        <th className={TABLE_STYLES.headerCell}>Progress Level</th>
+        <th className={TABLE_STYLES.headerCell}>Status</th>
         {showTableEdit && (
-          <th className="sticky right-0 z-20 w-[1%] min-w-[3rem] whitespace-nowrap border-0 bg-[rgba(225,227,236,1)] px-3 py-2 text-left" />
+          <th className={`${TABLE_STYLES.headerCell} sticky right-0 z-20 w-[1%] min-w-[3rem] whitespace-nowrap rounded-r-[11.9px]`} />
         )}
       </tr>
     </thead>
@@ -678,7 +699,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h3 className={enj.sectionTitle}>Edit Report</h3>
-          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); }} className="text-sm text-gray-500 hover:text-gray-700">Close</button>
+          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); }} className="text-sm text-gray-500 hover:text-gray-700">Close</button>
         </div>
         <div className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-3">
           <label>
@@ -757,28 +778,44 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
               <Paperclip className="h-4 w-4" />
               <span>Click to choose or drop files</span>
             </div>
-            {reportEditAttachmentFiles.length > 0 && (
+            {(reportEditExistingFiles.length > 0 || reportEditAttachmentFiles.length > 0) && (
               <ul className="mt-2 space-y-1 text-xs text-gray-700">
-                {reportEditAttachmentFiles.map((f) => (
-                  <li key={f.name} className="flex items-center justify-between gap-2">
-                    <span className="truncate">{f.name}</span>
-                    <button
-                      type="button"
-                      className="text-rose-600 shrink-0 hover:underline text-[11px]"
-                      disabled={reportEditBusy}
-                      onClick={() => setReportEditAttachmentFiles((prev) => prev.filter((x) => x.name !== f.name))}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
+                {reportEditExistingFiles.length > 0 && (
+                  <>
+                    <li className="text-[10px] font-semibold text-gray-500 mt-2">Existing Files:</li>
+                    {reportEditExistingFiles.map((fileName) => (
+                      <li key={fileName} className="flex items-center gap-2 text-gray-600">
+                        <span className="truncate">{fileName}</span>
+                        <span className="shrink-0 text-[10px] text-gray-400">(existing)</span>
+                      </li>
+                    ))}
+                  </>
+                )}
+                {reportEditAttachmentFiles.length > 0 && (
+                  <>
+                    <li className="text-[10px] font-semibold text-gray-500 mt-2">New Files:</li>
+                    {reportEditAttachmentFiles.map((f) => (
+                      <li key={f.name} className="flex items-center justify-between gap-2">
+                        <span className="truncate">{f.name}</span>
+                        <button
+                          type="button"
+                          className="text-rose-600 shrink-0 hover:underline text-[11px]"
+                          disabled={reportEditBusy}
+                          onClick={() => setReportEditAttachmentFiles((prev) => prev.filter((x) => x.name !== f.name))}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </>
+                )}
               </ul>
             )}
           </label>
         </div>
         {reportEditError && <p className="px-5 pb-2 text-xs text-rose-600">{reportEditError}</p>}
         <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4">
-          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); }} className={enj.btnOutline} disabled={reportEditBusy}>Cancel</button>
+          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); }} className={enj.btnOutline} disabled={reportEditBusy}>Cancel</button>
           <button type="button" onClick={() => void saveEditedReport()} className={enj.btnPrimary} disabled={reportEditBusy}>{reportEditBusy ? 'Saving...' : 'Save'}</button>
         </div>
       </div>
@@ -787,8 +824,8 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
 
   if (showReportViewAll) {
     return (
-      <div className="flex flex-col gap-0">
-        <div className="flex items-center gap-3 border-b border-gray-100 bg-white px-5 py-3">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-3 bg-transparent px-0 py-3">
           <button
             type="button"
             onClick={() => { setShowReportViewAll(false); setReportViewAllPage(1); }}
@@ -800,12 +837,12 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           <h1 className="text-base font-bold text-[rgba(35,35,96,1)] truncate">Project Reports – All Records</h1>
         </div>
         <div className="overflow-x-auto bg-transparent">
-          <table className="min-w-[920px] w-full border-separate [border-spacing:0_8px] bg-transparent">
+          <table className={`${enj.table} min-w-[920px] w-full bg-transparent border-separate`}>
             {reportTableHead}
             <tbody>
               {pagedReportViewAllRows.length === 0 ? (
-                <tr className="text-xs text-gray-500">
-                  <td className="px-3 py-3" colSpan={showTableEdit ? 8 : 7}>
+                <tr className="text-xs text-gray-500 bg-transparent">
+                  <td className="px-3 py-3 bg-transparent" colSpan={showTableEdit ? 8 : 7}>
                     No report rows for selected filters.
                   </td>
                 </tr>
@@ -815,7 +852,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             </tbody>
           </table>
         </div>
-        <div className="border-t border-gray-100 px-5 py-3">
+        <div className="px-0 py-3">
           <PagerBar
             page={reportViewAllPage}
             pageSize={REPORT_VIEW_ALL_PAGE_SIZE}
@@ -834,29 +871,33 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
       <section className="flex items-center justify-between">
         <h2 className={enj.pageTitle}>Reports</h2>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="h-8 rounded-md border border-gray-200 bg-white px-4 text-xs text-gray-600"
-            onClick={() => {
-              setReportSectorFilter('All');
-              setReportProgramFilter('All');
-              setReportProjectFilter('All');
-              setReportTypeFilter('All');
-              setReportPmFilter('All');
-              setReportStatusFilter('All');
-              setReportDurationFilter('All Dates');
-              void loadReportData();
-            }}
-          >
-            Refresh
-          </button>
-          <button
-            type="button"
-            className={`${enj.btnPrimary} !h-8`}
-            onClick={() => setShowAddReportForm(true)}
-          >
-            Create a Report
-          </button>
+          {showTableEdit && (
+            <>
+              <button
+                type="button"
+                className="h-8 rounded-md border border-gray-200 bg-white px-4 text-xs text-gray-600"
+                onClick={() => {
+                  setReportSectorFilter('All');
+                  setReportProgramFilter('All');
+                  setReportProjectFilter('All');
+                  setReportTypeFilter('All');
+                  setReportPmFilter('All');
+                  setReportStatusFilter('All');
+                  setReportDurationFilter('All Dates');
+                  void loadReportData();
+                }}
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                className={`${enj.btnPrimary} !h-8`}
+                onClick={() => setShowAddReportForm(true)}
+              >
+                Create a Report
+              </button>
+            </>
+          )}
         </div>
       </section>
       <section className="rounded-xl bg-white p-3 shadow-sm">
@@ -1212,8 +1253,8 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           </div>
         </div>
       </section>
-      <section className="overflow-hidden rounded-xl bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+      <section className="bg-transparent">
+        <div className="flex items-center justify-between px-0 py-3">
           <h3 className={enj.pageTitle}>Project Reports</h3>
           {filteredReportTableRows.length > 0 && (
             <button
@@ -1225,25 +1266,25 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             </button>
           )}
         </div>
-        <div className="min-w-0 overflow-x-auto bg-transparent">
-          <table className="min-w-[920px] w-full border-separate [border-spacing:0_8px] bg-transparent">
+        <div className="min-w-0 overflow-x-auto">
+          <table className={`${enj.table} min-w-[920px] bg-transparent border-separate`}>
             {reportTableHead}
             <tbody>
               {reportsLoading && (
-                <tr className="text-xs text-gray-500">
-                  <td className="px-3 py-3" colSpan={showTableEdit ? 8 : 7}>Loading reports...</td>
+                <tr className="text-xs text-gray-500 bg-transparent">
+                  <td className="px-3 py-3 bg-transparent" colSpan={showTableEdit ? 8 : 7}>Loading reports...</td>
                 </tr>
               )}
               {!reportsLoading && filteredReportTableRows.length === 0 && (
-                <tr className="text-xs text-gray-500">
-                  <td className="px-3 py-3" colSpan={showTableEdit ? 8 : 7}>No report rows for selected filters.</td>
+                <tr className="text-xs text-gray-500 bg-transparent">
+                  <td className="px-3 py-3 bg-transparent" colSpan={showTableEdit ? 8 : 7}>No report rows for selected filters.</td>
                 </tr>
               )}
               {!reportsLoading && filteredReportTableRows.slice(0, 10).map((row, idx) => reportTableRow(row, idx))}
             </tbody>
           </table>
         </div>
-        <div className="px-3 py-2 text-right text-[10px] text-gray-400">Showing {Math.min(10, filteredReportTableRows.length)} of {filteredReportTableRows.length} rows</div>
+        <div className="px-0 py-2 text-right text-[10px] text-gray-400">Showing {Math.min(10, filteredReportTableRows.length)} of {filteredReportTableRows.length} rows</div>
       </section>
       {editReportModal}
     </>

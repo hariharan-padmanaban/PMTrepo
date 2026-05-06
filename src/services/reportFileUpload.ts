@@ -1,66 +1,100 @@
-import { SharePointService } from '../generated/services/SharePointService';
+import { PMTDocumentUploadService } from '../generated/services/PMTDocumentUploadService';
+import { PMTDocumentFetchService } from '../generated/services/PMTDocumentFetchService';
 
-function normalizeSiteUrl(url: string): string {
-  const marker = '/SitePages/';
-  const index = url.indexOf(marker);
-  return index > -1 ? url.slice(0, index) : url;
+export async function fetchFilesForReport(
+  attachmentId: string
+): Promise<{ fileName: string }[]> {
+  try {
+    console.log(`📥 Fetching files for AttachmentID: ${attachmentId}`);
+    const response = await PMTDocumentFetchService.Run({
+      attachmentId,
+    });
+
+    if (response?.success && response?.data?.body?.value) {
+      const files = Array.isArray(response.data.body.value)
+        ? response.data.body.value
+        : [response.data.body.value];
+      const fileNames = files
+        .map((f) => String(f.name || f.fileName || '').trim())
+        .filter(Boolean);
+      console.log(`✅ Fetched ${fileNames.length} file(s) for ${attachmentId}`);
+      return fileNames.map((fileName) => ({ fileName }));
+    }
+
+    console.log(`ℹ️ No files found for ${attachmentId}`);
+    return [];
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.log(`ℹ️ Fetch attempt for ${attachmentId}: ${errorMsg}`);
+    return [];
+  }
 }
 
-/** Site root used for `SharePointService.CreateFile` (same pattern as Vite `import.meta.env`). */
-export function getReportAttachmentSiteUrl(): string | undefined {
-  const env = (import.meta as { env?: Record<string, string> }).env?.VITE_REPORT_ATTACHMENTS_SITE_URL?.trim();
-  if (env) return normalizeSiteUrl(env);
-  return undefined;
-}
+export async function uploadFileToReportFlow(
+  attachmentId: string,
+  file: File
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Convert file to base64
+    const base64Content = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1] || result;
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
 
-export function getReportAttachmentLibraryName(): string {
-  return (import.meta as { env?: Record<string, string> }).env?.VITE_REPORT_ATTACHMENTS_LIBRARY?.trim() || 'Shared Documents';
-}
+    console.log(`📤 Uploading: ${file.name} | AttachmentID: ${attachmentId}`);
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result ?? '');
-      const base64 = result.includes(',') ? result.split(',')[1] : result;
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
-    reader.readAsDataURL(file);
-  });
+    // Call PMTDocumentUpload flow via Power Automate
+    const response = await PMTDocumentUploadService.Run({
+      text_1: attachmentId,
+      file: {
+        name: file.name,
+        contentBytes: base64Content,
+      },
+    });
+
+    console.log(`✅ Response:`, response);
+
+    if (response?.success) {
+      console.log(`✅ Uploaded: ${file.name}`);
+      return { success: true };
+    } else {
+      const errorMsg = response?.error?.message || 'Upload failed';
+      console.error(`❌ Failed: ${file.name} - ${errorMsg}`);
+      return { success: false, error: errorMsg };
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`❌ Exception:`, errorMsg);
+    return { success: false, error: errorMsg };
+  }
 }
 
 /**
- * Uploads files under `/Library/ReportAttachments/{reportId}/` in SharePoint.
- * Requires `VITE_REPORT_ATTACHMENTS_SITE_URL` (e.g. https://tenant.sharepoint.com/sites/SiteName).
- * Dataverse `new_report` has no file column in the generated app schema; notes/annotations are not
- * a registered data source, so this connector path is the supported way to get working binaries.
+ * Uploads files for a report using Power Automate flow (PMTDocumentUpload).
+ * Files are stored with the attachment ID in the report.
+ * The attachment ID is stored in the new_attachmentid column of the report.
  */
 export async function uploadFilesForReport(
-  reportId: string,
-  files: File[],
-  options?: { siteUrl?: string; libraryName?: string },
+  attachmentId: string,
+  files: File[]
 ): Promise<{ uploaded: string[]; errors: string[] }> {
-  const site = options?.siteUrl ?? getReportAttachmentSiteUrl();
   const uploaded: string[] = [];
   const errors: string[] = [];
-  if (files.length === 0) return { uploaded, errors };
-  if (!site) {
-    for (const f of files) errors.push(`${f.name}: set VITE_REPORT_ATTACHMENTS_SITE_URL in .env to enable upload`);
-    return { uploaded, errors };
-  }
-  const lib = (options?.libraryName ?? getReportAttachmentLibraryName()).replace(/^\/+/, '');
-  const folder = `/${lib}/ReportAttachments/${reportId}`.replace(/\/\/+/g, '/');
 
-  for (const f of files) {
-    try {
-      const body = await fileToBase64(f);
-      const r = await SharePointService.CreateFile(site, folder, f.name, body);
-      if (r.success) uploaded.push(f.name);
-      else errors.push(`${f.name}: ${r.error?.message ?? 'upload failed'}`);
-    } catch (e) {
-      errors.push(`${f.name}: ${e instanceof Error ? e.message : String(e)}`);
+  for (const file of files) {
+    const result = await uploadFileToReportFlow(attachmentId, file);
+    if (result.success) {
+      uploaded.push(file.name);
+    } else {
+      errors.push(`${file.name}: ${result.error || 'Unknown error'}`);
     }
   }
+
   return { uploaded, errors };
 }

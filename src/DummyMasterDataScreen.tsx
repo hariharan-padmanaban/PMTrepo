@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/EnjazMasterDataService';
+import { enj } from './ui/enjForm';
 
 const CATEGORIES = [
   'Program Code',
@@ -83,13 +84,13 @@ export default function DummyMasterDataScreen() {
       </div>
       {message && <p className="text-sm text-gray-700 mb-3">{message}</p>}
       <div className="overflow-auto bg-transparent">
-        <table className="min-w-[760px] w-full border-separate [border-spacing:0_8px] bg-transparent text-sm">
+        <table className={`${enj.table} min-w-[760px] text-sm border-separate`}>
           <thead>
             <tr className="bg-[rgba(225,227,236,1)]">
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Name</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Category</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Code (ID)</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
+              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Name</th>
+              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Category</th>
+              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Code (ID)</th>
+              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -103,11 +104,11 @@ export default function DummyMasterDataScreen() {
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={String(row.new_enjazmasterdataid ?? `${row.new_enjazmasterdata1}-${row.new_code}`)} className="bg-white rounded-[11.9px] hover:shadow-md text-xs text-[#4c556d]">
-                  <td className="px-3 py-2 font-normal">{String(row.new_enjazmasterdata1 ?? '-')}</td>
-                  <td className="px-3 py-2 font-normal">{categoryText(row)}</td>
-                  <td className="px-3 py-2 font-normal">{String(row.new_code ?? '-')}</td>
-                  <td className="px-3 py-2 font-normal">{statusText(row)}</td>
+                <tr key={String(row.new_enjazmasterdataid ?? `${row.new_enjazmasterdata1}-${row.new_code}`)} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0 text-sm text-gray-700">
+                  <td className="px-3 py-2 bg-white border-0 rounded-l-[11.9px]">{String(row.new_enjazmasterdata1 ?? '-')}</td>
+                  <td className="px-3 py-2 bg-white border-0">{categoryText(row)}</td>
+                  <td className="px-3 py-2 bg-white border-0">{String(row.new_code ?? '-')}</td>
+                  <td className="px-3 py-2 bg-white border-0 rounded-r-[11.9px]">{statusText(row)}</td>
                 </tr>
               ))
             )}

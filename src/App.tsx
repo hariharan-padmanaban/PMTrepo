@@ -6,7 +6,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  Activity, AlertCircle, ArrowRight, Briefcase, Calendar, CheckCircle, CheckSquare,
+  Activity, AlertCircle, ArrowRight, Briefcase, Calendar, CheckSquare,
   ChevronDown, Clock, FileText, FolderOpen, HelpCircle, Inbox, LayoutGrid, ListTree, Pencil, RefreshCw,
   LogOut, MessageSquare, ShieldCheck, Trash2, TrendingUp, UserCircle, Users,
 } from 'lucide-react';
@@ -217,20 +217,6 @@ const PROJECT_CATEGORY_DONUT_COLORS = [
 ] as const;
 const COUNTS_BAR_COLORS = ['#4f46e5', '#d4a759', '#8b5e34', '#60a5fa', '#dc2626'] as const;
 
-
-/** Static sine-style wave for business KPI summary cards (not data-driven). */
-const BUSINESS_SUMMARY_STATIC_WAVE_D =
-  'M0 20 C10 10 20 30 30 20 S50 10 60 20 S80 30 90 20 S110 10 120 20 S130 20 140 20';
-
-function businessSummaryCardTone(title: string) {
-  if (title.includes('Completed')) {
-    return { Icon: CheckCircle, iconWrap: 'bg-blue-100', iconClass: 'text-blue-600' };
-  }
-  if (title.includes('On Track')) {
-    return { Icon: TrendingUp, iconWrap: 'bg-emerald-100', iconClass: 'text-emerald-600' };
-  }
-  return { Icon: AlertCircle, iconWrap: 'bg-red-100', iconClass: 'text-red-600' };
-}
 
 
 function formatAEDShort(n: number): string {
@@ -566,9 +552,9 @@ function businessDashboardModel(
   return {
     totalProjectCount: totalProjects,
     summary3: [
-      { title: 'Completed Projects', value: String(statusCounts.completed), color: '#3B82F6' },
-      { title: 'On Track Projects', value: String(statusCounts.onTrack), color: '#10B981' },
-      { title: 'Delayed Project', value: String(statusCounts.delayed), color: '#EF4444' },
+      { title: 'Completed Projects', value: String(statusCounts.completed), color: '#3B82F6', icon: 'completed', trend: [2, 2, 3, 3, 4, 4, 4] },
+      { title: 'On Track Project', value: String(statusCounts.onTrack), color: '#10B981', icon: 'ontrack', trend: [8, 8, 9, 9, 9, 9, 9] },
+      { title: 'Delayed Project', value: String(statusCounts.delayed), color: '#EF4444', icon: 'delayed', trend: [1, 1, 1, 1, 1, 1, 1] },
     ],
     projectTimeline: {
       years: years.map(String),
@@ -597,6 +583,131 @@ function businessDashboardModel(
       program: hasProgram,
       budgeting: budgetingSectors.length > 0 || hasAnyBudgetMonth,
     },
+  };
+}
+
+function generatePeriodTimeline(
+  rows: Array<Record<string, unknown>>,
+  period: 'weekly' | 'monthly' | 'yearly',
+): { labels: string[]; completed: number[]; onTrack: number[]; delayed: number[] } {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  if (period === 'yearly') {
+    // Last 3 years
+    const yearSpan = 3;
+    const years: number[] = [];
+    for (let y = currentYear - yearSpan + 1; y <= currentYear; y++) years.push(y);
+
+    const byYear: Array<{ completed: number; onTrack: number; delayed: number }> = years.map(() => ({
+      completed: 0,
+      onTrack: 0,
+      delayed: 0,
+    }));
+
+    const yearIndex = new Map(years.map((y, i) => [y, i] as const));
+
+    for (const r of rows) {
+      const start = parseTimelineDate(r.new_startdate);
+      const end = parseTimelineDate(r.new_enddate) ?? start;
+      if (!start || !end) continue;
+
+      const startYear = start.getFullYear();
+      const endYear = end.getFullYear();
+      const b = businessProjectStatusBucket(r);
+
+      for (let y = startYear; y <= endYear; y += 1) {
+        const idx = yearIndex.get(y);
+        if (idx === undefined) continue;
+        if (b === 'completed') byYear[idx].completed += 1;
+        else if (b === 'onTrack') byYear[idx].onTrack += 1;
+        else if (b === 'delayed') byYear[idx].delayed += 1;
+      }
+    }
+
+    const totals = byYear.map((b) => b.completed + b.onTrack + b.delayed);
+    const maxY = Math.max(1, ...totals);
+
+    return {
+      labels: years.map(String),
+      completed: byYear.map((b) => Math.round((b.completed / maxY) * 50)),
+      onTrack: byYear.map((b) => Math.round((b.onTrack / maxY) * 50)),
+      delayed: byYear.map((b) => Math.round((b.delayed / maxY) * 50)),
+    };
+  }
+
+  if (period === 'monthly') {
+    // 12 months of current year
+    const months: string[] = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const byMonth: Array<{ completed: number; onTrack: number; delayed: number }> = months.map(() => ({
+      completed: 0,
+      onTrack: 0,
+      delayed: 0,
+    }));
+
+    for (const r of rows) {
+      const start = parseTimelineDate(r.new_startdate);
+      if (!start || start.getFullYear() !== currentYear) continue;
+
+      const b = businessProjectStatusBucket(r);
+      const m = start.getMonth();
+
+      if (b === 'completed') byMonth[m].completed += 1;
+      else if (b === 'onTrack') byMonth[m].onTrack += 1;
+      else if (b === 'delayed') byMonth[m].delayed += 1;
+    }
+
+    const totals = byMonth.map((b) => b.completed + b.onTrack + b.delayed);
+    const maxY = Math.max(1, ...totals);
+
+    return {
+      labels: months,
+      completed: byMonth.map((b) => Math.round((b.completed / maxY) * 50)),
+      onTrack: byMonth.map((b) => Math.round((b.onTrack / maxY) * 50)),
+      delayed: byMonth.map((b) => Math.round((b.delayed / maxY) * 50)),
+    };
+  }
+
+  // weekly - show current week ± 5 weeks (10 weeks total)
+  const yearStart = new Date(currentYear, 0, 1);
+  const dayOfYearNow = Math.floor((now.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000));
+  const currentWeek = Math.min(51, Math.floor(dayOfYearNow / 7));
+
+  const weekSpan = 5;
+  const weekStart = Math.max(0, currentWeek - weekSpan);
+  const weekEnd = Math.min(51, currentWeek + weekSpan);
+  const weekRange: number[] = [];
+  for (let w = weekStart; w <= weekEnd; w++) weekRange.push(w);
+
+  const allByWeek: Array<{ completed: number; onTrack: number; delayed: number }> = Array(52)
+    .fill(null)
+    .map(() => ({ completed: 0, onTrack: 0, delayed: 0 }));
+
+  for (const r of rows) {
+    const start = parseTimelineDate(r.new_startdate);
+    if (!start || start.getFullYear() !== currentYear) continue;
+
+    const b = businessProjectStatusBucket(r);
+    // Calculate week number (0-51) by counting days from Jan 1
+    const dayOfYear = Math.floor((start.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000));
+    const weekNum = Math.max(0, Math.min(51, Math.floor(dayOfYear / 7)));
+
+    if (b === 'completed') allByWeek[weekNum].completed += 1;
+    else if (b === 'onTrack') allByWeek[weekNum].onTrack += 1;
+    else if (b === 'delayed') allByWeek[weekNum].delayed += 1;
+  }
+
+  const byWeek = weekRange.map((w) => allByWeek[w]);
+  const weekLabels = weekRange.map((w) => `W${w + 1}`);
+
+  const totals = byWeek.map((b) => b.completed + b.onTrack + b.delayed);
+  const maxY = Math.max(1, ...totals);
+
+  return {
+    labels: weekLabels,
+    completed: byWeek.map((b) => Math.round((b.completed / maxY) * 50)),
+    onTrack: byWeek.map((b) => Math.round((b.onTrack / maxY) * 50)),
+    delayed: byWeek.map((b) => Math.round((b.delayed / maxY) * 50)),
   };
 }
 
@@ -2719,22 +2830,22 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
 
                   <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
                     {showCalendarMom ? (
-                      <section className="bg-white rounded-xl p-3">
-                        <p className="text-[16px] font-bold text-primary mb-2">Calendar {'>'} MOM</p>
-                        <table className={`${enj.table} w-full text-[10px]`}>
+                      <section className="bg-transparent rounded-xl p-0">
+                        <p className="text-[16px] font-bold text-primary mb-3">Calendar {'>'} MOM</p>
+                        <table className={`${enj.table} w-full text-[10px] bg-transparent border-separate`}>
                           <thead>
-                            <tr>
-                              <th>Meeting Title</th>
-                              <th>Category</th>
-                              <th>Project Name</th>
-                              <th>Date</th>
-                              <th className="text-right">Join</th>
+                            <tr className="bg-gray-50">
+                              <th className="px-3 py-2 bg-gray-50 border-0 rounded-l-[11.9px]">Meeting Title</th>
+                              <th className="px-3 py-2 bg-gray-50 border-0">Category</th>
+                              <th className="px-3 py-2 bg-gray-50 border-0">Project Name</th>
+                              <th className="px-3 py-2 bg-gray-50 border-0">Date</th>
+                              <th className="text-right px-3 py-2 bg-gray-50 border-0 rounded-r-[11.9px]">Join</th>
                             </tr>
                           </thead>
                           <tbody>
                             {teamCalendarFilteredMeetings.length === 0 ? (
-                              <tr>
-                                <td colSpan={5} className="px-3 py-6 text-center text-xs text-gray-500">
+                              <tr className="bg-transparent">
+                                <td colSpan={5} className="px-3 py-6 text-center text-xs text-gray-500 bg-transparent">
                                   No meetings for the selected project and date.
                                 </td>
                               </tr>
@@ -2742,8 +2853,8 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                               const join = String(mrow.new_meetinglink ?? '').trim();
                               const canOpen = /^https?:\/\//i.test(join);
                               return (
-                                <tr key={String(mrow.new_meetingdetailid ?? mrow.createdon)} className="border-b border-gray-100 text-[11px] text-gray-700">
-                                  <td className="px-3 py-3 font-semibold">
+                                <tr key={String(mrow.new_meetingdetailid ?? mrow.createdon)} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0 text-[11px] text-gray-700">
+                                  <td className="px-3 py-3 font-semibold bg-white border-0 rounded-l-[11.9px]">
                                     {canOpen ? (
                                       <a
                                         href={join}
@@ -2757,10 +2868,10 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                                       <span className="text-[#374151]">{String(mrow.new_meetingtitle ?? '—')}</span>
                                     )}
                                   </td>
-                                  <td className="px-3 py-3">{String(mrow.new_meetingcategory ?? '—')}</td>
-                                  <td className="px-3 py-3">{String(mrow.new_projectname ?? '—')}</td>
-                                  <td className="px-3 py-3 font-medium text-[#111827]">{teamFormatShortDate(mrow.new_meetingdate)}</td>
-                                  <td className="px-3 py-3 text-right text-[10px]">
+                                  <td className="px-3 py-3 bg-white border-0">{String(mrow.new_meetingcategory ?? '—')}</td>
+                                  <td className="px-3 py-3 bg-white border-0">{String(mrow.new_projectname ?? '—')}</td>
+                                  <td className="px-3 py-3 font-medium text-[#111827] bg-white border-0">{teamFormatShortDate(mrow.new_meetingdate)}</td>
+                                  <td className="px-3 py-3 text-right text-[10px] bg-white border-0 rounded-r-[11.9px]">
                                     {canOpen ? (
                                       <a
                                         href={join}
@@ -2901,43 +3012,43 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                   </button>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className={`${enj.table} w-full min-w-[860px]`}>
+                  <table className={`${enj.table} w-full min-w-[860px] bg-transparent border-separate`}>
                     <thead>
-                      <tr>
-                        <th>Project Name</th>
-                        <th>Task Name</th>
-                        <th>Priority</th>
-                        <th>Status</th>
-                        <th>Project Manager</th>
-                        <th>Milestone</th>
-                        <th>Timeline</th>
-                        <th>Progress</th>
+                      <tr className="bg-gray-50">
+                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0 rounded-l-[11.9px]">Project Name</th>
+                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Task Name</th>
+                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Priority</th>
+                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Status</th>
+                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Project Manager</th>
+                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Milestone</th>
+                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Timeline</th>
+                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0 rounded-r-[11.9px]">Progress</th>
                       </tr>
                     </thead>
                     <tbody>
                       {teamWorkspaceLoading && teamDashboardTasksTable.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-500">Loading tasks…</td>
+                        <tr className="bg-transparent">
+                          <td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-500 bg-transparent">Loading tasks…</td>
                         </tr>
                       ) : teamDashboardTasksTable.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-500">No tasks assigned to you.</td>
+                        <tr className="bg-transparent">
+                          <td colSpan={8} className="px-5 py-8 text-center text-sm text-gray-500 bg-transparent">No tasks assigned to you.</td>
                         </tr>
                       ) : teamDashboardTasksTable.slice(0, 6).map((row) => (
-                        <tr key={row.key}>
-                          <td className="px-3 py-2 text-gray-500">{row.project}</td>
-                          <td className="px-3 py-2 font-medium">{row.task}</td>
-                          <td className="px-3 py-2"><Badge label={row.priority} /></td>
-                          <td className="px-3 py-2"><Badge label={row.status} /></td>
-                          <td className="px-3 py-2">{row.pm}</td>
-                          <td className="px-3 py-2">{row.milestone}</td>
-                          <td className="px-3 py-2">
-                            <div className="text-[11px] leading-relaxed text-gray-500">
+                        <tr key={row.key} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                          <td className="px-2.5 py-3 text-[11px] text-gray-600 bg-white border-0 rounded-l-[11.9px]">{row.project}</td>
+                          <td className="px-2.5 py-3 text-[11px] font-medium text-gray-900 bg-white border-0">{row.task}</td>
+                          <td className="px-2.5 py-3 bg-white border-0"><Badge label={row.priority} /></td>
+                          <td className="px-2.5 py-3 bg-white border-0"><Badge label={row.status} /></td>
+                          <td className="px-2.5 py-3 text-[11px] text-gray-700 bg-white border-0">{row.pm}</td>
+                          <td className="px-2.5 py-3 text-[11px] text-gray-600 bg-white border-0">{row.milestone}</td>
+                          <td className="px-2.5 py-3 bg-white border-0">
+                            <div className="text-[11px] leading-relaxed text-gray-600">
                               <div><span className="text-gray-400">Start:</span> {row.start}</div>
                               <div><span className="text-gray-400">End:</span> {row.end}</div>
                             </div>
                           </td>
-                          <td className="px-3 py-2"><ProgressBar pct={row.pct} /></td>
+                          <td className="px-2.5 py-3 bg-white border-0 rounded-r-[11.9px]"><ProgressBar pct={row.pct} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -3007,6 +3118,11 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   const [newClients, setNewClients] = useState<New_clients[]>([]);
   const [timelinePeriod, setTimelinePeriod] = useState<'weekly' | 'monthly' | 'yearly'>('yearly');
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineStatusFilter, setTimelineStatusFilter] = useState<{ completed: boolean; onTrack: boolean; delayed: boolean }>({
+    completed: true,
+    onTrack: true,
+    delayed: true,
+  });
 
   const readTimelineProgramName = useCallback(
     (row: Record<string, unknown>) => resolveProjectProgramName(row, programIdToName),
@@ -3022,6 +3138,16 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
     () => businessDashboardModel(filteredProjectsForDash, programIdToName, dashboardMasterRows),
     [filteredProjectsForDash, programIdToName, dashboardMasterRows],
   );
+
+  const periodTimeline = useMemo(() => {
+    const result = generatePeriodTimeline(filteredProjectsForDash, timelinePeriod);
+    return {
+      years: result.labels,
+      completed: result.completed,
+      onTrack: result.onTrack,
+      delayed: result.delayed,
+    };
+  }, [filteredProjectsForDash, timelinePeriod]);
 
   const programProgressById = useMemo(() => {
     const acc = new Map<string, { sum: number; n: number }>();
@@ -3060,7 +3186,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
       })),
     [businessDash.categoryData],
   );
-  const budgetDonutSlices = useMemo(
+  // Budget donut for potential future use
+  useMemo(
     () =>
       businessDash.budgetData.segments.map((s) => {
         const nm = s.name.length > 14 ? `${s.name.slice(0, 13)}…` : s.name;
@@ -3127,7 +3254,6 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   );
   const navItems = [
     { name: 'Dashboard', icon: <LayoutGrid size={16} /> },
-    { name: 'Portfolio', icon: <FolderOpen size={16} /> },
     { name: 'Pipeline', icon: <Briefcase size={16} /> },
     { name: 'Reports', icon: <TrendingUp size={16} /> },
     { name: 'Timeline', icon: <Calendar size={16} /> },
@@ -3544,18 +3670,18 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
               {portfolioPrograms.length > 0 && (
                 <section className="space-y-3">
-                  <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
-                    <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+                  <div className="overflow-x-auto bg-transparent">
+                    <table className={`${enj.tableBrand} min-w-[980px] text-xs bg-transparent border-separate`}>
                       <thead>
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">Program</th>
-                          <th className="px-3 py-2 font-semibold">KPI</th>
-                          <th className="px-3 py-2 font-semibold">Benefits</th>
-                          <th className="px-3 py-2 font-semibold">Budget</th>
-                          <th className="px-3 py-2 font-semibold">Program Manager</th>
-                          <th className="px-3 py-2 font-semibold">ROI</th>
-                          <th className="px-3 py-2 font-semibold">Start Date</th>
-                          <th className="px-3 py-2 font-semibold">Progress</th>
+                        <tr className="bg-gray-50">
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-l-[11.9px]">Program</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">KPI</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Benefits</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Budget</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program Manager</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">ROI</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Start Date</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-r-[11.9px]">Progress</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3590,8 +3716,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
 
                           return (
                             <Fragment key={pid || programName}>
-                              <tr className="border-t border-[#d7def0] bg-white">
-                                <td className="px-3 py-2 font-normal">
+                              <tr className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                                <td className="px-3 py-2 font-normal bg-white border-0 rounded-l-[11.9px]">
                                   <button
                                     type="button"
                                     className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
@@ -3602,18 +3728,18 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                     <span className="max-w-[18rem] truncate">{programName}</span>
                                   </button>
                                 </td>
-                                <td className="px-3 py-2">{readProgramString(row, ['new_kpi', 'crcf8_kpi'])}</td>
-                                <td className="px-3 py-2">{readProgramString(row, ['new_benefits', 'crcf8_benefit'])}</td>
-                                <td className="px-3 py-2"><TableBudgetDisplay value={readProgramString(row, ['new_budget', 'crcf8_budget'])} /></td>
-                                <td className="px-3 py-2">{readProgramString(row, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
-                                <td className="px-3 py-2">{readProgramString(row, ['new_roi', 'crcf8_roi'])}</td>
-                                <td className="px-3 py-2 whitespace-nowrap">
+                                <td className="px-3 py-2 bg-white border-0">{readProgramString(row, ['new_kpi', 'crcf8_kpi'])}</td>
+                                <td className="px-3 py-2 bg-white border-0">{readProgramString(row, ['new_benefits', 'crcf8_benefit'])}</td>
+                                <td className="px-3 py-2 bg-white border-0"><TableBudgetDisplay value={readProgramString(row, ['new_budget', 'crcf8_budget'])} /></td>
+                                <td className="px-3 py-2 bg-white border-0">{readProgramString(row, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                                <td className="px-3 py-2 bg-white border-0">{readProgramString(row, ['new_roi', 'crcf8_roi'])}</td>
+                                <td className="px-3 py-2 whitespace-nowrap bg-white border-0">
                                   <span className="inline-flex items-center gap-1">
                                     <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
                                     <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
                                   </span>
                                 </td>
-                                <td className="px-3 py-2 w-40">
+                                <td className="px-3 py-2 w-40 bg-white border-0 rounded-r-[11.9px]">
                                   <div className="flex items-center gap-2">
                                     <div className="enj-table-progress-track flex-1">
                                       <div
@@ -3631,15 +3757,15 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                               {isExpanded && (
                                 <>
                                   {programProjects.length === 0 ? (
-                                    <tr className="border-t border-gray-100 bg-white">
-                                      <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">
+                                    <tr className="bg-gray-50 border-0">
+                                      <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500 bg-gray-50 border-0">
                                         No projects found for this program.
                                       </td>
                                     </tr>
                                   ) : (
-                                    <tr className="border-t border-gray-100 bg-[#f9fafc]">
-                                      <td colSpan={8} className="px-3 py-2.5">
-                                        <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
+                                    <tr className="bg-gray-50 border-0">
+                                      <td colSpan={8} className="px-3 py-2.5 bg-gray-50 border-0">
+                                        <div className="overflow-x-auto bg-transparent">
                                           <table className={`${enj.table} min-w-[1140px] text-left text-[11px]`}>
                                             <thead>
                                               <tr>
@@ -3796,52 +3922,65 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
               </ul>
             </div>
           )}
-          <section className="grid grid-cols-1 gap-3 xl:grid-cols-12 xl:items-start">
-            <div className="space-y-3 xl:col-span-7">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {businessDash.summary3.map((card) => {
-                  const { Icon, iconWrap, iconClass } = businessSummaryCardTone(card.title);
-                  return (
-                    <div
-                      key={card.title}
-                      className="self-start bg-white rounded-xl p-0 shadow-sm chart-card min-h-0 flex flex-col border border-gray-100/90"
-                    >
-                      <div className="flex items-center justify-between gap-1.5 px-3 pt-2.5 pb-2 sm:px-4 sm:pt-3">
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <div
-                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${iconWrap}`}
-                          >
-                            <Icon className={iconClass} size={16} strokeWidth={2.2} />
-                          </div>
-                          <p className="min-w-0 text-[11px] font-semibold leading-snug text-gray-800">{card.title}</p>
+
+          {/* ── Main Dashboard Grid: Top Section (70% left, 30% right) ── */}
+          <section className="grid grid-cols-1 gap-2 lg:grid-cols-10 mb-2" style={{ minHeight: '510px' }}>
+
+            {/* ── LEFT COLUMN (60%) ── */}
+            <div className="lg:col-span-6 flex flex-col gap-2">
+
+              {/* Summary Cards (35% height) */}
+              <div className="flex-[0_0_auto] h-1/3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 h-full">
+                  {businessDash.summary3.map((card) => {
+                    const iconMap = {
+                      completed: <CheckSquare size={28} strokeWidth={1.5} />,
+                      ontrack: <Activity size={28} strokeWidth={1.5} />,
+                      delayed: <AlertCircle size={28} strokeWidth={1.5} />,
+                    };
+                    const icon = iconMap[card.icon as keyof typeof iconMap];
+                    const trend = card.trend || [];
+                    const maxTrend = Math.max(1, ...trend);
+                    return (
+                      <div key={card.title} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm flex flex-col justify-between">
+                        {/* Top: Icon and Value */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div style={{ color: card.color }} className="flex-shrink-0">{icon}</div>
+                          <p className="text-3xl font-bold text-gray-900">{card.value}</p>
                         </div>
-                        <p className="shrink-0 text-[34px] font-bold leading-none tabular-nums text-gray-900">{card.value}</p>
+
+                        {/* Title */}
+                        <p className="text-xs font-semibold text-gray-600 mb-3">{card.title}</p>
+
+                        {/* Sparkline */}
+                        <div className="flex-1 flex items-end justify-between gap-1 h-12 mb-2">
+                          {trend.map((val, idx) => (
+                            <div key={idx} className="flex-1 flex items-end justify-center">
+                              <div
+                                className="w-1.5 rounded-t"
+                                style={{
+                                  height: `${(val / maxTrend) * 100}%`,
+                                  backgroundColor: card.color,
+                                  minHeight: '2px'
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Trend text */}
+                        <p className="text-xs text-gray-500 text-center">No change from last week</p>
                       </div>
-                      <div className="h-px bg-gray-100" />
-                      <div className="flex items-center justify-between gap-1.5 px-3 py-2 sm:px-4 sm:pb-2.5">
-                        <svg viewBox="0 0 140 32" className="h-7 w-[5.5rem] shrink-0 text-left chart-svg" aria-hidden>
-                          <path
-                            d={BUSINESS_SUMMARY_STATIC_WAVE_D}
-                            fill="none"
-                            stroke={card.color}
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        <p className="min-w-0 max-w-[8.2rem] text-right text-[9px] font-medium leading-tight text-blue-800 sm:text-[10px]">
-                          No change from last week
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
 
+              {/* Project Timeline (65% height) */}
               {businessDash.has.timeline && (
-              <div
-                className="bg-white rounded-xl p-4 shadow-sm chart-card border border-gray-100/90 min-h-[24rem]"
-              >
+              <div className="flex-1 min-h-0">
+                <div className="bg-white rounded-xl p-4 shadow-sm chart-card border border-gray-100/90 h-full flex flex-col"
+                >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-sm font-bold text-gray-900">Project TimeLine</h2>
                   <div className="flex items-center gap-0.5 text-[10px] text-gray-500">
@@ -3860,27 +3999,45 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </div>
                 <div className="mb-1.5 flex flex-wrap items-center gap-4 text-[10px] text-gray-700">
-                  <span className="inline-flex items-center gap-1.5">
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={timelineStatusFilter.completed}
+                      onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, completed: e.target.checked }))}
+                      className="w-3 h-3 rounded"
+                    />
                     <span className="h-2 w-2 shrink-0 rounded-sm bg-[#10B981]" aria-hidden />
                     <span>Completed</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={timelineStatusFilter.delayed}
+                      onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, delayed: e.target.checked }))}
+                      className="w-3 h-3 rounded"
+                    />
                     <span className="h-2 w-2 shrink-0 rounded-sm bg-[#EF4444]" aria-hidden />
                     <span>Delayed</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
+                  </label>
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={timelineStatusFilter.onTrack}
+                      onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, onTrack: e.target.checked }))}
+                      className="w-3 h-3 rounded"
+                    />
                     <span className="h-2 w-2 shrink-0 rounded-sm bg-[#3B82F6]" aria-hidden />
                     <span>On Track</span>
-                  </span>
+                  </label>
                 </div>
                 {(() => {
-                  const tl = businessDash.projectTimelineNarrow;
+                  const tl = periodTimeline;
                   const nY = Math.max(1, tl.years.length);
                   const viewW = 600;
-                  const plotH = 186;
-                  const yBottom = 166;
-                  const yTop = 30;
-                  const yearY = 178;
+                  const plotH = 158;
+                  const yBottom = 141;
+                  const yTop = 25;
+                  const yearY = 151;
                   const xLeft = 44;
                   const xRight = 560;
                   const xAt = (i: number) =>
@@ -3888,7 +4045,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                   const yFor = (v: number) => yBottom - (v / 50) * (yBottom - yTop);
                   const stroke = { completed: '#10B981', delayed: '#EF4444', onTrack: '#3B82F6' } as const;
                   return (
-                <svg viewBox={`0 0 ${viewW} ${plotH}`} className="h-56 w-full max-w-full chart-svg" preserveAspectRatio="xMidYMid meet">
+                <svg viewBox={`0 0 ${viewW} ${plotH}`} className="h-48 w-full max-w-full chart-svg" preserveAspectRatio="xMidYMid meet">
                   {[0, 1, 2, 3, 4, 5, 6].map((k) => {
                     const y = yBottom - (k / 6) * (yBottom - yTop);
                     return (
@@ -3916,197 +4073,194 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                       </text>
                     );
                   })}
-                  <polyline
-                    fill="none"
-                    stroke={stroke.completed}
-                    strokeWidth="2"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    points={tl.completed.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
-                  />
-                  {tl.completed.map((v, i) => (
-                    <circle key={`c-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.completed} stroke="#fff" strokeWidth="1.2" />
-                  ))}
-                  <polyline
-                    fill="none"
-                    stroke={stroke.delayed}
-                    strokeWidth="2"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    points={tl.delayed.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
-                  />
-                  {tl.delayed.map((v, i) => (
-                    <circle key={`d-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.delayed} stroke="#fff" strokeWidth="1.2" />
-                  ))}
-                  <polyline
-                    fill="none"
-                    stroke={stroke.onTrack}
-                    strokeWidth="2"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                    points={tl.onTrack.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
-                  />
-                  {tl.onTrack.map((v, i) => (
-                    <circle key={`o-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.onTrack} stroke="#fff" strokeWidth="1.2" />
-                  ))}
+                  {timelineStatusFilter.completed && (
+                    <>
+                      <polyline
+                        fill="none"
+                        stroke={stroke.completed}
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        points={tl.completed.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
+                      />
+                      {tl.completed.map((v, i) => (
+                        <circle key={`c-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.completed} stroke="#fff" strokeWidth="1.2" />
+                      ))}
+                    </>
+                  )}
+                  {timelineStatusFilter.delayed && (
+                    <>
+                      <polyline
+                        fill="none"
+                        stroke={stroke.delayed}
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        points={tl.delayed.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
+                      />
+                      {tl.delayed.map((v, i) => (
+                        <circle key={`d-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.delayed} stroke="#fff" strokeWidth="1.2" />
+                      ))}
+                    </>
+                  )}
+                  {timelineStatusFilter.onTrack && (
+                    <>
+                      <polyline
+                        fill="none"
+                        stroke={stroke.onTrack}
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                        points={tl.onTrack.map((v, i) => `${xAt(i)},${yFor(v)}`).join(' ')}
+                      />
+                      {tl.onTrack.map((v, i) => (
+                        <circle key={`o-${i}`} cx={xAt(i)} cy={yFor(v)} r="3.2" fill={stroke.onTrack} stroke="#fff" strokeWidth="1.2" />
+                      ))}
+                    </>
+                  )}
                 </svg>
                   );
                 })()}
+                </div>
               </div>
               )}
             </div>
 
-            <div className="space-y-3 xl:col-span-5 min-h-0">
-              <DonutChartCard
-                title="Projects by progress"
-                ringWidth={42}
-                slices={progressDonutSlices}
-                centerText={String(businessDash.totalProjectCount)}
-                centerSubtext="projects"
-              />
+            {/* ── RIGHT COLUMN (40%) ── */}
+            <div className="lg:col-span-4 flex flex-col gap-2">
+              {/* Projects by Progress (50% height) */}
+              <div className="flex-1 min-h-0">
+                <DonutChartCard
+                  title="Projects by progress"
+                  ringWidth={40}
+                  slices={progressDonutSlices}
+                  centerText={String(businessDash.totalProjectCount)}
+                  centerSubtext="projects"
+                  className="h-full"
+                />
+              </div>
+
+              {/* Budget (50% height) */}
               {businessDash.has.budget && (
+              <div className="flex-1 min-h-0">
                 <DonutChartCard
                   title="Budget"
-                  ringWidth={70}
-                  slices={budgetDonutSlices}
+                  ringWidth={56}
+                  slices={businessDash.budgetData.segments.map((s) => {
+                    const nm = s.name.length > 12 ? `${s.name.slice(0, 11)}…` : s.name;
+                    return {
+                      label: s.name,
+                      value: s.value,
+                      color: s.color,
+                      displayName: s.name,
+                      labelLine: `${formatAEDShort(s.value)} ${nm}`,
+                    };
+                  })}
+                  className="h-full"
                 />
+              </div>
               )}
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            {/* ── KPI ── */}
-            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <h3 className="text-[11px] font-semibold text-gray-600 mb-1 shrink-0">KPI</h3>
+          {/* ── ROW 2: KPI, Categories, Projects Count (3 Equal Columns) ── */}
+          <section className="grid grid-cols-1 gap-2 lg:grid-cols-3 mb-2">
+            {/* KPI */}
+            <div className="flex flex-col h-[272px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 shrink-0">KPI</h3>
               {(() => {
                 const bars = businessDash.kpiPinnacle;
-                const VW = 320, VH = 175;
-                const CL = 32, CR = 18, CT = 8, CB = 18;
+                const VW = 255, VH = 170;
+                const CL = 32, CR = 8, CT = 8, CB = 28;
                 const chartW = VW - CL - CR, chartH = VH - CT - CB;
-                const chartX = CL, chartY = CT, chartBottom = CT + chartH;
+                const chartX = CL, chartBottom = CT + chartH;
                 const maxV = 100;
-                const yTicks = [0, 20, 40, 60, 80, 100];
+                const yTicks = [0, 25, 50, 75, 100];
                 const yCoord = (v: number) => chartBottom - (v / maxV) * chartH;
                 const slotW = chartW / Math.max(1, bars.length);
-                const barW = Math.max(14, Math.min(28, slotW * 0.55));
+                const barW = Math.max(12, Math.min(28, slotW * 0.55));
                 return (
-                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
-                    {yTicks.map((tick) => {
-                      const y = yCoord(tick);
-                      return (
-                        <g key={tick}>
-                          <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" strokeDasharray="3 3" />
-                          <text x={chartX - 4} y={y + 3} fontSize="7.5" fill="#9ca3af" textAnchor="end">{tick}%</text>
-                        </g>
-                      );
-                    })}
+                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full flex-1 chart-svg">
+                    {yTicks.map((tick) => (
+                      <g key={tick}>
+                        <line x1={chartX} x2={chartX + chartW} y1={yCoord(tick)} y2={yCoord(tick)} stroke="#e5e7eb" strokeWidth="0.6" />
+                        <text x={chartX - 4} y={yCoord(tick) + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
+                      </g>
+                    ))}
                     {bars.map((bar, i) => {
                       const v = Math.max(0, Math.min(100, bar.value));
                       const bH = Math.max(2, (v / maxV) * chartH);
                       const bX = chartX + i * slotW + (slotW - barW) / 2;
                       const bY = chartBottom - bH;
-                      const midBarY = bY + bH / 2;
                       return (
                         <g key={bar.label}>
-                          <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="3" className="chart-bar" />
-                          {bH >= 20 && (
-                            <text
-                              x={bX + barW / 2}
-                              y={midBarY}
-                              fontSize="7"
-                              fill="white"
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                              transform={`rotate(-90 ${bX + barW / 2} ${midBarY})`}
-                            >
-                              {bar.label}
-                            </text>
-                          )}
-                          <text x={bX + barW / 2} y={bY - 3} fontSize="7.5" fill="#6b7280" textAnchor="middle">{Math.round(v)}</text>
+                          <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="2" className="chart-bar" />
+                          <text x={bX + barW / 2} y={bY - 4} fontSize="8" fill="#374151" textAnchor="middle" fontWeight="bold">{Math.round(v)}%</text>
+                          <text x={bX + barW / 2} y={chartBottom + 16} fontSize="7.5" fill="#6b7280" textAnchor="middle" fontWeight="500">{bar.label}</text>
                         </g>
                       );
                     })}
-                    <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>SECTORS</text>
                   </svg>
                 );
               })()}
             </div>
 
+            {/* Project Categories */}
             {businessDash.has.category && (
               <DonutChartCard
-                title="Project categories"
-                ringWidth={42}
+                title="Project Categories"
+                ringWidth={40}
                 slices={categoryDonutSlices}
                 centerText={String(categoryDonutCenter)}
-                className="h-[280px]"
+                className="h-[272px] rounded-lg border border-gray-200 bg-gray-50 p-4"
               />
             )}
 
-            {/* ── Projects Count ── */}
-            {businessDash.has.program && (
-            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <h3 className="text-[11px] font-semibold text-gray-600 mb-1 shrink-0">Projects Count</h3>
+            {/* Projects Count */}
+            <div className="flex flex-col h-[272px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2 shrink-0">Projects Count</h3>
               {(() => {
-                const bars = businessDash.projectCounts;
-                const VW = 320, VH = 160;
-                const CL = 28, CR = 18, CT = 8, CB = 18;
+                const bars = businessDash.projectCounts.slice(0, 5);
+                const VW = 255, VH = 170;
+                const CL = 32, CR = 8, CT = 8, CB = 28;
                 const chartW = VW - CL - CR, chartH = VH - CT - CB;
-                const chartX = CL, chartY = CT, chartBottom = CT + chartH;
-                const maxV = Math.max(1, businessDash.projectCountMax);
-                const tickStep = Math.max(1, Math.ceil(maxV / 5));
-                const niceMax = tickStep * 5;
-                const yTicks = [0, 1, 2, 3, 4, 5].map((t) => t * tickStep);
-                const yCoord = (v: number) => chartBottom - (v / niceMax) * chartH;
+                const chartX = CL, chartBottom = CT + chartH;
+                const maxV = 100;
+                const yTicks = [0, 25, 50, 75, 100];
+                const yCoord = (v: number) => chartBottom - (v / maxV) * chartH;
                 const slotW = chartW / Math.max(1, bars.length);
-                const barW = Math.max(14, Math.min(28, slotW * 0.55));
+                const barW = Math.max(12, Math.min(28, slotW * 0.55));
+                const maxCount = Math.max(1, ...bars.map(b => b.value));
                 return (
-                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full chart-svg">
-                    {yTicks.map((tick) => {
-                      const y = yCoord(tick);
-                      return (
-                        <g key={tick}>
-                          <line x1={chartX} x2={chartX + chartW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth="0.6" strokeDasharray="3 3" />
-                          <text x={chartX - 4} y={y + 3} fontSize="7.5" fill="#9ca3af" textAnchor="end">{tick}</text>
-                        </g>
-                      );
-                    })}
-                    {bars.length === 0 && <text x={chartX + chartW / 2} y={chartY + chartH / 2} textAnchor="middle" fontSize="9" fill="#d1d5db">No program data</text>}
+                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full flex-1 chart-svg">
+                    {yTicks.map((tick) => (
+                      <g key={tick}>
+                        <line x1={chartX} x2={chartX + chartW} y1={yCoord(tick)} y2={yCoord(tick)} stroke="#e5e7eb" strokeWidth="0.6" />
+                        <text x={chartX - 4} y={yCoord(tick) + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
+                      </g>
+                    ))}
                     {bars.map((bar, i) => {
-                      const v = Math.max(0, bar.value);
-                      const bH = Math.max(2, (v / niceMax) * chartH);
+                      const v = Math.max(0, Math.min(100, (bar.value / maxCount) * 100));
+                      const bH = Math.max(2, (v / maxV) * chartH);
                       const bX = chartX + i * slotW + (slotW - barW) / 2;
                       const bY = chartBottom - bH;
-                      const midBarY = bY + bH / 2;
                       return (
                         <g key={bar.label}>
-                          <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="3" className="chart-bar" />
-                          {bH >= 20 && (
-                            <text
-                              x={bX + barW / 2}
-                              y={midBarY}
-                              fontSize="7"
-                              fill="white"
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                              transform={`rotate(-90 ${bX + barW / 2} ${midBarY})`}
-                            >
-                              {bar.label}
-                            </text>
-                          )}
-                          <text x={bX + barW / 2} y={bY - 3} fontSize="7.5" fill="#6b7280" textAnchor="middle">{v}</text>
+                          <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="2" className="chart-bar" />
+                          <text x={bX + barW / 2} y={bY - 4} fontSize="8" fill="#374151" textAnchor="middle" fontWeight="bold">{bar.value}</text>
+                          <text x={bX + barW / 2} y={chartBottom + 16} fontSize="7.5" fill="#6b7280" textAnchor="middle" fontWeight="500">{bar.label}</text>
                         </g>
                       );
                     })}
-                    <text x={VW - 6} y={chartY + chartH / 2} fontSize="7" fill="#9ca3af" textAnchor="middle" transform={`rotate(90 ${VW - 6} ${chartY + chartH / 2})`}>SECTORS</text>
                   </svg>
                 );
               })()}
             </div>
-            )}
           </section>
 
+          {/* ── ROW 2: Actual VS Planned & Deviation (2 Equal Columns) ── */}
           {businessDash.has.budgeting && (
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <section className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {/* ── Actual VS Planned ── */}
             <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
               <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
@@ -4226,18 +4380,18 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
-                <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+              <div className="overflow-x-auto bg-transparent">
+                <table className={`${enj.tableBrand} min-w-[980px] text-xs bg-transparent border-separate`}>
                   <thead>
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Program</th>
-                      <th className="px-3 py-2 font-semibold">KPI</th>
-                      <th className="px-3 py-2 font-semibold">Benefits</th>
-                      <th className="px-3 py-2 font-semibold">Budget</th>
-                      <th className="px-3 py-2 font-semibold">Program Manager</th>
-                      <th className="px-3 py-2 font-semibold">ROI</th>
-                      <th className="px-3 py-2 font-semibold">Start Date</th>
-                      <th className="px-3 py-2 font-semibold">Progress</th>
+                    <tr className="bg-gray-50">
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-l-[11.9px]">Program</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">KPI</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Benefits</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Budget</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program Manager</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">ROI</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Start Date</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-r-[11.9px]">Progress</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4272,8 +4426,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
 
                       return (
                         <Fragment key={pid || programName}>
-                          <tr className="border-t border-[#d7def0] bg-white">
-                            <td className="px-3 py-2 font-normal">
+                          <tr className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                            <td className="px-3 py-2 font-normal bg-white border-0 rounded-l-[11.9px]">
                               <button
                                 type="button"
                                 className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
@@ -4284,18 +4438,18 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                 <span className="max-w-[18rem] truncate">{programName}</span>
                               </button>
                             </td>
-                            <td className="px-3 py-2">{readProgramString(row, ['new_kpi', 'crcf8_kpi'])}</td>
-                            <td className="px-3 py-2">{readProgramString(row, ['new_benefits', 'crcf8_benefit'])}</td>
-                            <td className="px-3 py-2"><TableBudgetDisplay value={readProgramString(row, ['new_budget', 'crcf8_budget'])} /></td>
-                            <td className="px-3 py-2">{readProgramString(row, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
-                            <td className="px-3 py-2">{readProgramString(row, ['new_roi', 'crcf8_roi'])}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">
+                            <td className="px-3 py-2 bg-white border-0">{readProgramString(row, ['new_kpi', 'crcf8_kpi'])}</td>
+                            <td className="px-3 py-2 bg-white border-0">{readProgramString(row, ['new_benefits', 'crcf8_benefit'])}</td>
+                            <td className="px-3 py-2 bg-white border-0"><TableBudgetDisplay value={readProgramString(row, ['new_budget', 'crcf8_budget'])} /></td>
+                            <td className="px-3 py-2 bg-white border-0">{readProgramString(row, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                            <td className="px-3 py-2 bg-white border-0">{readProgramString(row, ['new_roi', 'crcf8_roi'])}</td>
+                            <td className="px-3 py-2 whitespace-nowrap bg-white border-0">
                               <span className="inline-flex items-center gap-1">
                                 <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
                                 <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
                               </span>
                             </td>
-                            <td className="px-3 py-2 w-40">
+                            <td className="px-3 py-2 w-40 bg-white border-0 rounded-r-[11.9px]">
                               <div className="flex items-center gap-2">
                                 <div className="enj-table-progress-track flex-1">
                                   <div
@@ -4313,15 +4467,15 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                           {isExpanded && (
                             <>
                               {programProjects.length === 0 ? (
-                                <tr className="border-t border-gray-100 bg-white">
-                                  <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">
+                                <tr className="bg-gray-50 border-0">
+                                  <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500 bg-gray-50 border-0">
                                     No projects found for this program.
                                   </td>
                                 </tr>
                               ) : (
-                                <tr className="border-t border-gray-100 bg-[#f9fafc]">
-                                  <td colSpan={8} className="px-3 py-2.5">
-                                    <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
+                                <tr className="bg-gray-50 border-0">
+                                  <td colSpan={8} className="px-3 py-2.5 bg-gray-50 border-0">
+                                    <div className="overflow-x-auto bg-transparent">
                                       <table className={`${enj.table} min-w-[1140px] text-left text-xs`}>
                                         <thead>
                                           <tr>
@@ -5598,32 +5752,32 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   </section>
 
                   <section className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-3 mt-3">
-                    <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
-                      <table className={`${enj.tableBrand} w-full min-w-[760px] text-xs`}>
+                    <div className="overflow-x-auto bg-transparent">
+                      <table className={`${enj.tableBrand} w-full min-w-[760px] text-xs bg-transparent border-separate`}>
                         <thead>
-                          <tr>
-                            <th scope="col">Program Name</th>
-                            <th scope="col">Benefits</th>
-                            <th scope="col">Project Manager</th>
-                            <th scope="col">Budgets</th>
-                            <th scope="col">KPI</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Progress</th>
-                            <th scope="col" className="w-[4.25rem] text-center">
+                          <tr className="bg-gray-50">
+                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0 rounded-l-[11.9px]">Program Name</th>
+                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Benefits</th>
+                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Project Manager</th>
+                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Budgets</th>
+                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">KPI</th>
+                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Status</th>
+                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Progress</th>
+                            <th scope="col" className="w-[4.25rem] text-center px-4 py-3 bg-gray-50 border-0 rounded-r-[11.9px]">
                               Action
                             </th>
                           </tr>
                         </thead>
                         <tbody>
                           {programLoading ? (
-                            <tr>
-                              <td className="px-4 py-6 text-center text-sm text-[#6B7280]" colSpan={8}>
+                            <tr className="bg-transparent">
+                              <td className="px-4 py-6 text-center text-sm text-[#6B7280] bg-transparent" colSpan={8}>
                                 Loading programs...
                               </td>
                             </tr>
                           ) : programRows.length === 0 ? (
-                            <tr>
-                              <td className="px-4 py-6 text-center text-sm text-[#6B7280]" colSpan={8}>
+                            <tr className="bg-transparent">
+                              <td className="px-4 py-6 text-center text-sm text-[#6B7280] bg-transparent" colSpan={8}>
                                 No programs found.
                               </td>
                             </tr>
@@ -5647,8 +5801,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                             const programDisplayName = displayText(programColumns.name ?? 'new_name', ['new_name']);
 
                             return (
-                              <tr key={id}>
-                                <td>
+                              <tr key={id} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                                <td className="px-4 py-3 bg-white border-0 rounded-l-[11.9px]">
                                   <button
                                     type="button"
                                     className={enj.tableLink}
@@ -5658,18 +5812,18 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                     {programDisplayName}
                                   </button>
                                 </td>
-                                <td>{displayText(programColumns.benefits, ['new_benefits'])}</td>
-                                <td>{displayText(programColumns.manager, ['new_programmanager'])}</td>
-                                <td>
+                                <td className="px-4 py-3 bg-white border-0">{displayText(programColumns.benefits, ['new_benefits'])}</td>
+                                <td className="px-4 py-3 bg-white border-0">{displayText(programColumns.manager, ['new_programmanager'])}</td>
+                                <td className="px-4 py-3 bg-white border-0">
                                   <TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} />
                                 </td>
-                                <td>{displayText(programColumns.kpi, ['new_kpi'])}</td>
-                                <td>
+                                <td className="px-4 py-3 bg-white border-0">{displayText(programColumns.kpi, ['new_kpi'])}</td>
+                                <td className="px-4 py-3 bg-white border-0">
                                   <span className={`enj-table-status ${programTableStatusBadgeClass(statusLabel)}`}>
                                     {statusLabel}
                                   </span>
                                 </td>
-                                <td className="min-w-[7.5rem]">
+                                <td className="min-w-[7.5rem] px-4 py-3 bg-white border-0">
                                   {Number.isFinite(progressPct) ? (
                                     <div className="flex min-w-[6.5rem] max-w-[9rem] items-center gap-2">
                                       <div className="enj-table-progress-track min-w-[3rem] flex-1">
@@ -5684,7 +5838,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                     '-'
                                   )}
                                 </td>
-                                <td className="text-center">
+                                <td className="text-center px-4 py-3 bg-white border-0 rounded-r-[11.9px]">
                                   <button
                                     type="button"
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] text-[#6B7280] shadow-sm transition-colors hover:bg-[#F9FAFB]"
@@ -5699,7 +5853,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                           })}
                         </tbody>
                       </table>
-                      <div className="border-t border-gray-100 px-3 py-2">
+                      <div className="px-3 py-2">
                         <PagerBar
                           page={programListPage}
                           pageSize={PROGRAM_LIST_PAGE_SIZE}
@@ -5855,18 +6009,18 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
               {pagedProgramPortfolioRows.length > 0 && (
                 <section className="space-y-3">
-                  <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
-                    <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+                  <div className="overflow-x-auto bg-transparent">
+                    <table className={`${enj.tableBrand} min-w-[980px] text-xs bg-transparent border-separate`}>
                       <thead>
-                        <tr>
-                          <th className="px-3 py-2 font-semibold">Program</th>
-                          <th className="px-3 py-2 font-semibold">KPI</th>
-                          <th className="px-3 py-2 font-semibold">Benefits</th>
-                          <th className="px-3 py-2 font-semibold">Budget</th>
-                          <th className="px-3 py-2 font-semibold">Program Manager</th>
-                          <th className="px-3 py-2 font-semibold">ROI</th>
-                          <th className="px-3 py-2 font-semibold">Start Date</th>
-                          <th className="px-3 py-2 font-semibold">Progress</th>
+                        <tr className="bg-gray-50">
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-l-[11.9px]">Program</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">KPI</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Benefits</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Budget</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program Manager</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">ROI</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Start Date</th>
+                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-r-[11.9px]">Progress</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -5902,8 +6056,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
                           return (
                             <Fragment key={pid || programName}>
-                              <tr className="border-t border-[#d7def0] bg-white">
-                                <td className="px-3 py-2 font-normal">
+                              <tr className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                                <td className="px-3 py-2 font-normal bg-white border-0 rounded-l-[11.9px]">
                                   <button
                                     type="button"
                                     className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
@@ -5914,18 +6068,18 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                     <span className="max-w-[18rem] truncate">{programName}</span>
                                   </button>
                                 </td>
-                                <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
-                                <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
-                                <td className="px-3 py-2"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
-                                <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
-                                <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
-                                <td className="px-3 py-2 whitespace-nowrap">
+                                <td className="px-3 py-2 bg-white border-0">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
+                                <td className="px-3 py-2 bg-white border-0">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
+                                <td className="px-3 py-2 bg-white border-0"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
+                                <td className="px-3 py-2 bg-white border-0">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                                <td className="px-3 py-2 bg-white border-0">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
+                                <td className="px-3 py-2 whitespace-nowrap bg-white border-0">
                                   <span className="inline-flex items-center gap-1">
                                     <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
                                     <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
                                   </span>
                                 </td>
-                                <td className="px-3 py-2 w-40">
+                                <td className="px-3 py-2 w-40 bg-white border-0 rounded-r-[11.9px]">
                                   <div className="flex items-center gap-2">
                                     <div className="enj-table-progress-track flex-1">
                                       <div className="enj-table-progress-fill" style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }} />
@@ -5937,13 +6091,13 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                               {isExpanded && (
                                 <>
                                   {programProjects.length === 0 ? (
-                                    <tr className="border-t border-gray-100 bg-white">
-                                      <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">No projects found for this program.</td>
+                                    <tr className="bg-gray-50 border-0">
+                                      <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500 bg-gray-50 border-0">No projects found for this program.</td>
                                     </tr>
                                   ) : (
-                                    <tr className="border-t border-gray-100 bg-[#f9fafc]">
-                                      <td colSpan={8} className="px-3 py-2.5">
-                                        <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
+                                    <tr className="bg-gray-50 border-0">
+                                      <td colSpan={8} className="px-3 py-2.5 bg-gray-50 border-0">
+                                        <div className="overflow-x-auto bg-transparent">
                                           <table className={`${enj.table} min-w-[1140px] text-left text-[11px]`}>
                                             <thead>
                                               <tr>
@@ -6395,18 +6549,18 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   View All
                 </button>
               </div>
-              <div className="overflow-x-auto rounded-lg border border-[#d6dbe8] bg-white shadow-sm">
-                <table className={`${enj.tableBrand} min-w-[980px] text-xs`}>
+              <div className="overflow-x-auto bg-transparent">
+                <table className={`${enj.tableBrand} min-w-[980px] text-xs bg-transparent border-separate`}>
                   <thead>
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Program</th>
-                      <th className="px-3 py-2 font-semibold">KPI</th>
-                      <th className="px-3 py-2 font-semibold">Benefits</th>
-                      <th className="px-3 py-2 font-semibold">Budget</th>
-                      <th className="px-3 py-2 font-semibold">Program Manager</th>
-                      <th className="px-3 py-2 font-semibold">ROI</th>
-                      <th className="px-3 py-2 font-semibold">Start Date</th>
-                      <th className="px-3 py-2 font-semibold">Progress</th>
+                    <tr className="bg-gray-50">
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-l-[11.9px]">Program</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">KPI</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Benefits</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Budget</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program Manager</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">ROI</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Start Date</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-r-[11.9px]">Progress</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6442,8 +6596,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
                       return (
                         <Fragment key={pid || programName}>
-                          <tr className="border-t border-[#d7def0] bg-white">
-                            <td className="px-3 py-2 font-normal">
+                          <tr className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                            <td className="px-3 py-2 font-normal bg-white border-0 rounded-l-[11.9px]">
                               <button
                                 type="button"
                                 className={`inline-flex items-center gap-1.5 text-left ${enj.tableLink}`}
@@ -6454,18 +6608,18 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                 <span className="max-w-[18rem] truncate">{programName}</span>
                               </button>
                             </td>
-                            <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
-                            <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
-                            <td className="px-3 py-2"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
-                            <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
-                            <td className="px-3 py-2">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">
+                            <td className="px-3 py-2 bg-white border-0">{readProgramPortfolioText(row, programColumns.kpi, ['new_kpi', 'crcf8_kpi'])}</td>
+                            <td className="px-3 py-2 bg-white border-0">{readProgramPortfolioText(row, programColumns.benefits, ['new_benefits', 'crcf8_benefit'])}</td>
+                            <td className="px-3 py-2 bg-white border-0"><TableBudgetDisplay value={getProgramBudgetDisplay(row) || '-'} /></td>
+                            <td className="px-3 py-2 bg-white border-0">{readProgramPortfolioText(row, programColumns.manager, ['new_programmanager', 'new_ownername', 'owneridname'])}</td>
+                            <td className="px-3 py-2 bg-white border-0">{readProgramPortfolioText(row, programColumns.roi, ['new_roi', 'crcf8_roi'])}</td>
+                            <td className="px-3 py-2 whitespace-nowrap bg-white border-0">
                               <span className="inline-flex items-center gap-1">
                                 <Calendar size={12} className="shrink-0 text-[#9CA3AF]" />
                                 <span className="font-medium text-[#111827]">{formatTimelineDateLabel(start)}</span>
                               </span>
                             </td>
-                            <td className="px-3 py-2 w-40">
+                            <td className="px-3 py-2 w-40 bg-white border-0 rounded-r-[11.9px]">
                               <div className="flex items-center gap-2">
                                 <div className="enj-table-progress-track flex-1">
                                   <div className="enj-table-progress-fill" style={{ width: `${Math.max(0, Math.min(100, pPct))}%` }} />
@@ -6478,13 +6632,13 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                           {isExpanded && (
                             <>
                               {programProjects.length === 0 ? (
-                                <tr className="border-t border-gray-100 bg-white">
-                                  <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500">No projects found for this program.</td>
+                                <tr className="bg-gray-50 border-0">
+                                  <td colSpan={8} className="px-3 py-3 text-[11px] text-gray-500 bg-gray-50 border-0">No projects found for this program.</td>
                                 </tr>
                               ) : (
-                                <tr className="border-t border-gray-100 bg-[#f9fafc]">
-                                  <td colSpan={8} className="px-3 py-2.5">
-                                    <div className="overflow-x-auto rounded-md border border-[#E5E7EB] bg-white">
+                                <tr className="bg-gray-50 border-0">
+                                  <td colSpan={8} className="px-3 py-2.5 bg-gray-50 border-0">
+                                    <div className="overflow-x-auto bg-transparent">
                                       <table className={`${enj.table} min-w-[1140px] text-left text-[11px]`}>
                                         <thead>
                                           <tr>
@@ -9300,8 +9454,6 @@ export default function App() {
             transition={{ duration: 0.8, ease: 'easeOut' }}
             className="relative w-full h-full max-w-xl bg-white/30 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl border border-white/20 flex flex-col"
           >
-            <div className="h-2 w-full bg-gradient-to-r from-primary via-secondary to-primary-container"></div>
-
             <div className="flex-1 relative group">
               <img
                 alt="Man and woman in traditional Saudi clothing looking forward"
@@ -9340,9 +9492,6 @@ export default function App() {
               </div>
             </div>
           </motion.div>
-
-          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full border-[1px] border-secondary/20 pointer-events-none"></div>
-          <div className="absolute -bottom-10 -left-10 w-48 h-48 rounded-full border-[1px] border-primary/10 pointer-events-none"></div>
         </div>
         </section>
       </main>

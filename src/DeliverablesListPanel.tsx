@@ -145,23 +145,23 @@ export function DeliverablesListPanel({
   const btnNew = `${enj.btn} ${enj.btnPrimary} px-4 ${variant === 'program' ? 'text-sm font-medium' : 'text-xs font-semibold'}`;
 
   const tableBlock = (
-    <div className="relative bg-transparent overflow-hidden">
+    <div className="relative bg-transparent overflow-hidden flex flex-col gap-0">
       {loading && <ScreenLoader className="min-h-[220px]" />}
       {!loading && (
-        <table className="w-full border-separate [border-spacing:0_8px] bg-transparent text-xs">
+        <table className={`${enj.table} w-full text-xs bg-transparent border-separate`}>
           <thead>
             <tr className="bg-[rgba(225,227,236,1)]">
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Project</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Project Manager</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Deliverables</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
-              {showActions && <th className="w-[5rem] text-center text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Actions</th>}
+              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Project</th>
+              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Project Manager</th>
+              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Deliverables</th>
+              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Status</th>
+              {showActions && <th className="w-[5rem] text-center px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr>
-                <td colSpan={colSpan} className="px-3 py-6 text-sm text-center">
+              <tr className="bg-transparent">
+                <td colSpan={colSpan} className="px-3 py-6 text-sm text-center bg-transparent">
                   {loadError ? (
                     <span className="text-rose-600">{loadError}</span>
                   ) : (
@@ -178,17 +178,17 @@ export function DeliverablesListPanel({
                   `row-${(pageSafe - 1) * PAGE_SIZE + rowIdx}`,
                 );
                 return (
-                  <tr key={rowKey} className="bg-white rounded-[11.9px] hover:shadow-md text-xs">
-                    <td className="px-3 py-2 font-normal text-[#4c556d]">{String(row.new_projectname ?? '—')}</td>
-                    <td className="px-3 py-2 font-normal text-[#4c556d]">{String(row.new_projectmanager ?? '—')}</td>
-                    <td className="px-3 py-2 font-normal text-[#4c556d] max-w-[240px] truncate" title={row.new_thedeliverablesinclude ?? row.new_notes ?? ''}>
+                  <tr key={rowKey} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0 text-xs">
+                    <td className="px-3 py-2 font-medium text-[#374151] bg-white border-0 rounded-l-[11.9px]">{String(row.new_projectname ?? '—')}</td>
+                    <td className="px-3 py-2 bg-white border-0">{String(row.new_projectmanager ?? '—')}</td>
+                    <td className="px-3 py-2 max-w-[240px] truncate bg-white border-0" title={row.new_thedeliverablesinclude ?? row.new_notes ?? ''}>
                       {String(row.new_thedeliverablesinclude ?? row.new_notes ?? '—')}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 bg-white border-0">
                       <span className={`enj-table-status ${statusBadgeClass(st)}`}>{st}</span>
                     </td>
                     {showActions && (
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 bg-white border-0 rounded-r-[11.9px]">
                         <div className="flex items-center justify-center gap-1.5">
                           {onEditRequest && (
                             <button
@@ -220,7 +220,7 @@ export function DeliverablesListPanel({
           </tbody>
         </table>
       )}
-      <div className="shrink-0 rounded-md border border-gray-200 bg-white px-3 py-2 shadow-sm">
+      <div className="shrink-0 px-3 py-2">
         <PagerBar
           page={showRange ? pageSafe : 1}
           pageSize={PAGE_SIZE}

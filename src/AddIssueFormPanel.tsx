@@ -234,6 +234,7 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
         );
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to save issue');
         onNotify?.('success', 'Issue saved successfully.');
+
       }
       onSaved?.();
       onClose();

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, ChevronDown, ClipboardList, FileSpreadsheet, HelpCircle, Inbox, LayoutGrid, LogOut, UserCircle } from 'lucide-react';
+import { Activity, ChevronDown, FileSpreadsheet, HelpCircle, Inbox, LayoutGrid, LogOut, UserCircle } from 'lucide-react';
 import { enj } from './ui/enjForm';
 import { NewUsersService, type NewUserRow } from './services/NewUsersService';
 import { SponsorsService } from './services/SponsorsService';
@@ -11,122 +11,6 @@ import { UserProfileModal } from './UserProfileModal';
 import { getSessionUserEmail } from './sessionUser';
 import { ThemeModeToggle } from './themeMode';
 import { LogoMark } from './LogoMark';
-type AuditLogEntry = {
-  id: string;
-  timestamp: string;
-  user: string;
-  role: string;
-  action: 'Login' | 'Logout' | 'Record Created' | 'Record Updated' | 'Record Deleted' | 'Role Assigned' | 'Role Revoked' | 'Settings Changed';
-  details: string;
-  status: 'Success' | 'Failed';
-};
-
-const AUDIT_SAMPLE: AuditLogEntry[] = [
-  { id: '1',  timestamp: '2026-04-29 09:02:11', user: 'admin@enjaz.sa',       role: 'Admin',    action: 'Login',           details: 'Admin portal login',                             status: 'Success' },
-  { id: '2',  timestamp: '2026-04-29 09:05:33', user: 'admin@enjaz.sa',       role: 'Admin',    action: 'Role Assigned',   details: 'Assigned Program Manager role to sara@enjaz.sa', status: 'Success' },
-  { id: '3',  timestamp: '2026-04-29 09:12:47', user: 'sara@enjaz.sa',        role: 'Program',  action: 'Login',           details: 'Program Manager portal login',                   status: 'Success' },
-  { id: '4',  timestamp: '2026-04-29 09:18:02', user: 'sara@enjaz.sa',        role: 'Program',  action: 'Record Created',  details: 'Created project: CRM Phase 2',                   status: 'Success' },
-  { id: '5',  timestamp: '2026-04-29 10:00:00', user: 'khalid@enjaz.sa',      role: 'Project',  action: 'Login',           details: 'Project Manager portal login',                   status: 'Success' },
-  { id: '6',  timestamp: '2026-04-29 10:04:15', user: 'khalid@enjaz.sa',      role: 'Project',  action: 'Record Created',  details: 'Created task: API Integration — Sprint 3',       status: 'Success' },
-  { id: '7',  timestamp: '2026-04-29 10:22:38', user: 'khalid@enjaz.sa',      role: 'Project',  action: 'Record Updated',  details: 'Updated issue status: ISS-045 → In Progress',    status: 'Success' },
-  { id: '8',  timestamp: '2026-04-29 11:00:09', user: 'reem@enjaz.sa',        role: 'Team',     action: 'Login',           details: 'Team Member portal login',                       status: 'Success' },
-  { id: '9',  timestamp: '2026-04-29 11:07:55', user: 'reem@enjaz.sa',        role: 'Team',     action: 'Record Updated',  details: 'Updated task: UI Design — status → Done',        status: 'Success' },
-  { id: '10', timestamp: '2026-04-29 11:30:00', user: 'unknown@external.com', role: '—',        action: 'Login',           details: 'Unrecognised user login attempt',                 status: 'Failed'  },
-  { id: '11', timestamp: '2026-04-29 12:05:21', user: 'admin@enjaz.sa',       role: 'Admin',    action: 'Role Revoked',    details: 'Revoked Business role from omar@enjaz.sa',       status: 'Success' },
-  { id: '12', timestamp: '2026-04-29 12:15:00', user: 'admin@enjaz.sa',       role: 'Admin',    action: 'Settings Changed','details': 'Dark mode preference updated for system',     status: 'Success' },
-  { id: '13', timestamp: '2026-04-29 13:00:44', user: 'nora@enjaz.sa',        role: 'Business', action: 'Login',           details: 'Business portal login',                          status: 'Success' },
-  { id: '14', timestamp: '2026-04-29 13:18:30', user: 'nora@enjaz.sa',        role: 'Business', action: 'Record Created',  details: 'Created feedback record for client: Aramco',     status: 'Success' },
-  { id: '15', timestamp: '2026-04-29 14:02:11', user: 'khalid@enjaz.sa',      role: 'Project',  action: 'Record Deleted',  details: 'Deleted draft task: Duplicate — Sprint 2',       status: 'Success' },
-];
-
-const ACTION_FILTER_OPTIONS = ['All', 'Login', 'Logout', 'Record Created', 'Record Updated', 'Record Deleted', 'Role Assigned', 'Role Revoked', 'Settings Changed'] as const;
-
-function actionBadgeClass(action: AuditLogEntry['action']): string {
-  if (action === 'Login' || action === 'Logout') return 'bg-sky-100 text-sky-700';
-  if (action === 'Record Created') return 'bg-emerald-100 text-emerald-700';
-  if (action === 'Record Updated') return 'bg-amber-100 text-amber-800';
-  if (action === 'Record Deleted') return 'bg-rose-100 text-rose-700';
-  if (action === 'Role Assigned' || action === 'Role Revoked') return 'bg-purple-100 text-purple-700';
-  return 'bg-gray-100 text-gray-600';
-}
-
-function AuditLogsPanel() {
-  const [filter, setFilter] = useState<string>('All');
-  const [search, setSearch] = useState('');
-
-  const filtered = AUDIT_SAMPLE.filter((e) => {
-    const matchAction = filter === 'All' || e.action === filter;
-    const q = search.toLowerCase();
-    const matchSearch = !q || e.user.toLowerCase().includes(q) || e.details.toLowerCase().includes(q) || e.action.toLowerCase().includes(q);
-    return matchAction && matchSearch;
-  });
-
-  return (
-    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className={enj.pageTitle}>Audit Logs</h2>
-          <p className="text-xs text-gray-500 mt-0.5">System activity trail — logins, record changes, and role assignments.</p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 items-center">
-        <input
-          type="text"
-          placeholder="Search user or action…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={`${enj.control} max-w-xs`}
-        />
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className={`${enj.control} max-w-[200px]`}
-        >
-          {ACTION_FILTER_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <span className="text-[11px] text-gray-400 ml-auto">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</span>
-      </div>
-
-      <div className="bg-transparent overflow-hidden">
-        <table className="w-full border-separate [border-spacing:0_8px] bg-transparent text-xs">
-          <thead>
-            <tr className="bg-[rgba(225,227,236,1)]">
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Timestamp</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">User</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Role</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Action</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Details</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-sm text-gray-500">No audit records match the selected filters.</td>
-              </tr>
-            ) : (
-              filtered.map((e) => (
-                <tr key={e.id} className="bg-white rounded-[11.9px] hover:shadow-md">
-                  <td className="px-3 py-2 font-mono text-[10px] text-[#4c556d]">{e.timestamp}</td>
-                  <td className="px-3 py-2 text-xs font-normal text-[#4c556d] max-w-[160px] truncate" title={e.user}>{e.user}</td>
-                  <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{e.role}</td>
-                  <td className="px-3 py-2 text-xs">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${actionBadgeClass(e.action)}`}>{e.action}</span>
-                  </td>
-                  <td className="px-3 py-2 text-xs font-normal text-[#4c556d] max-w-[300px] truncate" title={e.details}>{e.details}</td>
-                  <td className="px-3 py-2 text-xs">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${e.status === 'Success' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{e.status}</span>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 type AdminDashboardProps = {
   onLogout: () => void;
@@ -390,12 +274,10 @@ function OnboardingByMonthChart({ rows }: { rows: NewUserRow[] }) {
   );
 }
 
-type AdminNavId = 'Dashboard' | 'mm-reference' | 'audit-logs' | 'test';
+type AdminNavId = 'Dashboard' | 'mm-reference';
 
 const REFERENCE_DATA_SUB: { id: AdminNavId; label: string; icon: ReactNode }[] = [
   { id: 'mm-reference', label: 'Manage Data', icon: <FileSpreadsheet size={16} /> },
-  { id: 'audit-logs', label: 'Audit Logs', icon: <ClipboardList size={16} /> },
-  { id: 'test', label: 'Test Screen', icon: <Activity size={16} /> },
 ];
 
 export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
@@ -495,9 +377,7 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
         <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-5">
           {loading && <ScreenLoader overlay />}
-          {activeNav === 'audit-logs' ? (
-            <AuditLogsPanel />
-          ) : activeNav === 'mm-reference' ? (
+          {activeNav === 'mm-reference' ? (
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <ManageDataScreen
                 userRows={rows}
@@ -505,36 +385,6 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 onRefreshUsers={fetchUsers}
                 ownUserRecordId={sessionMatchedUser?.new_usersid ? String(sessionMatchedUser.new_usersid) : null}
               />
-            </div>
-          ) : activeNav === 'test' ? (
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-              <h2 className={enj.pageTitle}>Test Screen</h2>
-              <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Welcome to Test Screen</h3>
-                    <p className="text-sm text-gray-600">This is a test screen for admin testing and debugging purposes.</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <p className="text-xs font-semibold text-blue-900 mb-1">Test Card 1</p>
-                      <p className="text-lg font-bold text-blue-600">42</p>
-                    </div>
-                    <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                      <p className="text-xs font-semibold text-green-900 mb-1">Test Card 2</p>
-                      <p className="text-lg font-bold text-green-600">98</p>
-                    </div>
-                    <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                      <p className="text-xs font-semibold text-purple-900 mb-1">Test Card 3</p>
-                      <p className="text-lg font-bold text-purple-600">156</p>
-                    </div>
-                  </div>
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-xs font-mono text-gray-600">Current User: {currentUser.name}</p>
-                    <p className="text-xs font-mono text-gray-600 mt-1">Active Nav: {activeNav}</p>
-                  </div>
-                </div>
-              </div>
             </div>
           ) : (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">

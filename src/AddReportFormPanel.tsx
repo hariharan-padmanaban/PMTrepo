@@ -305,6 +305,7 @@ export function AddReportFormPanel({
     if (!runValidation(true) || saving) return;
     setSaving(true);
     const newId = (globalThis.crypto?.randomUUID?.() ?? `RPT-${Date.now()}`).toLowerCase();
+    const attachmentId = attachmentFiles.length > 0 ? `ATT-${Date.now()}` : undefined;
     const payload: Record<string, unknown> = {
       new_reportid: newId,
       new_report1: clip(reportTitle.trim(), 850),
@@ -319,41 +320,18 @@ export function AddReportFormPanel({
     };
     if (programMeta.id) payload.new_programid = clip(programMeta.id, 100);
     if (programMeta.statusForPayload) payload.new_programstatus = clip(programMeta.statusForPayload, 100);
+    if (attachmentId) payload.new_attachmentid = attachmentId;
     try {
       const res = await New_reportsService.create(
         payload as unknown as Parameters<typeof New_reportsService.create>[0],
       );
       if (!res.success) throw new Error(res.error?.message ?? 'Failed to create report in Dataverse');
-      const created = res.data;
-      const id = String(created?.new_reportid ?? newId);
 
-      if (attachmentFiles.length > 0) {
-        const { uploaded, errors: uploadErrs } = await uploadFilesForReport(id, attachmentFiles);
-        if (uploaded.length > 0) {
-          const tag = `Attached files: ${uploaded.join(', ')}`;
-          const baseRemark = remark.trim();
-          const merged = baseRemark ? `${baseRemark} | ${tag}` : tag;
-          const updateRes = await New_reportsService.update(id, { new_remark: clip(merged, 100) } as never);
-          if (!updateRes.success) onNotify?.('info', 'Report saved; could not append attachment list to remark.');
-        }
-        if (uploadErrs.length > 0 && uploaded.length === 0) {
-          onNotify?.(
-            'info',
-            `Report saved. No files uploaded — set VITE_REPORT_ATTACHMENTS_SITE_URL (SharePoint site) in .env. ${uploadErrs[0] ?? ''}`,
-          );
-        } else if (uploadErrs.length > 0) {
-          onNotify?.(
-            'info',
-            `Report saved. ${uploaded.length} file(s) uploaded; some failed: ${uploadErrs.slice(0, 2).join('; ')}`,
-          );
-        } else if (uploaded.length > 0) {
-          onNotify?.('success', 'Report saved and files uploaded to SharePoint.');
-        } else {
-          onNotify?.('success', 'Report saved.');
-        }
-      } else {
-        onNotify?.('success', 'Report saved.');
+      if (attachmentId && attachmentFiles.length > 0) {
+        void uploadFilesForReport(attachmentId, attachmentFiles);
       }
+
+      onNotify?.('success', 'Report saved successfully.');
       onClose();
     } catch (e) {
       onNotify?.('error', e instanceof Error ? e.message : 'Failed to save report');

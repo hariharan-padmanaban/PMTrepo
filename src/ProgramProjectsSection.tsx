@@ -622,13 +622,19 @@ export function ProgramProjectsSection({
         allowPrefixFallback = false,
       ) => {
         const targetCats = categoryCandidates.map((c) => normalizeCategory(c));
+        console.log(`🔍 getByCategory called with: ${categoryCandidates.join(', ')} → normalized: ${targetCats.join(', ')}`);
         const typedRows = masterRows.filter((r) => {
           const explicitType = String(r.new_categorytype ?? '').trim();
           if (!explicitType) return false;
-          return targetCats.includes(normalizeCategory(explicitType));
+          const matches = targetCats.includes(normalizeCategory(explicitType));
+          if (matches) console.log(`✅ Matched row: ${explicitType} → ${r.new_enjazmasterdata1}`);
+          return matches;
         });
+        console.log(`📊 Found ${typedRows.length} typed rows for ${categoryCandidates.join(', ')}`);
         if (typedRows.length > 0) {
-          return distinctSortedValues(typedRows.map((r) => String(r.new_enjazmasterdata1 ?? '').trim()));
+          const result = distinctSortedValues(typedRows.map((r) => String(r.new_enjazmasterdata1 ?? '').trim()));
+          console.log(`✅ Returning from typed rows: ${result.join(', ')}`);
+          return result;
         }
 
         return distinctSortedValues(
@@ -683,7 +689,7 @@ export function ProgramProjectsSection({
           ...getByCategory(['milestone'], MASTER_CATEGORY_CODES.MILESTONE),
         ]),
         sector: distinctSortedValues([
-          ...getByCategory(['sector', 'department'], MASTER_CATEGORY_CODES.SECTOR),
+          ...getByCategory(['Sector'], MASTER_CATEGORY_CODES.SECTOR),
         ]),
       });
 
@@ -945,6 +951,7 @@ export function ProgramProjectsSection({
           });
         }
       }
+
 
       setShowAddProjectForm(false);
       clearProjectForm();

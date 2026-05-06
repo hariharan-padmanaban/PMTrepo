@@ -446,33 +446,33 @@ export function AgileSprintPanel({
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden bg-transparent">
-            <table className="w-full border-separate [border-spacing:0_8px] bg-transparent text-xs">
+            <table className={`${enj.tableBrand} text-xs bg-transparent border-separate`}>
               <thead>
                 <tr className="bg-[rgba(225,227,236,1)]">
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Sprint Name</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Epic</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Type</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Issue Description</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Schedule</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Action</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Sprint Name</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Epic</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Type</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Issue Description</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Schedule</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {backlogIssues.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-28 text-center text-sm text-primary" colSpan={7}>No Issues Created for this Sprint</td>
+                  <tr className="bg-transparent">
+                    <td className="px-3 py-28 text-center text-sm text-primary bg-transparent" colSpan={7}>No Issues Created for this Sprint</td>
                   </tr>
                 ) : (
                   backlogIssues.map((i, idx) => (
-                    <tr key={`${String(i.new_sprintissueid ?? idx)}`} className="bg-white rounded-[11.9px] hover:shadow-md">
-                      <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{String(i.new_sprintname ?? '—')}</td>
-                      <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{String(i.new_epic ?? '—')}</td>
-                      <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{issueTypeLabel(i)}</td>
-                      <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{String(i.new_issuedescription ?? '—')}</td>
-                      <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{fmtDate(i.new_startdate)} - {fmtDate(i.new_enddate)}</td>
-                      <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{issueStatusLabel(i)}</td>
-                      <td className="px-3 py-2 text-xs">—</td>
+                    <tr key={`${String(i.new_sprintissueid ?? idx)}`} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                      <td className="px-3 py-2 bg-white border-0 rounded-l-[11.9px]">{String(i.new_sprintname ?? '—')}</td>
+                      <td className="px-3 py-2 bg-white border-0">{String(i.new_epic ?? '—')}</td>
+                      <td className="px-3 py-2 bg-white border-0">{issueTypeLabel(i)}</td>
+                      <td className="px-3 py-2 bg-white border-0">{String(i.new_issuedescription ?? '—')}</td>
+                      <td className="px-3 py-2 bg-white border-0">{fmtDate(i.new_startdate)} - {fmtDate(i.new_enddate)}</td>
+                      <td className="px-3 py-2 bg-white border-0">{issueStatusLabel(i)}</td>
+                      <td className="px-3 py-2 bg-white border-0 rounded-r-[11.9px]">—</td>
                     </tr>
                   ))
                 )}
@@ -609,36 +609,36 @@ export function AgileSprintPanel({
             </div>
           </div>
 
-          <div className="bg-transparent overflow-hidden">
-            <table className="w-full border-separate [border-spacing:0_8px] bg-transparent text-xs">
+          <div className="overflow-hidden bg-transparent">
+            <table className={`${enj.tableBrand} text-xs bg-transparent border-separate`}>
               <thead>
                 <tr className="bg-[rgba(225,227,236,1)]">
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Sprint Name</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Sprint Goal</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Schedule</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Progress Level</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Action</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Sprint Name</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Sprint Goal</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Schedule</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Progress Level</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
+                  <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleSprints.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-6 text-center text-gray-400" colSpan={6}>No sprints found.</td>
+                  <tr className="bg-transparent">
+                    <td className="px-3 py-6 text-center text-gray-400 bg-transparent" colSpan={6}>No sprints found.</td>
                   </tr>
                 ) : (
                   pagedSprints.map((s, idx) => {
                     const sprintName = String(s.new_sprintname ?? '').trim() || `Sprint ${idx + 1}`;
                     const pct = sprintProgressPct(s);
                     return (
-                      <tr key={`${sprintName}-${idx}`} className="bg-white rounded-[11.9px] hover:shadow-md">
-                        <td className="px-4 py-2">
-                          <button type="button" className="underline decoration-primary/30 underline-offset-2 text-xs font-normal text-[#4c556d]" onClick={() => setSelectedSprintName(sprintName)}>
+                      <tr key={`${sprintName}-${idx}`} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                        <td className="px-4 py-1.5">
+                          <button type="button" className="underline decoration-primary/30 underline-offset-2" onClick={() => setSelectedSprintName(sprintName)}>
                             {sprintName}
                           </button>
                         </td>
-                        <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{String(s.new_sprintgoal ?? '—')}</td>
-                        <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">
+                        <td className="px-3 py-1.5 text-primary">{String(s.new_sprintgoal ?? '—')}</td>
+                        <td className="px-3 py-1.5">
                           <div className="flex items-center gap-2 text-[11px]">
                             <div>
                               <p className="text-[10px] text-gray-500">Start Date</p>
@@ -650,7 +650,7 @@ export function AgileSprintPanel({
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-1.5">
                           <div className="flex items-center gap-2">
                             <div className="h-2 w-32 overflow-hidden rounded-full bg-gray-200 flex-shrink-0">
                               <div className="h-full rounded-full bg-[#1b67e0]" style={{ width: `${pct}%` }} />
@@ -658,12 +658,12 @@ export function AgileSprintPanel({
                             <span className="text-[10px] text-gray-600 font-medium min-w-[2rem] text-right">{pct}%</span>
                           </div>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-1.5">
                           <span className={`px-2 py-1 rounded-full border text-[10px] font-medium inline-block min-w-[44px] text-center ${getSprintStatusColor(s)}`}>
                             {sprintStatusLabel(s)}
                           </span>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-1.5">
                           <div className="flex items-center gap-1 text-gray-600">
                             <button
                               type="button"
@@ -732,14 +732,14 @@ export function AgileSprintPanel({
               </div>
             </div>
             <div className="bg-transparent overflow-hidden">
-              <table className="w-full border-separate [border-spacing:0_8px] bg-transparent text-xs">
+              <table className={`${enj.tableBrand} text-xs border-separate`}>
                   <thead>
                     <tr className="bg-[rgba(225,227,236,1)]">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Type</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Issue Description</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Progress</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Action</th>
+                      <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Type</th>
+                      <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Issue Description</th>
+                      <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Progress</th>
+                      <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Status</th>
+                      <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -751,16 +751,16 @@ export function AgileSprintPanel({
                       </tr>
                     ) : (
                       pagedIssues.map((i, idx) => (
-                        <tr key={`${String(i.new_sprintissueid ?? idx)}`} className="bg-white rounded-[11.9px] hover:shadow-md">
-                          <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{issueTypeLabel(i)}</td>
-                          <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{String(i.new_issuedescription ?? '—')}</td>
-                          <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{String(i.new_progress ?? '—')}</td>
-                          <td className="px-3 py-2 text-xs">
+                        <tr key={`${String(i.new_sprintissueid ?? idx)}`} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                          <td className="px-3 py-2 bg-white border-0 rounded-l-[11.9px]">{issueTypeLabel(i)}</td>
+                          <td className="px-3 py-2 bg-white border-0">{String(i.new_issuedescription ?? '—')}</td>
+                          <td className="px-3 py-2 bg-white border-0">{String(i.new_progress ?? '—')}</td>
+                          <td className="px-3 py-2 bg-white border-0">
                             <span className={`px-2 py-1 rounded-full border text-[10px] font-medium inline-block ${getIssueStatusColor(i)}`}>
                               {issueStatusLabel(i)}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-xs">—</td>
+                          <td className="px-3 py-2 bg-white border-0 rounded-r-[11.9px]">—</td>
                         </tr>
                       ))
                     )}

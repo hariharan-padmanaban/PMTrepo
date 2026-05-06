@@ -67,6 +67,7 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
   const [deleteBusy, setDeleteBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [auditRow, setAuditRow] = useState<ClientRow | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ClientRow | null>(null);
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
@@ -161,7 +162,7 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
   };
 
   const remove = async (id: string) => {
-    if (!id || !window.confirm('Delete this client?')) return;
+    if (!id) return;
     setDeleteBusy(id);
     try {
       await ClientsService.delete(id);
@@ -171,6 +172,7 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
       setToast({ type: 'error', message: err instanceof Error ? err.message : 'Delete failed' });
     } finally {
       setDeleteBusy(null);
+      setPendingDelete(null);
     }
   };
 
@@ -233,25 +235,35 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
                       fill3x3Page ? 'md:h-full md:min-h-0' : ''
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-1.5">
+                    <div className="flex items-start justify-between gap-1">
                       <div className="min-w-0">
                         <p className="line-clamp-2 text-xs font-semibold leading-snug text-primary">{r.new_clientname ?? '—'}</p>
                         <p className="mt-0.5 line-clamp-1 break-all text-[10px] leading-tight text-gray-500">{r.new_clientemail ?? '—'}</p>
                       </div>
-                      <div className="flex flex-shrink-0 flex-col items-end gap-0.5">
+                      <div className="flex flex-shrink-0 items-center gap-1">
                         <span className={`${enj.badge} ${active ? enj.badgeSuccess : enj.badgeDanger}`}>
                           {active ? 'Active' : 'InActive'}
                         </span>
                         <button
                           type="button"
-                          onClick={() => setAuditRow(r)}
-                          className={`${enj.badge} bg-sky-600 text-white hover:bg-sky-700 cursor-pointer`}
+                          onClick={() => openEdit(r)}
+                          className="h-6 w-6 rounded-md border border-gray-200 inline-flex items-center justify-center text-gray-600 hover:bg-gray-50"
+                          title="Edit"
                         >
-                          Audit
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deleteBusy === id}
+                          onClick={() => setPendingDelete(r)}
+                          className="h-6 w-6 rounded-md border border-rose-200 inline-flex items-center justify-center text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
                         </button>
                       </div>
                     </div>
-                    <div className="min-h-0 flex-1 space-y-0.5 border-t border-gray-100 py-1.5 text-[10px] leading-snug text-gray-800">
+                    <div className="flex-1 space-y-0.5 border-t border-gray-100 py-1 text-[10px] leading-snug text-gray-800">
                       <p className="line-clamp-1">
                         <span className="font-semibold">Client ID :</span> <span className="text-gray-700">{code}</span>
                       </p>
@@ -263,25 +275,6 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
                         <span className="font-semibold">Contact :</span>{' '}
                         <span className="text-gray-700">{r.new_phonenumber ? String(r.new_phonenumber) : '—'}</span>
                       </p>
-                    </div>
-                    <div className="mt-auto flex items-end justify-end gap-1 border-t border-gray-50 pt-1.5">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(r)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
-                        title="Edit"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deleteBusy === id}
-                        onClick={() => void remove(id)}
-                        className={`${enj.btn} ${enj.btnDanger} !h-9 !w-9 !min-h-0 !p-0 disabled:opacity-50`}
-                        title="Delete"
-                      >
-                        <Trash2 size={12} />
-                      </button>
                     </div>
                   </article>
                 );
@@ -438,6 +431,41 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
                 className={enj.btnPrimary}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 p-4"
+          role="presentation"
+          onClick={() => setPendingDelete(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-gray-100 bg-white p-5 shadow-xl"
+            role="dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={enj.sectionTitle}>Confirm Delete</h3>
+            <p className="mt-2 text-sm text-gray-600">Do you want to delete this client?</p>
+            <p className="mt-1 text-sm text-gray-500">{String(pendingDelete.new_clientname ?? 'Record')}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className={enj.btnDefault}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                onClick={() => void remove(String(pendingDelete.new_clientid ?? ''))}
+                disabled={deleteBusy !== null}
+                className={enj.btnPrimary}
+              >
+                {deleteBusy ? 'Deleting...' : 'Yes, Delete'}
               </button>
             </div>
           </div>

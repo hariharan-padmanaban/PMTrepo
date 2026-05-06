@@ -16,6 +16,7 @@ type DonutChartProps = {
   centerSubtext?: string;
   labelColor?: string;
   showOuterLabels?: boolean;
+  fontScale?: number;
   /** Optional callback when a segment is hovered (gives segment index, -1 = none) */
   onHover?: (index: number) => void;
   /** Externally controlled hover state — overrides internal hover */
@@ -81,6 +82,7 @@ export function DonutChart({
   centerSubtext,
   labelColor = '#6f7f95',
   showOuterLabels = true,
+  fontScale = 1,
   onHover,
   externalHoveredIdx,
 }: DonutChartProps) {
@@ -181,14 +183,14 @@ export function DonutChart({
                 x={tx}
                 y={b.y - 4}
                 fill={isHovered ? seg.color : labelColor}
-                fontSize={13}
+                fontSize={13 * fontScale}
                 fontWeight={isHovered ? 700 : 500}
                 textAnchor={anchor}
                 style={{ transition: 'fill 200ms ease, font-weight 200ms ease' }}
               >
                 <AnimatedNumber value={seg.value} />
               </text>
-              <text x={tx} y={b.y + 12} fill={labelColor} fontSize={8.5} textAnchor={anchor}>
+              <text x={tx} y={b.y + 12} fill={labelColor} fontSize={8.5 * fontScale} textAnchor={anchor}>
                 {seg.label}
               </text>
             </g>
@@ -196,12 +198,12 @@ export function DonutChart({
         })}
 
       {centerText && (
-        <text x={cx} y={cy - 2} fill="#151d5d" fontSize={15} fontWeight={700} textAnchor="middle" style={{ pointerEvents: 'none' }}>
+        <text x={cx} y={cy - 2} fill="#151d5d" fontSize={15 * fontScale} fontWeight={700} textAnchor="middle" style={{ pointerEvents: 'none' }}>
           {centerText}
         </text>
       )}
       {centerSubtext && (
-        <text x={cx} y={cy + 12} fill="#94a3b8" fontSize={8} textAnchor="middle" style={{ pointerEvents: 'none' }}>
+        <text x={cx} y={cy + 12} fill="#94a3b8" fontSize={8 * fontScale} textAnchor="middle" style={{ pointerEvents: 'none' }}>
           {centerSubtext}
         </text>
       )}

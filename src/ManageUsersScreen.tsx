@@ -97,6 +97,7 @@ export function ManageUsersScreen({
   const [editBusy, setEditBusy] = useState(false);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<NewUserRow | null>(null);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -263,19 +264,38 @@ export function ManageUsersScreen({
                     key={id}
                     className={`flex min-h-0 min-w-0 flex-col rounded-md border border-gray-100 bg-white p-2 shadow-sm ${fill3x3Page ? 'md:h-full md:min-h-0' : ''}`}
                   >
-                    <div className="flex items-start justify-between gap-1.5">
+                    <div className="flex items-start justify-between gap-1">
                       <div className="min-w-0">
                         <p className="line-clamp-2 text-xs font-semibold leading-snug text-primary">{r.new_name ?? '—'}</p>
                         <p className="mt-0.5 line-clamp-1 break-all text-[10px] leading-tight text-gray-500">{r.new_newcolumn ?? '—'}</p>
                       </div>
-                      <div className="flex shrink-0 flex-col items-end gap-0.5">
+                      <div className="flex shrink-0 items-center gap-1">
                         <span className={`${enj.badge} ${active ? enj.badgeSuccess : enj.badgeDanger}`}>
                           {active ? 'Active' : 'InActive'}
                         </span>
-                        <span className={enj.badgeInfo}>Audit</span>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(r)}
+                          className="h-6 w-6 rounded-md border border-gray-200 inline-flex items-center justify-center text-gray-600 hover:bg-gray-50"
+                          aria-label="Edit user"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSelf || deleteBusyId === id}
+                          onClick={() => {
+                            if (!isSelf) setPendingDelete(r);
+                          }}
+                          title={isSelf ? 'You cannot remove your own account' : 'Delete user'}
+                          className="h-6 w-6 rounded-md border border-rose-200 inline-flex items-center justify-center text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="Delete user"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </div>
-                    <div className="min-h-0 flex-1 space-y-0.5 border-t border-gray-100 py-1.5 text-[10px] leading-snug text-gray-800">
+                    <div className="flex-1 space-y-0.5 border-t border-gray-100 py-1 text-[10px] leading-snug text-gray-800">
                       <p className="line-clamp-1">
                         <span className="font-semibold">Department :</span>{' '}
                         <span className="font-medium text-blue-600">{dept}</span>
@@ -286,29 +306,6 @@ export function ManageUsersScreen({
                       <p className="line-clamp-1 text-gray-600">
                         <span className="font-semibold text-gray-800">Last logged :</span> {lastLoggedLabel(r)}
                       </p>
-                    </div>
-                    <div className="mt-auto flex items-end justify-end gap-1 border-t border-gray-50 pt-1.5">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(r)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
-                        aria-label="Edit user"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isSelf || deleteBusyId === id}
-                        onClick={() => {
-                          if (isSelf) return;
-                          if (window.confirm('Remove this user?')) void deleteUser(id);
-                        }}
-                        title={isSelf ? 'You cannot remove your own account' : 'Delete user'}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-                        aria-label="Delete user"
-                      >
-                        <Trash2 size={12} />
-                      </button>
                     </div>
                   </article>
                 );
@@ -383,6 +380,44 @@ export function ManageUsersScreen({
                 <button type="submit" disabled={editBusy} className={enj.btnPrimary}>{editBusy ? 'Updating...' : 'Update User'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-[250] flex items-center justify-center bg-black/40 p-4"
+          role="presentation"
+          onClick={() => setPendingDelete(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-gray-100 bg-white p-5 shadow-xl"
+            role="dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className={enj.sectionTitle}>Confirm Delete</h3>
+            <p className="mt-2 text-sm text-gray-600">Do you want to remove this user?</p>
+            <p className="mt-1 text-sm text-gray-500">{String(pendingDelete.new_name ?? 'User')}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className={enj.btnDefault}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void deleteUser(String(pendingDelete.new_usersid ?? ''));
+                  setPendingDelete(null);
+                }}
+                disabled={deleteBusyId !== null}
+                className={enj.btnPrimary}
+              >
+                {deleteBusyId ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -204,6 +204,7 @@ export default function BusinessPipelineScreen({
           body as unknown as Parameters<typeof New_pipelinesService.create>[0],
         );
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to create pipeline');
+
       } else {
         const res = await New_pipelinesService.update(
           editingId!,
@@ -407,11 +408,11 @@ export default function BusinessPipelineScreen({
         </div>
 
         <div className="flex-1 overflow-auto px-5 py-4">
-          <table className="min-w-[1000px] w-full border-separate [border-spacing:0_8px] bg-transparent text-[12px]">
+          <table className="min-w-[1000px] w-full bg-transparent border-separate text-[12px]">
             <thead>
               <tr className="bg-[rgba(225,227,236,1)]">
                 {(['Pipeline Name', 'Opportunity', 'Benefits', 'Potential Value', 'Client Name', 'Stage of Opportunity', 'Start Date', 'Tentative Closure', 'Action'] as const).map((h) => (
-                  <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">
+                  <th key={h} className="h-[38px] whitespace-nowrap px-3 normal-case border-0 text-[12px] font-bold tracking-normal text-[rgba(118,131,150,1)]">
                     {h}
                   </th>
                 ))}
@@ -419,23 +420,23 @@ export default function BusinessPipelineScreen({
             </thead>
             <tbody>
               {pagedViewAllRows.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-xs text-gray-400">
+                <tr className="bg-transparent">
+                  <td colSpan={9} className="px-4 py-10 text-center text-xs text-gray-400 bg-transparent">
                     No pipeline rows for this year and client. Adjust filters.
                   </td>
                 </tr>
               ) : (
                 pagedViewAllRows.map((row) => (
-                  <tr key={row.id} className="bg-white rounded-[11.9px] hover:shadow-md">
-                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.pipelineName}</td>
-                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.name}</td>
-                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.benefit}</td>
-                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d] tabular-nums">{row.potentialValue}</td>
-                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.categoryName}</td>
-                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.stage}</td>
-                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.startDateLabel}</td>
-                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.endDateLabel}</td>
-                    <td className="px-3 py-2 text-xs">
+                  <tr key={row.id} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0 rounded-l-[11.9px]">{row.pipelineName}</td>
+                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.name}</td>
+                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.benefit}</td>
+                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium tabular-nums text-[rgba(35,35,96,1)] border-0">{row.potentialValue}</td>
+                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.categoryName}</td>
+                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.stage}</td>
+                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.startDateLabel}</td>
+                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.endDateLabel}</td>
+                    <td className="h-[46px] bg-white px-3 text-[12px] border-0 rounded-r-[11.9px]">
                       <div className="flex items-center gap-2">
                         <button type="button" title="View" onClick={() => setViewingRow(row)} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-primary">
                           <Eye className="h-3.5 w-3.5" />
