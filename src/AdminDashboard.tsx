@@ -88,16 +88,16 @@ function AuditLogsPanel() {
         <span className="text-[11px] text-gray-400 ml-auto">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</span>
       </div>
 
-      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        <table className={`${enj.tableBrand} text-xs`}>
+      <div className="bg-transparent overflow-hidden">
+        <table className="w-full border-separate [border-spacing:0_8px] bg-transparent text-xs">
           <thead>
-            <tr>
-              <th className="px-3 py-2 text-left">Timestamp</th>
-              <th className="px-3 py-2 text-left">User</th>
-              <th className="px-3 py-2 text-left">Role</th>
-              <th className="px-3 py-2 text-left">Action</th>
-              <th className="px-3 py-2 text-left">Details</th>
-              <th className="px-3 py-2 text-left">Status</th>
+            <tr className="bg-[rgba(225,227,236,1)]">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Timestamp</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">User</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Role</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Action</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Details</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -107,15 +107,15 @@ function AuditLogsPanel() {
               </tr>
             ) : (
               filtered.map((e) => (
-                <tr key={e.id} className="transition-colors">
-                  <td className="px-3 py-2 font-mono text-[10px] text-[#6B7280] whitespace-nowrap">{e.timestamp}</td>
-                  <td className="px-3 py-2 font-medium max-w-[160px] truncate text-[#2563EB]" title={e.user}>{e.user}</td>
-                  <td className="px-3 py-2 text-gray-600">{e.role}</td>
-                  <td className="px-3 py-2">
+                <tr key={e.id} className="bg-white rounded-[11.9px] hover:shadow-md">
+                  <td className="px-3 py-2 font-mono text-[10px] text-[#4c556d]">{e.timestamp}</td>
+                  <td className="px-3 py-2 text-xs font-normal text-[#4c556d] max-w-[160px] truncate" title={e.user}>{e.user}</td>
+                  <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{e.role}</td>
+                  <td className="px-3 py-2 text-xs">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${actionBadgeClass(e.action)}`}>{e.action}</span>
                   </td>
-                  <td className="px-3 py-2 max-w-[300px] truncate text-gray-600" title={e.details}>{e.details}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 text-xs font-normal text-[#4c556d] max-w-[300px] truncate" title={e.details}>{e.details}</td>
+                  <td className="px-3 py-2 text-xs">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${e.status === 'Success' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{e.status}</span>
                   </td>
                 </tr>

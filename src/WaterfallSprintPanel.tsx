@@ -315,16 +315,16 @@ export function WaterfallSprintPanel({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200">
-            <table className={`${enj.tableBrand} text-xs`}>
+          <div className="min-h-0 flex-1 overflow-hidden bg-transparent">
+            <table className="w-full border-separate [border-spacing:0_8px] bg-transparent text-xs">
               <thead>
-                <tr>
-                  <th className="px-3 py-2">Key</th>
-                  <th className="px-3 py-2">Team Member</th>
-                  <th className="px-3 py-2">Timeline</th>
-                  <th className="px-3 py-2">Stage</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Action</th>
+                <tr className="bg-[rgba(225,227,236,1)]">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Key</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Team Member</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Timeline</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Stage</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -353,33 +353,33 @@ export function WaterfallSprintPanel({
                       return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
                     };
                     return (
-                      <tr key={`${String(r.new_classicwaterfallid ?? idx)}`} className="border-b border-[#edf0f8]">
-                        <td className="px-3 py-2">{String(r.new_key ?? '—')}</td>
-                        <td className="px-3 py-2 text-[#4e568a]">{String(r.new_assign_to_member ?? '').trim() || 'Not Assigned'}</td>
-                        <td className="px-3 py-2">
+                      <tr key={`${String(r.new_classicwaterfallid ?? idx)}`} className="bg-white rounded-[11.9px] hover:shadow-md">
+                        <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{String(r.new_key ?? '—')}</td>
+                        <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{String(r.new_assign_to_member ?? '').trim() || 'Not Assigned'}</td>
+                        <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">
                           <div className="flex items-center gap-3 text-[11px]">
                             <div>
                               <p className="text-[10px] text-gray-500">Start Date</p>
-                              <p className="flex items-center gap-1 text-[#4e568a]"><CalendarDays className="h-3 w-3 text-gray-500" />{fmt(timelineStart)}</p>
+                              <p className="flex items-center gap-1"><CalendarDays className="h-3 w-3 text-gray-500" />{fmt(timelineStart)}</p>
                             </div>
                             <div>
                               <p className="text-[10px] text-gray-500">End Date</p>
-                              <p className="flex items-center gap-1 text-[#4e568a]"><CalendarDays className="h-3 w-3 text-gray-500" />{fmt(timelineEnd)}</p>
+                              <p className="flex items-center gap-1"><CalendarDays className="h-3 w-3 text-gray-500" />{fmt(timelineEnd)}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-2">
-                          <span className="inline-flex items-center gap-1 font-semibold text-[#4e568a]">
+                        <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">
+                          <span className="inline-flex items-center gap-1">
                             <ListFilter className="h-3.5 w-3.5 text-[#b28a44]" />
                             {stageLabel || '—'}
                           </span>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 text-xs">
                           <span className={`inline-flex min-w-[56px] items-center justify-center rounded-md px-2 py-0.5 text-[12px] font-medium ${getStatusColorClass(statusLabel)}`}>
                             {statusLabel || '—'}
                           </span>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 text-xs">
                           <div className="flex items-center gap-2 text-gray-500">
                             <button type="button" className="rounded p-0.5 hover:bg-gray-100" title="Edit task" onClick={() => openEditTask(r)}>
                               <Pencil className="h-4 w-4" />

@@ -407,11 +407,11 @@ export default function BusinessPipelineScreen({
         </div>
 
         <div className="flex-1 overflow-auto px-5 py-4">
-          <table className="min-w-[1000px] w-full border-separate [border-spacing:0_6px] text-[12px]">
+          <table className="min-w-[1000px] w-full border-separate [border-spacing:0_8px] bg-transparent text-[12px]">
             <thead>
-              <tr>
+              <tr className="bg-[rgba(225,227,236,1)]">
                 {(['Pipeline Name', 'Opportunity', 'Benefits', 'Potential Value', 'Client Name', 'Stage of Opportunity', 'Start Date', 'Tentative Closure', 'Action'] as const).map((h) => (
-                  <th key={h} className="h-[38px] whitespace-nowrap px-3 normal-case bg-[rgba(225,227,236,1)] text-[12px] font-bold tracking-normal text-[rgba(118,131,150,1)] first:rounded-l-[8px] last:rounded-r-[8px]">
+                  <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">
                     {h}
                   </th>
                 ))}
@@ -426,16 +426,16 @@ export default function BusinessPipelineScreen({
                 </tr>
               ) : (
                 pagedViewAllRows.map((row) => (
-                  <tr key={row.id} className="last:border-0">
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] first:rounded-l-[8px]">{row.pipelineName}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.name}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.benefit}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium tabular-nums text-[rgba(35,35,96,1)]">{row.potentialValue}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.categoryName}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.stage}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.startDateLabel}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.endDateLabel}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] last:rounded-r-[8px]">
+                  <tr key={row.id} className="bg-white rounded-[11.9px] hover:shadow-md">
+                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.pipelineName}</td>
+                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.name}</td>
+                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.benefit}</td>
+                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d] tabular-nums">{row.potentialValue}</td>
+                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.categoryName}</td>
+                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.stage}</td>
+                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.startDateLabel}</td>
+                    <td className="px-3 py-2 text-xs font-normal text-[#4c556d]">{row.endDateLabel}</td>
+                    <td className="px-3 py-2 text-xs">
                       <div className="flex items-center gap-2">
                         <button type="button" title="View" onClick={() => setViewingRow(row)} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-primary">
                           <Eye className="h-3.5 w-3.5" />

@@ -604,12 +604,12 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   );
 
   const reportTableRow = (row: (typeof filteredReportTableRows)[0], idx: number) => (
-    <tr key={`${row.reportTitle}-${idx}`} className="text-sm text-[#374151]">
-      <td className={`px-3 py-2 ${enj.tableLink}`}>{row.reportTitle}</td>
-      <td className="px-3 py-2">{row.projectName}</td>
-      <td className="px-3 py-2">{row.reportType}</td>
-      <td className="px-3 py-2">{row.sector}</td>
-      <td className="px-3 py-2">
+    <tr key={`${row.reportTitle}-${idx}`} className="bg-white rounded-[11.9px] hover:shadow-md text-xs text-[#4c556d]">
+      <td className="px-3 py-2 font-normal">{row.reportTitle}</td>
+      <td className="px-3 py-2 font-normal">{row.projectName}</td>
+      <td className="px-3 py-2 font-normal">{row.reportType}</td>
+      <td className="px-3 py-2 font-normal">{row.sector}</td>
+      <td className="px-3 py-2 font-normal">
         <div className="flex items-center gap-3">
           <div>
             <p className="text-[10px] font-normal text-[#6B7280]">Start Date</p>
@@ -628,7 +628,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           </div>
         </div>
       </td>
-      <td className="px-3 py-2">
+      <td className="px-3 py-2 font-normal">
         <div className="w-[150px]">
           <p className="mb-1 text-right text-[11px] text-[#6B7280]">{row.progress}%</p>
           <div className="enj-table-progress-track w-full max-w-[150px]">
@@ -642,7 +642,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         </span>
       </td>
       {showTableEdit && (
-        <td className="sticky right-0 z-10 w-[1%] min-w-[3rem] whitespace-nowrap border-l border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 shadow-[-6px_0_8px_-4px_rgba(0,0,0,0.06)]">
+        <td className="sticky right-0 z-10 w-[1%] min-w-[3rem] whitespace-nowrap border-l border-transparent bg-white px-3 py-2">
           <button
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 hover:border-[#A08149] hover:text-[#A08149] transition-colors"
@@ -658,16 +658,16 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
 
   const reportTableHead = (
     <thead>
-      <tr>
-        <th>Report Title</th>
-        <th>Project Name</th>
-        <th>Report Type</th>
-        <th>Sector</th>
-        <th>Schedule</th>
-        <th>Progress Level</th>
-        <th>Status</th>
+      <tr className="bg-[rgba(225,227,236,1)]">
+        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Report Title</th>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Project Name</th>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Report Type</th>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Sector</th>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Schedule</th>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Progress Level</th>
+        <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
         {showTableEdit && (
-          <th className="sticky right-0 z-20 w-[1%] min-w-[3rem] whitespace-nowrap border-l border-[#E5E7EB] bg-[rgba(225,227,236,1)] px-3 py-2 text-left shadow-[-6px_0_8px_-4px_rgba(0,0,0,0.06)]" />
+          <th className="sticky right-0 z-20 w-[1%] min-w-[3rem] whitespace-nowrap border-0 bg-[rgba(225,227,236,1)] px-3 py-2 text-left" />
         )}
       </tr>
     </thead>
@@ -799,12 +799,12 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           </button>
           <h1 className="text-base font-bold text-[rgba(35,35,96,1)] truncate">Project Reports – All Records</h1>
         </div>
-        <div className="overflow-x-auto">
-          <table className={`${enj.table} min-w-[920px] w-full`}>
+        <div className="overflow-x-auto bg-transparent">
+          <table className="min-w-[920px] w-full border-separate [border-spacing:0_8px] bg-transparent">
             {reportTableHead}
             <tbody>
               {pagedReportViewAllRows.length === 0 ? (
-                <tr className="border-b border-gray-100 text-xs text-gray-500">
+                <tr className="text-xs text-gray-500">
                   <td className="px-3 py-3" colSpan={showTableEdit ? 8 : 7}>
                     No report rows for selected filters.
                   </td>
@@ -1225,17 +1225,17 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             </button>
           )}
         </div>
-        <div className="min-w-0 overflow-x-auto">
-          <table className={`${enj.table} min-w-[920px]`}>
+        <div className="min-w-0 overflow-x-auto bg-transparent">
+          <table className="min-w-[920px] w-full border-separate [border-spacing:0_8px] bg-transparent">
             {reportTableHead}
             <tbody>
               {reportsLoading && (
-                <tr className="border-b border-gray-100 text-xs text-gray-500">
+                <tr className="text-xs text-gray-500">
                   <td className="px-3 py-3" colSpan={showTableEdit ? 8 : 7}>Loading reports...</td>
                 </tr>
               )}
               {!reportsLoading && filteredReportTableRows.length === 0 && (
-                <tr className="border-b border-gray-100 text-xs text-gray-500">
+                <tr className="text-xs text-gray-500">
                   <td className="px-3 py-3" colSpan={showTableEdit ? 8 : 7}>No report rows for selected filters.</td>
                 </tr>
               )}

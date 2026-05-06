@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/EnjazMasterDataService';
-import { enj } from './ui/enjForm';
 
 const CATEGORIES = [
   'Program Code',
@@ -83,14 +82,14 @@ export default function DummyMasterDataScreen() {
         </button>
       </div>
       {message && <p className="text-sm text-gray-700 mb-3">{message}</p>}
-      <div className="overflow-auto rounded-lg border border-gray-100">
-        <table className={`${enj.table} min-w-[760px] text-sm`}>
+      <div className="overflow-auto bg-transparent">
+        <table className="min-w-[760px] w-full border-separate [border-spacing:0_8px] bg-transparent text-sm">
           <thead>
-            <tr>
-              <th>Name</th>
-              <th>Category</th>
-              <th>Code (ID)</th>
-              <th>Status</th>
+            <tr className="bg-[rgba(225,227,236,1)]">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Name</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Category</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Code (ID)</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -104,11 +103,11 @@ export default function DummyMasterDataScreen() {
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={String(row.new_enjazmasterdataid ?? `${row.new_enjazmasterdata1}-${row.new_code}`)} className="border-b border-gray-100 text-sm text-gray-700">
-                  <td className="px-3 py-2">{String(row.new_enjazmasterdata1 ?? '-')}</td>
-                  <td className="px-3 py-2">{categoryText(row)}</td>
-                  <td className="px-3 py-2">{String(row.new_code ?? '-')}</td>
-                  <td className="px-3 py-2">{statusText(row)}</td>
+                <tr key={String(row.new_enjazmasterdataid ?? `${row.new_enjazmasterdata1}-${row.new_code}`)} className="bg-white rounded-[11.9px] hover:shadow-md text-xs text-[#4c556d]">
+                  <td className="px-3 py-2 font-normal">{String(row.new_enjazmasterdata1 ?? '-')}</td>
+                  <td className="px-3 py-2 font-normal">{categoryText(row)}</td>
+                  <td className="px-3 py-2 font-normal">{String(row.new_code ?? '-')}</td>
+                  <td className="px-3 py-2 font-normal">{statusText(row)}</td>
                 </tr>
               ))
             )}

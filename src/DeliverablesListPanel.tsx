@@ -145,17 +145,17 @@ export function DeliverablesListPanel({
   const btnNew = `${enj.btn} ${enj.btnPrimary} px-4 ${variant === 'program' ? 'text-sm font-medium' : 'text-xs font-semibold'}`;
 
   const tableBlock = (
-    <div className="relative bg-white rounded-xl shadow-sm overflow-hidden">
+    <div className="relative bg-transparent overflow-hidden">
       {loading && <ScreenLoader className="min-h-[220px]" />}
       {!loading && (
-        <table className={`${enj.table} w-full text-xs`}>
+        <table className="w-full border-separate [border-spacing:0_8px] bg-transparent text-xs">
           <thead>
-            <tr>
-              <th>Project</th>
-              <th>Project Manager</th>
-              <th>Deliverables</th>
-              <th>Status</th>
-              {showActions && <th className="w-[5rem] text-center">Actions</th>}
+            <tr className="bg-[rgba(225,227,236,1)]">
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Project</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Project Manager</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Deliverables</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Status</th>
+              {showActions && <th className="w-[5rem] text-center text-xs font-semibold text-[rgba(118,131,150,1)] border-0">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -178,10 +178,10 @@ export function DeliverablesListPanel({
                   `row-${(pageSafe - 1) * PAGE_SIZE + rowIdx}`,
                 );
                 return (
-                  <tr key={rowKey} className="text-xs">
-                    <td className="px-3 py-2 font-medium text-[#374151]">{String(row.new_projectname ?? '—')}</td>
-                    <td className="px-3 py-2">{String(row.new_projectmanager ?? '—')}</td>
-                    <td className="px-3 py-2 max-w-[240px] truncate" title={row.new_thedeliverablesinclude ?? row.new_notes ?? ''}>
+                  <tr key={rowKey} className="bg-white rounded-[11.9px] hover:shadow-md text-xs">
+                    <td className="px-3 py-2 font-normal text-[#4c556d]">{String(row.new_projectname ?? '—')}</td>
+                    <td className="px-3 py-2 font-normal text-[#4c556d]">{String(row.new_projectmanager ?? '—')}</td>
+                    <td className="px-3 py-2 font-normal text-[#4c556d] max-w-[240px] truncate" title={row.new_thedeliverablesinclude ?? row.new_notes ?? ''}>
                       {String(row.new_thedeliverablesinclude ?? row.new_notes ?? '—')}
                     </td>
                     <td className="px-3 py-2">
