@@ -534,7 +534,7 @@ export default function BusinessFeedbackList() {
   const barScale = (chartH - 16) / maxY;
 
   const [feedbackPage, setFeedbackPage] = useState(1);
-  const FEEDBACK_PAGE_SIZE = 5;
+  const FEEDBACK_PAGE_SIZE = 6;
   const feedbackTotalPages = Math.max(1, Math.ceil(rows.length / FEEDBACK_PAGE_SIZE));
   const pagedRows = rows.slice((feedbackPage - 1) * FEEDBACK_PAGE_SIZE, feedbackPage * FEEDBACK_PAGE_SIZE);
 
@@ -862,14 +862,14 @@ export default function BusinessFeedbackList() {
         <table className={`${enj.tableBrand} table-fixed text-[11px] bg-transparent`}>
           <thead>
             <tr className="bg-[rgba(225,227,236,1)]">
-              <th className="min-w-0 w-[11%] bg-[rgba(225,227,236,1)] px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0"><span className="inline-block leading-tight">Project Name</span></th>
-              <th className="min-w-0 w-[12%] bg-[rgba(225,227,236,1)] px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0"><span className="inline-block leading-tight">Sponsor</span></th>
-              <th className="min-w-0 w-[19%] bg-[rgba(225,227,236,1)] px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0"><span className="inline-block leading-tight">Project Manager</span></th>
-              <th className="min-w-0 w-[12%] bg-[rgba(225,227,236,1)] px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0"><span className="inline-block leading-tight">Business owner</span></th>
-              <th className="min-w-0 w-[11%] bg-[rgba(225,227,236,1)] px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0"><span className="inline-block leading-tight">Satisfaction</span></th>
-              <th className="min-w-0 w-[10%] bg-[rgba(225,227,236,1)] px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0"><span className="inline-block leading-tight">Date</span></th>
-              <th className="min-w-0 w-[8%] bg-[rgba(225,227,236,1)] px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0"><span className="inline-block leading-tight">Phase</span></th>
-              <th className="min-w-0 w-[7%] bg-[rgba(225,227,236,1)] px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0 text-center">Action</th>
+              <th className="min-w-0 w-[11%] px-2.5 py-3 font-semibold border-0" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '100%', letterSpacing: '0%', color: '#768396', backgroundColor: '#E1E3EC' }}><span className="inline-block leading-tight">Project Name</span></th>
+              <th className="min-w-0 w-[12%] px-2.5 py-3 font-semibold border-0" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '100%', letterSpacing: '0%', color: '#768396', backgroundColor: '#E1E3EC' }}><span className="inline-block leading-tight">Sponsor</span></th>
+              <th className="min-w-0 w-[19%] px-2.5 py-3 font-semibold border-0" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '100%', letterSpacing: '0%', color: '#768396', backgroundColor: '#E1E3EC' }}><span className="inline-block leading-tight">Project Manager</span></th>
+              <th className="min-w-0 w-[12%] px-2.5 py-3 font-semibold border-0" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '100%', letterSpacing: '0%', color: '#768396', backgroundColor: '#E1E3EC' }}><span className="inline-block leading-tight">Business owner</span></th>
+              <th className="min-w-0 w-[11%] px-2.5 py-3 font-semibold border-0" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '100%', letterSpacing: '0%', color: '#768396', backgroundColor: '#E1E3EC' }}><span className="inline-block leading-tight">Satisfaction</span></th>
+              <th className="min-w-0 w-[10%] px-2.5 py-3 font-semibold border-0" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '100%', letterSpacing: '0%', color: '#768396', backgroundColor: '#E1E3EC' }}><span className="inline-block leading-tight">Date</span></th>
+              <th className="min-w-0 w-[8%] px-2.5 py-3 font-semibold border-0" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '100%', letterSpacing: '0%', color: '#768396', backgroundColor: '#E1E3EC' }}><span className="inline-block leading-tight">Phase</span></th>
+              <th className="min-w-0 w-[7%] px-2.5 py-3 font-semibold border-0 text-center" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '100%', letterSpacing: '0%', color: '#768396', backgroundColor: '#E1E3EC' }}>Action</th>
             </tr>
           </thead>
           <tbody className="space-y-2">

@@ -95,6 +95,22 @@ export type ProgramReportsPanelProps = {
 };
 
 export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }: ProgramReportsPanelProps) {
+  const reportHeaderStyle: React.CSSProperties = {
+    fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif",
+    fontSize: '12.81px',
+    fontWeight: 600,
+    lineHeight: '1',
+    letterSpacing: '0px',
+    color: '#768396',
+    backgroundColor: '#E1E3EC',
+    padding: '12px 10px',
+    border: '0px',
+    textAlign: 'left',
+    verticalAlign: 'middle',
+    height: '44px',
+    display: 'table-cell'
+  };
+
   const [showAddReportForm, setShowAddReportForm] = useState(false);
   const [showEditReportModal, setShowEditReportModal] = useState(false);
   const [reportEditBusy, setReportEditBusy] = useState(false);
@@ -679,16 +695,16 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
 
   const reportTableHead = (
     <thead>
-      <tr className="bg-[rgba(225,227,236,1)]">
-        <th className={`${TABLE_STYLES.headerCell} rounded-l-[11.9px]`}>Report Title</th>
-        <th className={TABLE_STYLES.headerCell}>Project Name</th>
-        <th className={TABLE_STYLES.headerCell}>Report Type</th>
-        <th className={TABLE_STYLES.headerCell}>Sector</th>
-        <th className={TABLE_STYLES.headerCell}>Schedule</th>
-        <th className={TABLE_STYLES.headerCell}>Progress Level</th>
-        <th className={TABLE_STYLES.headerCell}>Status</th>
+      <tr style={{ backgroundColor: '#E1E3EC' }}>
+        <th style={reportHeaderStyle}>Report Title</th>
+        <th style={reportHeaderStyle}>Project Name</th>
+        <th style={reportHeaderStyle}>Report Type</th>
+        <th style={reportHeaderStyle}>Sector</th>
+        <th style={reportHeaderStyle}>Schedule</th>
+        <th style={reportHeaderStyle}>Progress Level</th>
+        <th style={reportHeaderStyle}>Status</th>
         {showTableEdit && (
-          <th className={`${TABLE_STYLES.headerCell} sticky right-0 z-20 w-[1%] min-w-[3rem] whitespace-nowrap rounded-r-[11.9px]`} />
+          <th style={reportHeaderStyle} className="sticky right-0 z-20 w-[1%] min-w-[3rem] whitespace-nowrap" />
         )}
       </tr>
     </thead>

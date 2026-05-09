@@ -3018,14 +3018,14 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                   <table className={`${enj.table} w-full min-w-[860px] bg-transparent border-separate`}>
                     <thead>
                       <tr className="bg-gray-50">
-                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0 rounded-l-[11.9px]">Project Name</th>
-                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Task Name</th>
-                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Priority</th>
-                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Status</th>
-                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Project Manager</th>
-                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Milestone</th>
-                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0">Timeline</th>
-                        <th className="px-2.5 py-3 text-[11px] font-semibold text-[rgba(118,131,150,1)] bg-[rgba(225,227,236,1)] border-0 rounded-r-[11.9px]">Progress</th>
+                        <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project Name</th>
+                        <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Task Name</th>
+                        <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Priority</th>
+                        <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Status</th>
+                        <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project Manager</th>
+                        <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Milestone</th>
+                        <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Timeline</th>
+                        <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3206,7 +3206,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   );
 
   const latestPortfolio = useMemo(() => portfolioPrograms.slice(0, 5), [portfolioPrograms]);
-  const portfolioPageSize = 5;
+  const portfolioPageSize = 6;
   const portfolioTotalPages = useMemo(
     () => Math.max(1, Math.ceil(portfolioPrograms.length / portfolioPageSize)),
     [portfolioPrograms.length],
@@ -3674,17 +3674,17 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
               {portfolioPrograms.length > 0 && (
                 <section className="space-y-3">
                   <div className="overflow-x-auto bg-transparent">
-                    <table className={`${enj.tableBrand} min-w-[980px] text-xs bg-transparent border-separate`}>
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-l-[11.9px]">Program</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">KPI</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Benefits</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Budget</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program Manager</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">ROI</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Start Date</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-r-[11.9px]">Progress</th>
+                    <table className={`${enj.table} min-w-[980px] text-xs bg-transparent border-separate`}>
+                      <thead style={{ borderRadius: '0' }}>
+                        <tr className="bg-[#E1E3EC]">
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Program</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">KPI</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Benefits</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Budget</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Program Manager</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">ROI</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Start Date</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3771,17 +3771,17 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                         <div className="overflow-x-auto bg-transparent">
                                           <table className={`${enj.table} min-w-[1140px] text-left text-[11px]`}>
                                             <thead>
-                                              <tr>
-                                                <th className="px-3 py-1.5 font-semibold">Project</th>
-                                                <th className="px-3 py-1.5 font-semibold">Priority</th>
-                                                <th className="px-3 py-1.5 font-semibold">Sponsor</th>
-                                                <th className="px-3 py-1.5 font-semibold">Type</th>
-                                                <th className="px-3 py-1.5 font-semibold">Budget</th>
-                                                <th className="px-3 py-1.5 font-semibold">Strat.goal</th>
-                                                <th className="px-3 py-1.5 font-semibold">Project Manager</th>
-                                                <th className="px-3 py-1.5 font-semibold">Timeline</th>
-                                                <th className="px-3 py-1.5 font-semibold">Progress</th>
-                                                <th className="px-3 py-1.5 font-semibold">Status</th>
+                                              <tr style={{ backgroundColor: '#E1E3EC' }}>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Priority</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Sponsor</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Type</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Budget</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Strat.goal</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project Manager</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Timeline</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Status</th>
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -3993,9 +3993,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                       type="checkbox"
                       checked={timelineStatusFilter.completed}
                       onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, completed: e.target.checked }))}
-                      className="w-3 h-3 rounded"
+                      className="w-3 h-3 rounded accent-[#10B981]"
                     />
-                    <span className="h-2 w-2 shrink-0 rounded-sm bg-[#10B981]" aria-hidden />
                     <span>Completed</span>
                   </label>
                   <label className="inline-flex items-center gap-1.5 cursor-pointer">
@@ -4003,9 +4002,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                       type="checkbox"
                       checked={timelineStatusFilter.delayed}
                       onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, delayed: e.target.checked }))}
-                      className="w-3 h-3 rounded"
+                      className="w-3 h-3 rounded accent-[#EF4444]"
                     />
-                    <span className="h-2 w-2 shrink-0 rounded-sm bg-[#EF4444]" aria-hidden />
                     <span>Delayed</span>
                   </label>
                   <label className="inline-flex items-center gap-1.5 cursor-pointer">
@@ -4013,9 +4011,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                       type="checkbox"
                       checked={timelineStatusFilter.onTrack}
                       onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, onTrack: e.target.checked }))}
-                      className="w-3 h-3 rounded"
+                      className="w-3 h-3 rounded accent-[#3B82F6]"
                     />
-                    <span className="h-2 w-2 shrink-0 rounded-sm bg-[#3B82F6]" aria-hidden />
                     <span>On Track</span>
                   </label>
                 </div>
@@ -4467,17 +4464,17 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                                     <div className="overflow-x-auto bg-transparent">
                                       <table className={`${enj.table} min-w-[1140px] text-left text-xs`}>
                                         <thead>
-                                          <tr>
-                                            <th className="px-3 py-2 font-semibold">Project</th>
-                                            <th className="px-3 py-2 font-semibold">Priority</th>
-                                            <th className="px-3 py-2 font-semibold">Sponsor</th>
-                                            <th className="px-3 py-2 font-semibold">Type</th>
-                                            <th className="px-3 py-2 font-semibold">Budget</th>
-                                            <th className="px-3 py-2 font-semibold">Starg.obj</th>
-                                            <th className="px-3 py-2 font-semibold">Project Manager</th>
-                                            <th className="px-3 py-2 font-semibold">Timeline</th>
-                                            <th className="px-3 py-2 font-semibold">Progress</th>
-                                            <th className="px-3 py-2 font-semibold">Status</th>
+                                          <tr style={{ backgroundColor: '#E1E3EC' }}>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Priority</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Sponsor</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Type</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Budget</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Starg.obj</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project Manager</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Timeline</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
+                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Status</th>
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -4617,7 +4614,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   const [statusOptions, setStatusOptions] = useState<Array<{ label: string; value: number }>>(fallbackStatusOptions);
   const [programRows, setProgramRows] = useState<Array<Record<string, unknown>>>([]);
   const [programListPage, setProgramListPage] = useState(1);
-  const PROGRAM_LIST_PAGE_SIZE = 5;
+  const PROGRAM_LIST_PAGE_SIZE = 6;
   const [programLoading, setProgramLoading] = useState(false);
   const [programColumns, setProgramColumns] = useState<{
     benefits?: string;
@@ -4693,7 +4690,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
         .filter((c) => c.id && c.name),
     [programPipelineClients],
   );
-  const programPortfolioPageSize = 10;
+  const programPortfolioPageSize = 6;
   const programPortfolioLatestFive = useMemo(() => programRows.slice(0, 5), [programRows]);
   const programPortfolioTotalPages = useMemo(
     () => Math.max(1, Math.ceil(programRows.length / programPortfolioPageSize)),
@@ -5774,15 +5771,15 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     <div className="overflow-x-auto bg-transparent">
                       <table className={`${enj.tableBrand} w-full min-w-[760px] text-xs bg-transparent border-separate`}>
                         <thead>
-                          <tr className="bg-gray-50">
-                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0 rounded-l-[11.9px]">Program Name</th>
-                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Benefits</th>
-                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Project Manager</th>
-                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Budgets</th>
-                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">KPI</th>
-                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Status</th>
-                            <th scope="col" className="px-4 py-3 bg-gray-50 border-0">Progress</th>
-                            <th scope="col" className="w-[4.25rem] text-center px-4 py-3 bg-gray-50 border-0 rounded-r-[11.9px]">
+                          <tr className="bg-[#E1E3EC]">
+                            <th scope="col" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Program Name</th>
+                            <th scope="col" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Benefits</th>
+                            <th scope="col" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Project Manager</th>
+                            <th scope="col" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Budgets</th>
+                            <th scope="col" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">KPI</th>
+                            <th scope="col" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Status</th>
+                            <th scope="col" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Progress</th>
+                            <th scope="col" style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="w-[4.25rem] text-center px-4 py-3 border-0">
                               Action
                             </th>
                           </tr>
@@ -6033,17 +6030,17 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               {pagedProgramPortfolioRows.length > 0 && (
                 <section className="space-y-3">
                   <div className="overflow-x-auto bg-transparent">
-                    <table className={`${enj.tableBrand} min-w-[980px] text-xs bg-transparent border-separate`}>
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-l-[11.9px]">Program</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">KPI</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Benefits</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Budget</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program Manager</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">ROI</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Start Date</th>
-                          <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-r-[11.9px]">Progress</th>
+                    <table className={`${enj.table} min-w-[980px] text-xs bg-transparent border-separate`}>
+                      <thead style={{ borderRadius: '0' }}>
+                        <tr className="bg-[#E1E3EC]">
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Program</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">KPI</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Benefits</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Budget</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Program Manager</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">ROI</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Start Date</th>
+                          <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -6123,17 +6120,17 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                                         <div className="overflow-x-auto bg-transparent">
                                           <table className={`${enj.table} min-w-[1140px] text-left text-[11px]`}>
                                             <thead>
-                                              <tr>
-                                                <th className="px-3 py-1.5 font-semibold">Project</th>
-                                                <th className="px-3 py-1.5 font-semibold">Priority</th>
-                                                <th className="px-3 py-1.5 font-semibold">Sponsor</th>
-                                                <th className="px-3 py-1.5 font-semibold">Type</th>
-                                                <th className="px-3 py-1.5 font-semibold">Budget</th>
-                                                <th className="px-3 py-1.5 font-semibold">Strat.goal</th>
-                                                <th className="px-3 py-1.5 font-semibold">Project Manager</th>
-                                                <th className="px-3 py-1.5 font-semibold">Timeline</th>
-                                                <th className="px-3 py-1.5 font-semibold">Progress</th>
-                                                <th className="px-3 py-1.5 font-semibold">Status</th>
+                                              <tr style={{ backgroundColor: '#E1E3EC' }}>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Priority</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Sponsor</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Type</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Budget</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Strat.goal</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project Manager</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Timeline</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
+                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Status</th>
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -8688,23 +8685,23 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                     <table className={`${enj.table} w-full`}>
                       <thead className="bg-gray-50 border-b border-gray-100">
                         {teamTab === 'Evaluation' ? (
-                          <tr className="text-[11px] text-gray-400 text-left">
-                            <th className="px-4 py-3">Name</th>
-                            <th className="px-4 py-3">Project Name</th>
-                            <th className="px-4 py-3">Specialize</th>
-                            <th className="px-4 py-3">Evolution</th>
-                            <th className="px-4 py-3">Last Activity</th>
-                            <th className="px-4 py-3" />
+                          <tr style={{ backgroundColor: '#E1E3EC' }}>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Name</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Project Name</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Specialize</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Evolution</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Last Activity</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0" />
                           </tr>
                         ) : (
-                          <tr className="text-[11px] text-gray-400 text-left">
-                            <th className="px-4 py-3">Active Team Member</th>
-                            <th className="px-4 py-3">Productivity (Hrs/Days)</th>
-                            <th className="px-4 py-3">Goal Productivity</th>
-                            <th className="px-4 py-3">Total Assigned Tasks (Hrs)</th>
-                            <th className="px-4 py-3">Worked days</th>
-                            <th className="px-4 py-3">Member Capacity</th>
-                            <th className="px-4 py-3">Utilization</th>
+                          <tr style={{ backgroundColor: '#E1E3EC' }}>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Active Team Member</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Productivity (Hrs/Days)</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Goal Productivity</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Total Assigned Tasks (Hrs)</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Worked days</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Member Capacity</th>
+                            <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-4 py-3 border-0">Utilization</th>
                           </tr>
                         )}
                       </thead>
@@ -8829,16 +8826,16 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               </div>
               <div className="flex-1 min-h-0 overflow-hidden">
                 <table className={`${enj.table} w-full`}>
-                  <thead className="bg-[#eaecf3] border-b border-gray-100">
-                    <tr className="text-xs font-semibold text-[#6d7488] text-left">
-                      <th className="px-3 py-1.5">Project Name</th>
-                      <th className="px-3 py-1.5">Strategic Objective</th>
-                      <th className="px-3 py-1.5">Project Sponsor</th>
-                      <th className="px-3 py-1.5">Budget</th>
-                      <th className="px-3 py-1.5">Category</th>
-                      <th className="px-3 py-1.5">Start Date</th>
-                      <th className="px-3 py-1.5">Progress Level</th>
-                      <th className="px-3 py-1.5">Status</th>
+                  <thead>
+                    <tr className="bg-[#E1E3EC]">
+                      <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-1.5 border-0">Project Name</th>
+                      <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-1.5 border-0">Strategic Objective</th>
+                      <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-1.5 border-0">Project Sponsor</th>
+                      <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-1.5 border-0">Budget</th>
+                      <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-1.5 border-0">Category</th>
+                      <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-1.5 border-0">Start Date</th>
+                      <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-1.5 border-0">Progress Level</th>
+                      <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-1.5 border-0">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -9221,16 +9218,16 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               </button>
             </div>
             <table className={`${enj.table} w-full`}>
-              <thead className="bg-[#eaecf3] border-y border-gray-100">
-                <tr className="text-xs font-semibold text-[#6d7488] text-left">
-                  <th className="px-3 py-2">Project Name</th>
-                  <th className="px-3 py-2">Strategic Objective</th>
-                  <th className="px-3 py-2">Project Sponsor</th>
-                  <th className="px-3 py-2">Budget</th>
-                  <th className="px-3 py-2">Category</th>
-                  <th className="px-3 py-2">Start Date</th>
-                  <th className="px-3 py-2">Progress Level</th>
-                  <th className="px-3 py-2">Status</th>
+              <thead>
+                <tr className="bg-[#E1E3EC]">
+                  <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Project Name</th>
+                  <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Strategic Objective</th>
+                  <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Project Sponsor</th>
+                  <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Budget</th>
+                  <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Category</th>
+                  <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Start Date</th>
+                  <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Progress Level</th>
+                  <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Status</th>
                 </tr>
               </thead>
               <tbody>

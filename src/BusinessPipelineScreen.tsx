@@ -301,7 +301,7 @@ export default function BusinessPipelineScreen({
   }, [tableRows, year, category]);
 
   const [viewAllPage, setViewAllPage] = useState(1);
-  const VIEW_ALL_PAGE_SIZE = 8;
+  const VIEW_ALL_PAGE_SIZE = 6;
   const viewAllTotalPages = Math.max(1, Math.ceil(filteredRows.length / VIEW_ALL_PAGE_SIZE));
   const pagedViewAllRows = filteredRows.slice((viewAllPage - 1) * VIEW_ALL_PAGE_SIZE, viewAllPage * VIEW_ALL_PAGE_SIZE);
 
@@ -439,11 +439,11 @@ export default function BusinessPipelineScreen({
         </div>
 
         <div className="flex-1 overflow-auto px-5 py-4">
-          <table className="min-w-[1000px] w-full bg-transparent border-separate text-[12px]">
+          <table className={`${enj.table} min-w-[1000px] w-full bg-transparent text-[12px]`}>
             <thead>
               <tr className="bg-[rgba(225,227,236,1)]">
                 {(['Pipeline Name', 'Opportunity', 'Benefits', 'Potential Value', 'Client Name', 'Stage of Opportunity', 'Start Date', 'Tentative Closure', 'Action'] as const).map((h) => (
-                  <th key={h} className="h-[38px] whitespace-nowrap px-3 normal-case border-0 text-[12px] font-bold tracking-normal text-[rgba(118,131,150,1)]">
+                  <th key={h} className="whitespace-nowrap px-3 normal-case border-0 tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>
                     {h}
                   </th>
                 ))}
@@ -677,17 +677,17 @@ export default function BusinessPipelineScreen({
           )}
         </div>
         <div className="overflow-x-auto">
-          <table className={`${enj.tableBrand} min-w-[900px] !border-separate ![border-spacing:0_8px] text-[12px]`}>
+          <table className={`${enj.table} min-w-[900px] w-full text-[12px]`}>
             <thead>
               <tr>
-                <th className="h-[41px] whitespace-nowrap normal-case bg-[rgba(225,227,236,1)] text-[13px] font-bold tracking-normal text-[rgba(118,131,150,1)]">Pipeline name</th>
-                <th className="h-[41px] whitespace-nowrap normal-case bg-[rgba(225,227,236,1)] text-[13px] font-bold tracking-normal text-[rgba(118,131,150,1)]">Benefits</th>
-                <th className="h-[41px] whitespace-nowrap normal-case bg-[rgba(225,227,236,1)] text-[13px] font-bold tracking-normal text-[rgba(118,131,150,1)]">Potential Value</th>
-                <th className="h-[41px] whitespace-nowrap normal-case bg-[rgba(225,227,236,1)] text-[13px] font-bold tracking-normal text-[rgba(118,131,150,1)]">Start Date</th>
-                <th className="h-[41px] min-w-[8rem] whitespace-nowrap normal-case bg-[rgba(225,227,236,1)] text-[13px] font-bold tracking-normal text-[rgba(118,131,150,1)]">Client Name</th>
-                <th className="h-[41px] min-w-[7rem] whitespace-nowrap normal-case bg-[rgba(225,227,236,1)] text-[13px] font-bold tracking-normal text-[rgba(118,131,150,1)]">Stage of Opportunity</th>
-                <th className="h-[41px] whitespace-nowrap normal-case bg-[rgba(225,227,236,1)] text-[13px] font-bold tracking-normal text-[rgba(118,131,150,1)]">Tentative Closure</th>
-                <th className="h-[41px] whitespace-nowrap normal-case bg-[rgba(225,227,236,1)] text-[13px] font-bold tracking-normal text-[rgba(118,131,150,1)]">Action</th>
+                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Pipeline name</th>
+                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Benefits</th>
+                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Potential Value</th>
+                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Start Date</th>
+                <th className="min-w-[8rem] whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Client Name</th>
+                <th className="min-w-[7rem] whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Stage of Opportunity</th>
+                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Tentative Closure</th>
+                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Action</th>
               </tr>
             </thead>
             <tbody>

@@ -8,7 +8,7 @@ import { PagerBar } from './PagerBar';
 import { ScreenLoader } from './ScreenLoader';
 import { enj } from './ui/enjForm';
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 6;
 const FETCH_TOP = 5000;
 
 function statusBadgeClass(statusLabel: string): string {
@@ -150,12 +150,12 @@ export function DeliverablesListPanel({
       {!loading && (
         <table className={`${enj.table} w-full text-xs bg-transparent border-separate`}>
           <thead>
-            <tr className="bg-[rgba(225,227,236,1)]">
-              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Project</th>
-              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Project Manager</th>
-              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Deliverables</th>
-              <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Status</th>
-              {showActions && <th className="w-[5rem] text-center px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Actions</th>}
+            <tr className="bg-[#E1E3EC]">
+              <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Project</th>
+              <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Project Manager</th>
+              <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Deliverables</th>
+              <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="px-3 py-2 border-0">Status</th>
+              {showActions && <th style={{ fontFamily: "DM Sans, ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', borderRadius: '0' }} className="w-[5rem] text-center px-3 py-2 border-0">Actions</th>}
             </tr>
           </thead>
           <tbody>

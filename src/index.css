@@ -278,7 +278,13 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   }
   .enj-table thead th {
     height: 44px;
-    @apply border-0 bg-[rgba(225,227,236,1)] px-4 py-3 text-left text-[13px] font-bold normal-case tracking-normal text-[rgba(92,104,124,1)] first:pl-4 last:pr-4 sm:px-5;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 12.81px;
+    line-height: 100%;
+    letter-spacing: 0%;
+    color: #768396;
+    @apply border-0 bg-[#E1E3EC] px-4 py-3 text-left normal-case tracking-normal first:pl-4 last:pr-4 sm:px-5;
   }
   .enj-table tbody td {
     height: 56px;
@@ -296,7 +302,13 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
   /* brand alias follows same unified table spec */
   .enj-table--brand thead th {
-    @apply bg-[rgba(225,227,236,1)] text-[13px] font-bold normal-case tracking-normal text-[rgba(92,104,124,1)];
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 12.81px;
+    line-height: 100%;
+    letter-spacing: 0%;
+    color: #768396;
+    @apply bg-[#E1E3EC] normal-case tracking-normal;
   }
   .enj-table--brand tbody td {
     @apply bg-white py-2 text-[12px] font-medium text-[rgba(35,35,96,1)] sm:py-2;
@@ -349,12 +361,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   .enj-program-screen-table.enj-table thead th {
     @apply border-0 px-4 py-0 text-left align-middle;
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-    font-size: 13px;
+    font-size: 12.81px;
     font-weight: 700;
-    line-height: 1;
-    letter-spacing: normal;
-    color: rgba(118, 131, 150, 1);
-    background-color: rgba(225, 227, 236, 1);
+    line-height: 100%;
+    letter-spacing: 0%;
+    color: #768396;
+    background-color: #E1E3EC;
     height: 40.99082565307617px;
   }
   /* No rounded corners for header bar (matches spec). */
@@ -417,11 +429,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   .enj-program-projects-table.enj-table thead th {
     @apply border-0 px-4 py-3 text-left align-middle;
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-    font-size: 0.875rem;
+    font-size: 12.81px;
     font-weight: 700;
-    line-height: 1;
-    color: rgba(118, 131, 150, 1);
-    background-color: rgba(204, 210, 239, 1);
+    line-height: 100%;
+    letter-spacing: 0%;
+    color: #768396;
+    background-color: #E1E3EC;
   }
   .enj-program-projects-table.enj-table thead tr th:first-child {
     border-radius: 12px 0 0 12px;
@@ -471,10 +484,14 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     border-spacing: 0 8px;
   }
   .enj-dummy-projects-table.enj-table thead th {
-    @apply h-[40.99px] border-0 px-3 py-2 text-left align-middle text-[13px] font-bold normal-case tracking-normal;
+    @apply h-[40.99px] border-0 px-3 py-2 text-left align-middle normal-case tracking-normal;
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
-    color: rgba(92, 104, 124, 1);
-    background-color: rgba(225, 227, 236, 1);
+    font-size: 12.81px;
+    font-weight: 700;
+    line-height: 100%;
+    letter-spacing: 0%;
+    color: #768396;
+    background-color: #E1E3EC;
   }
   .enj-dummy-projects-table.enj-table tbody tr.enj-dummy-projects-table__row td {
     @apply h-[54px] border-0 px-3 py-2 align-middle text-[12px] leading-tight;
@@ -517,6 +534,23 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   }
   .enj-table--compact thead th {
     @apply py-2 text-[10px] sm:text-xs;
+  }
+
+  /* Report table headers with proper DM Sans styling */
+  .report-table-header {
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    font-size: 12.81px;
+    font-weight: 600;
+    line-height: 100%;
+    letter-spacing: 0%;
+    color: #768396;
+    background-color: #E1E3EC;
+    padding: 0.75rem 0.625rem;
+    border: 0;
+    text-align: left;
+    vertical-align: middle;
+    height: 44px;
+    display: table-cell;
   }
 
   /* ── Badge / status pills ── */

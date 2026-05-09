@@ -7,14 +7,14 @@ export const TABLE_STYLES = {
   table: 'w-full border-collapse bg-transparent',
   headerRow: 'bg-transparent',
   // Header color: rgba(225, 227, 236, 1) background, rgba(118, 131, 150, 1) text, sharp corners
-  headerCell: 'px-2.5 py-3 text-[11px] font-semibold border-0' +
-              ' bg-[rgba(225,227,236,1)]' +
-              ' text-[rgba(118,131,150,1)]',
+  headerCell: 'px-2.5 py-3 text-[12.81px] font-bold border-0' +
+              ' bg-[#E1E3EC]' +
+              ' text-[#768396]',
   dataRow: 'bg-white rounded-[11.9px] hover:shadow-md transition-shadow',
   dataRowGap: 'h-2',
 
   // Cell styling
-  dataCell: 'px-2.5 py-3 text-[11px] text-gray-700 border-0',
+  dataCell: 'px-2.5 py-3 text-[11px] text-gray-700 border-0 align-middle',
   dataCellMuted: 'px-2.5 py-3 text-[11px] text-gray-600 border-0',
   dataCellEmphasis: 'px-2.5 py-3 text-[11px] font-medium text-gray-900 border-0',
   dataCellLink: 'px-2.5 py-3 text-[11px] font-medium text-blue-600 border-0',
