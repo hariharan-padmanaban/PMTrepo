@@ -1567,8 +1567,8 @@ export function ProgramProjectsSection({
       </div>
     </section>
   ) : (
-    <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-3 sm:p-4 bg-[#f5f6fb]">
-      <div className="flex items-center justify-between mb-2 shrink-0">
+    <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
+      <div className="flex items-center justify-between mb-4 shrink-0">
         <h2 className="enj-screen-header">Projects</h2>
         {!hideNewProject && (
           <button
@@ -1587,8 +1587,8 @@ export function ProgramProjectsSection({
         {projectBoardColumns.map((column) => {
           const rows = boardProjectsByStatus[column.title] ?? [];
           return (
-            <div key={column.title} className="flex w-full min-w-0 flex-col gap-2.5">
-              <div className="shrink-0 bg-white rounded-lg border border-gray-100 px-3 py-2 flex items-center justify-between">
+            <div key={column.title} className="flex w-full min-w-0 flex-col gap-3">
+              <div className="shrink-0 bg-white rounded-lg border border-gray-100 px-4 py-2.5 flex items-center justify-between">
                 <p className="text-xs font-semibold" style={{ color: column.color }}>{column.title}</p>
                 <span className="text-[10px] font-semibold tabular-nums" style={{ color: column.color }}>{rows.length}</span>
               </div>
@@ -1767,8 +1767,8 @@ export function ProgramProjectsSection({
   )}
   {projectFilesModal && (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/35 px-4">
-      <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
+      <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-4">
           <div>
             <h3 className="text-base font-semibold text-primary">Project Files</h3>
             <p className="text-xs text-gray-500">{projectFilesModal.projectName}</p>
@@ -1781,15 +1781,15 @@ export function ProgramProjectsSection({
             Close
           </button>
         </div>
-        <div className="mt-3 max-h-80 overflow-y-auto">
+        <div className="mt-4 max-h-80 overflow-y-auto">
           {projectFilesLoading ? (
             <p className="text-sm text-gray-500">Loading files...</p>
           ) : projectFilesRows.length === 0 ? (
             <p className="text-sm text-gray-500">No files uploaded for this project yet.</p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {projectFilesRows.map((file) => (
-                <li key={file.id} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2">
+                <li key={file.id} className="flex items-center justify-between rounded-md border border-gray-100 px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-primary">{file.name}</p>
                     <p className={enj.label}>{file.modified || '—'}</p>

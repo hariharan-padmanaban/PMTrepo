@@ -235,10 +235,10 @@ export function DeliverablesListPanel({
   );
 
   const charts = (
-    <aside className="space-y-3">
-      <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
-        <h3 className={`${h3} mb-2`}>Deliverables Status</h3>
-        <p className="text-[9px] text-gray-500 mb-2">
+    <aside className="space-y-4">
+      <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm chart-card">
+        <h3 className={`${h3} mb-3`}>Deliverables Status</h3>
+        <p className="text-[9px] text-gray-500 mb-3">
           Delivered: {statusCounts.delivered}, To deliver: {statusCounts.toDeliver}, Delayed: {statusCounts.delayed}
         </p>
         <div className="flex h-3 rounded overflow-hidden w-full max-w-full">
@@ -247,8 +247,8 @@ export function DeliverablesListPanel({
           <div className="h-full bg-rose-500" style={{ width: `${wDelayed}%` }} title="Delayed" />
         </div>
       </div>
-      <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
-        <h3 className={`${h3} mb-2`}>Deliverables via Projects</h3>
+      <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm chart-card">
+        <h3 className={`${h3} mb-3`}>Deliverables via Projects</h3>
         <div className="flex items-end justify-between gap-1 h-32 px-1">
           {byProject.length === 0 ? (
             <p className="text-[10px] text-gray-400">No data</p>
@@ -285,7 +285,7 @@ export function DeliverablesListPanel({
   );
 
   const body = (
-    <section className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-3 mt-3">
+    <section className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-4 mt-4">
       {tableBlock}
       {charts}
     </section>

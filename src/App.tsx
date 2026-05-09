@@ -1760,28 +1760,28 @@ function MeetingsBoardPanel({
   return (
     <section className={enj.screenContainer}>
       {loading && <ScreenLoader overlay className="rounded-xl" />}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-8">
-          <h2 className="enj-screen-header">Meetings</h2>
-          <div className="flex items-center gap-3 text-xs">
-            <label className="text-gray-500 flex items-center gap-2"><span>Project Name</span><select className={`${enj.control} !w-auto max-w-[170px] text-sm text-gray-600`} value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="All">All</option>{projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
-            <label className="text-gray-500 flex items-center gap-2"><span>Date</span><input type="date" className={`${enj.control} !w-auto text-sm`} value={selectedDateIso} onChange={(e) => setSelectedDateIso(e.target.value)} /></label>
-            <button type="button" onClick={() => { setSelectedDateIso(localIsoDate(new Date())); setShowMom(false); }} className={`${enj.btn} ${enj.btnOutline} rounded-full px-3 text-sm`}>Today</button>
-            <button type="button" onClick={() => setShowMom((v) => !v)} className={`${enj.btn} ${enj.btnOutline} text-sm`}>MOM</button>
-          </div>
+      <section className="flex items-center justify-between mb-4 shrink-0">
+        <h2 className="enj-screen-header">Meetings</h2>
+        <button type="button" onClick={onNewMeeting} className={`${enj.btn} ${enj.btnPrimary} font-medium`}>+ New Meeting</button>
+      </section>
+      <div className="flex items-center justify-between mb-4 shrink-0 gap-3">
+        <div className="flex items-center gap-3 text-xs">
+          <label className="text-gray-500 flex items-center gap-2"><span>Project Name</span><select className={`${enj.control} !w-auto max-w-[170px] text-sm text-gray-600`} value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="All">All</option>{projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
+          <label className="text-gray-500 flex items-center gap-2"><span>Date</span><input type="date" className={`${enj.control} !w-auto text-sm`} value={selectedDateIso} onChange={(e) => setSelectedDateIso(e.target.value)} /></label>
+          <button type="button" onClick={() => { setSelectedDateIso(localIsoDate(new Date())); setShowMom(false); }} className={`${enj.btn} ${enj.btnOutline} rounded-full px-3 text-sm`}>Today</button>
+          <button type="button" onClick={() => setShowMom((v) => !v)} className={`${enj.btn} ${enj.btnOutline} text-sm`}>MOM</button>
         </div>
-        <button type="button" onClick={onNewMeeting} className={`${enj.btn} ${enj.btnPrimary} text-sm font-semibold`}>+ New Meeting</button>
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
         {showMom ? (
-          <section className="bg-white rounded-xl p-3">
-            <p className="text-[16px] font-bold text-primary mb-2">Meetings {'>'} MOM</p>
+          <section className="bg-white rounded-xl p-4 sm:p-5">
+            <p className="text-[16px] font-bold text-primary mb-3">Meetings {'>'} MOM</p>
             <table className={`${enj.table} w-full text-[10px]`}><thead><tr><th>Meeting Title</th><th>Category</th><th>Project Name</th><th>Date</th><th className="text-right">Join</th></tr></thead><tbody>{filteredMeetings.length === 0 ? <tr><td colSpan={5} className="px-3 py-6 text-center text-xs text-gray-500">No meetings for selected project/date.</td></tr> : filteredMeetings.map((mrow) => { const join = String(mrow.new_meetinglink ?? '').trim(); const canOpen = /^https?:\/\//i.test(join); return <tr key={String(mrow.new_meetingdetailid ?? mrow.createdon)} className="border-b border-gray-100 text-[11px] text-gray-700"><td className="px-3 py-3 font-semibold">{canOpen ? <a href={join} target="_blank" rel="noopener noreferrer" className={enj.tableLink}>{String(mrow.new_meetingtitle ?? '—')}</a> : String(mrow.new_meetingtitle ?? '—')}</td><td className="px-3 py-3">{String(mrow.new_meetingcategory ?? '—')}</td><td className="px-3 py-3">{String(mrow.new_projectname ?? '—')}</td><td className="px-3 py-3 text-gray-500">{meetingShortDate(mrow.new_meetingdate)}</td><td className="px-3 py-3 text-right">{canOpen ? <a href={join} target="_blank" rel="noopener noreferrer" className={`${enj.tableLink} underline`}>Join</a> : <span className="text-gray-300">—</span>}</td></tr>; })}</tbody></table>
           </section>
         ) : (
-          <section className="bg-white rounded-xl p-3"><div className="grid grid-cols-[44px_1fr]"><div className="text-[10px] text-gray-300 space-y-8 pt-2">{['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map((time) => <p key={time}>{time}</p>)}</div><div className="relative h-[410px] rounded-lg border border-gray-100 bg-[repeating-linear-gradient(to_right,#f6f7fb_0,#f6f7fb_1px,transparent_1px,transparent_16.66%)]">{[15, 73, 139, 205, 271, 337].map((x) => <div key={x} className="absolute top-0 bottom-0 w-px bg-gray-100" style={{ left: x }} />)}{blocks.length === 0 ? <p className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No meetings for selected day</p> : blocks.map((item) => <button key={item.id} type="button" className="absolute h-8 max-w-[200px] cursor-pointer rounded-full px-3 text-left text-white text-[9px] font-semibold flex items-center truncate shadow-sm" style={{ top: item.top, left: item.left, backgroundColor: item.color }} onClick={() => { if (item.joinUrl) window.open(item.joinUrl, '_blank', 'noopener,noreferrer'); else onNotify('info', 'No Teams join link yet for this meeting.'); }}>{item.title}</button>)}</div></div></section>
+          <section className="bg-white rounded-xl p-4 sm:p-5"><div className="grid grid-cols-[44px_1fr] gap-3"><div className="text-[10px] text-gray-300 space-y-8 pt-2">{['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map((time) => <p key={time}>{time}</p>)}</div><div className="relative h-[410px] rounded-lg border border-gray-100 bg-[repeating-linear-gradient(to_right,#f6f7fb_0,#f6f7fb_1px,transparent_1px,transparent_16.66%)]">{[15, 73, 139, 205, 271, 337].map((x) => <div key={x} className="absolute top-0 bottom-0 w-px bg-gray-100" style={{ left: x }} />)}{blocks.length === 0 ? <p className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">No meetings for selected day</p> : blocks.map((item) => <button key={item.id} type="button" className="absolute h-8 max-w-[200px] cursor-pointer rounded-full px-3 text-left text-white text-[9px] font-semibold flex items-center truncate shadow-sm" style={{ top: item.top, left: item.left, backgroundColor: item.color }} onClick={() => { if (item.joinUrl) window.open(item.joinUrl, '_blank', 'noopener,noreferrer'); else onNotify('info', 'No Teams join link yet for this meeting.'); }}>{item.title}</button>)}</div></div></section>
         )}
-        <section className="bg-white rounded-xl p-3"><p className="text-[9px] text-gray-400 uppercase">Current Day</p><h3 className="text-sm font-semibold text-primary mb-2">Scheduled Meetings</h3><div className="space-y-2">{categories.length === 0 ? <p className="text-xs text-gray-400 py-2">No scheduled meeting categories.</p> : categories.map((row) => <div key={row.name} className="rounded-full px-3 py-1.5 flex items-center justify-between" style={{ backgroundColor: row.bg }}><div><p className="text-[10px] font-semibold" style={{ color: row.text }}>{row.name}</p><p className="text-[9px] text-gray-400">{row.hrs > 0 ? `${row.hrs} HRS` : '—'}</p></div><span className="w-5 h-5 rounded-full bg-white/80 text-[10px] font-semibold flex items-center justify-center" style={{ color: row.text }}>{row.n}</span></div>)}</div></section>
+        <section className="bg-white rounded-xl p-4 sm:p-5"><p className="text-[9px] text-gray-400 uppercase">Current Day</p><h3 className="text-sm font-semibold text-[#232360] mb-3">Scheduled Meetings</h3><div className="space-y-3">{categories.length === 0 ? <p className="text-xs text-gray-400 py-2">No scheduled meeting categories.</p> : categories.map((row) => <div key={row.name} className="rounded-full px-3 py-1.5 flex items-center justify-between" style={{ backgroundColor: row.bg }}><div><p className="text-[10px] font-semibold" style={{ color: row.text }}>{row.name}</p><p className="text-[9px] text-gray-400">{row.hrs > 0 ? `${row.hrs} HRS` : '—'}</p></div><span className="w-5 h-5 rounded-full bg-white/80 text-[10px] font-semibold flex items-center justify-center" style={{ color: row.text }}>{row.n}</span></div>)}</div></section>
       </div>
     </section>
   );
@@ -2298,8 +2298,10 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
         </header>
 
         <main
-          className={`flex-1 min-h-0 min-w-0 flex flex-col px-6 pt-6 pb-16 ${
-            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
+          className={`flex-1 min-h-0 min-w-0 flex flex-col px-6 pb-16 sm:pb-20 ${
+            activeNav === 'Dashboard' ? 'pt-6' : ''
+          } ${
+            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow) || activeNav === 'Meetings'
               ? 'overflow-hidden'
               : 'overflow-y-auto'
           }`}
@@ -2611,7 +2613,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col">
-                  <h3 className="text-sm font-semibold text-primary mb-3">Projects vs Issues</h3>
+                  <h3 className="text-sm font-semibold text-[#232360] mb-3">Projects vs Issues</h3>
                   {teamIssuesRegister.projectBars.length === 0 ? (
                     <p className="text-xs text-gray-400 py-8">No issue data by project</p>
                   ) : (
@@ -2774,59 +2776,59 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                 <>
                 <div className="relative">
                   {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-8">
-                      <h2 className="enj-screen-header">Calendar</h2>
-                      <div className="flex items-center gap-3 text-xs">
-                        <label className="text-gray-500 flex items-center gap-2">
-                          <span>Project Name</span>
-                          <select
-                            className={`${enj.control} !w-auto max-w-[160px] text-sm text-gray-600`}
-                            value={teamCalendarProjectFilter}
-                            onChange={(e) => setTeamCalendarProjectFilter(e.target.value)}
-                          >
-                            <option value="All">All</option>
-                            {Array.from(myProjectNameSet)
-                              .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
-                              .map((p) => (
-                                <option key={p} value={p}>
-                                  {p}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
-                        <label className="text-gray-500 flex items-center gap-2">
-                          <span className="shrink-0">Date</span>
-                          <input
-                            type="date"
-                            className={`${enj.control} !w-auto text-sm`}
-                            value={teamCalendarSelectedDateIso}
-                            onChange={(e) => setTeamCalendarSelectedDateIso(e.target.value)}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const t = new Date();
-                            setTeamCalendarSelectedDateIso(
-                              `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`,
-                            );
-                            setShowCalendarMom(false);
-                          }}
-                          className={`${enj.btn} ${enj.btnOutline} rounded-full px-3 text-sm`}
+                  <section className="flex items-center justify-between mb-4 shrink-0">
+                    <h2 className="enj-screen-header">Calendar</h2>
+                    <button type="button" onClick={() => setShowAddCalendarMeetingForm(true)} className={`${enj.btn} ${enj.btnPrimary} font-medium`}>+ New Meeting</button>
+                  </section>
+                  <div className="flex items-center justify-between mb-4 shrink-0 gap-3">
+                    <div className="flex items-center gap-3 text-xs">
+                      <label className="text-gray-500 flex items-center gap-2">
+                        <span>Project Name</span>
+                        <select
+                          className={`${enj.control} !w-auto max-w-[160px] text-sm text-gray-600`}
+                          value={teamCalendarProjectFilter}
+                          onChange={(e) => setTeamCalendarProjectFilter(e.target.value)}
                         >
-                          Today
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowCalendarMom(true)}
-                          className={`${enj.btn} ${enj.btnOutline} text-sm`}
-                        >
-                          MOM
-                        </button>
-                      </div>
+                          <option value="All">All</option>
+                          {Array.from(myProjectNameSet)
+                            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+                            .map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label className="text-gray-500 flex items-center gap-2">
+                        <span className="shrink-0">Date</span>
+                        <input
+                          type="date"
+                          className={`${enj.control} !w-auto text-sm`}
+                          value={teamCalendarSelectedDateIso}
+                          onChange={(e) => setTeamCalendarSelectedDateIso(e.target.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const t = new Date();
+                          setTeamCalendarSelectedDateIso(
+                            `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`,
+                          );
+                          setShowCalendarMom(false);
+                        }}
+                        className={`${enj.btn} ${enj.btnOutline} rounded-full px-3 text-sm`}
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCalendarMom(true)}
+                        className={`${enj.btn} ${enj.btnOutline} text-sm`}
+                      >
+                        MOM
+                      </button>
                     </div>
-                    <button type="button" onClick={() => setShowAddCalendarMeetingForm(true)} className={`${enj.btn} ${enj.btnPrimary} text-sm font-semibold`}>+ New Meeting</button>
                   </div>
 
                   <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
@@ -2893,8 +2895,8 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                         </table>
                       </section>
                     ) : (
-                      <section className="bg-white rounded-xl p-3">
-                        <div className="grid grid-cols-[44px_1fr]">
+                      <section className="bg-white rounded-xl p-4 sm:p-5">
+                        <div className="grid grid-cols-[44px_1fr] gap-3">
                           <div className="text-[10px] text-gray-300 space-y-8 pt-2">
                             {['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map((time) => (
                               <p key={time}>{time}</p>
@@ -2932,10 +2934,10 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                       </section>
                     )}
 
-                    <section className="bg-white rounded-xl p-3">
+                    <section className="bg-white rounded-xl p-4 sm:p-5">
                   <p className="text-[9px] text-gray-400 uppercase">Current Month</p>
-                  <h3 className="text-sm font-semibold text-primary mb-2">Scheduled Meetings</h3>
-                  <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-[#232360] mb-3">Scheduled Meetings</h3>
+                  <div className="space-y-3">
                     {teamCalendarCategoryRows.length === 0 ? (
                       <p className="text-xs text-gray-400 py-2">No scheduled meeting categories this period.</p>
                     ) : teamCalendarCategoryRows.map((row) => (
@@ -3003,7 +3005,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               {/* ── Tasks table ── */}
               <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                  <h2 className="text-base font-bold text-gray-900">Tasks</h2>
+                  <h2 className="text-base font-bold text-[#232360]">Tasks</h2>
                   <button
                     type="button"
                     className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
@@ -3969,7 +3971,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                 <div className="bg-white rounded-xl p-4 shadow-sm chart-card border border-gray-100/90 h-full flex flex-col"
                 >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-sm font-bold text-gray-900">Project TimeLine</h2>
+                  <h2 className="text-sm font-bold text-[#232360]">Project TimeLine</h2>
                   <div className="flex items-center gap-0.5 text-[10px] text-gray-500">
                     {(['weekly', 'monthly', 'yearly'] as const).map((p) => (
                       <button
@@ -4154,7 +4156,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
           <section className="grid grid-cols-1 gap-2 lg:grid-cols-3 mb-2">
             {/* KPI */}
             <div className="flex flex-col h-[272px] rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2 shrink-0">KPI</h3>
+              <h3 className="text-sm font-semibold text-[#232360] mb-2 shrink-0">KPI</h3>
               {(() => {
                 const bars = businessDash.kpiPinnacle;
                 const VW = 255, VH = 170;
@@ -4205,7 +4207,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
 
             {/* Projects Count */}
             <div className="flex flex-col h-[272px] rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2 shrink-0">Projects Count</h3>
+              <h3 className="text-sm font-semibold text-[#232360] mb-2 shrink-0">Projects Count</h3>
               {(() => {
                 const bars = businessDash.projectCounts.slice(0, 5);
                 const VW = 255, VH = 170;
@@ -4252,7 +4254,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
               <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
               <div className="flex items-center justify-between mb-2 shrink-0">
-                <h3 className="text-[11px] font-semibold text-gray-600">Actual VS Planned</h3>
+                <h3 className="text-[11px] font-semibold text-[#232360]">Actual VS Planned</h3>
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d9bf89]" />Actual</span>
                   <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#a07b3c]" />Planned</span>
@@ -4307,7 +4309,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             {/* ── Deviation ── */}
             <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4 min-w-0">
               <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
-              <h3 className="text-[11px] font-semibold text-gray-600 mb-2 shrink-0">Deviation</h3>
+              <h3 className="text-[11px] font-semibold text-[#232360] mb-2 shrink-0">Deviation</h3>
               {(() => {
                 const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
                 const VW = 560, VH = 185;
@@ -4356,7 +4358,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
           {portfolioPrograms.length > 0 && (
             <section className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-gray-900">Portfolio</h2>
+                <h2 className="text-sm font-bold text-[#232360]">Portfolio</h2>
                 {portfolioPrograms.length > 0 && (
                   <button
                     type="button"
@@ -5552,8 +5554,10 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
         </header>
 
         <main
-          className={`enj-app-main flex-1 min-h-0 min-w-0 flex flex-col ${
-            activeNav === 'Projects' || activeNav === 'Program' || activeNav === 'Deliverables'
+          className={`flex-1 min-h-0 min-w-0 flex flex-col px-4 pb-16 sm:px-6 sm:pb-20 md:px-8 ${
+            activeNav === 'Dashboard' ? 'pt-4 sm:pt-6 md:pt-6' : ''
+          } ${
+            activeNav === 'Projects' || activeNav === 'Program' || activeNav === 'Deliverables' || activeNav === 'Meetings'
               ? 'overflow-hidden !pb-0'
               : 'overflow-y-auto'
           }`}
@@ -5755,8 +5759,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </section>
               ) : (
-                <>
-                  <section className="flex items-center justify-between">
+                <section className={enj.screenContainer}>
+                  <section className="flex items-center justify-between mb-4 shrink-0">
                     <h2 className="enj-screen-header">Programs</h2>
                     <button
                       className={`${enj.btn} ${enj.btnPrimary} font-medium`}
@@ -5766,7 +5770,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                     </button>
                   </section>
 
-                  <section className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-3 mt-3">
+                  <section className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4">
                     <div className="overflow-x-auto bg-transparent">
                       <table className={`${enj.tableBrand} w-full min-w-[760px] text-xs bg-transparent border-separate`}>
                         <thead>
@@ -5880,9 +5884,9 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                       </div>
                     </div>
 
-                    <aside className="space-y-3">
+                    <aside className="space-y-4">
                       {programLoading ? (
-                        <div className="bg-white rounded-xl p-3 shadow-sm chart-card flex items-center justify-center min-h-[200px]">
+                        <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm chart-card flex items-center justify-center min-h-[200px]">
                           <p className="text-xs text-gray-400">Loading…</p>
                         </div>
                       ) : (
@@ -5897,8 +5901,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                           ) : null}
                         />
                       )}
-                      <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
-                        <h3 className="text-sm font-semibold text-primary mb-2">Program Progress Levels</h3>
+                      <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm chart-card">
+                        <h3 className="text-sm font-semibold text-[#232360] mb-3">Program Progress Levels</h3>
                         {programLoading ? (
                           <p className="text-xs text-gray-400 py-6 text-center">Loading…</p>
                         ) : programListProgressBarRows.length === 0 ? (
@@ -6000,26 +6004,30 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                       </div>
                     </aside>
                   </section>
-                </>
+                </section>
               )}
             </>
           ) : activeNav === 'Reports' ? (
-            <ProgramReportsPanel
-              isActive={activeNav === 'Reports'}
-              onNotify={(type, message) => setProgramToast({ type, message })}
-            />
+            <section className={enj.screenContainer}>
+              <ProgramReportsPanel
+                isActive={activeNav === 'Reports'}
+                onNotify={(type, message) => setProgramToast({ type, message })}
+              />
+            </section>
           ) : activeNav === 'Project Pipeline' ? (
-            <BusinessPipelineScreen
-              tableRows={programPipelineTableRows}
-              clientOptions={programPipelineClientOptions}
-              loading={programPipelineLoading}
-              hidePipelineCreation
-              screenTitle="Project Pipeline"
-              onNotify={(type, message) => setProgramToast({ type, message })}
-            />
+            <section className={enj.screenContainer}>
+              <BusinessPipelineScreen
+                tableRows={programPipelineTableRows}
+                clientOptions={programPipelineClientOptions}
+                loading={programPipelineLoading}
+                hidePipelineCreation
+                screenTitle="Project Pipeline"
+                onNotify={(type, message) => setProgramToast({ type, message })}
+              />
+            </section>
           ) : activeNav === 'Portfolio' ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2">
+            <section className={enj.screenContainer}>
+              <div className="flex items-center justify-between gap-2 mb-4 shrink-0">
                 <h1 className="enj-screen-header">Portfolio</h1>
               </div>
               {pagedProgramPortfolioRows.length > 0 && (
@@ -6197,9 +6205,9 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </section>
               )}
-            </div>
+            </section>
           ) : activeNav === 'Deliverables' ? (
-            <>
+            <section className={enj.screenContainer}>
               {showAddDeliverableForm ? (
                 <AddDeliverableFormPanel
                   onClose={() => setShowAddDeliverableForm(false)}
@@ -6228,7 +6236,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   {deletingDeliverableRow && (
                     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
                       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-                        <h3 className="mb-2 text-base font-semibold text-gray-900">Delete Deliverable</h3>
+                        <h3 className="mb-2 text-base font-semibold text-[#232360]">Delete Deliverable</h3>
                         <p className="mb-1 text-sm text-gray-600">
                           Are you sure you want to delete the deliverable for{' '}
                           <span className="font-medium text-gray-800">{String(deletingDeliverableRow.new_projectname ?? '—')}</span>?
@@ -6274,7 +6282,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                   )}
                 </>
               )}
-            </>
+            </section>
           ) : activeNav === 'Meetings' ? (
             <>
               {showAddMeetingForm ? (
@@ -6352,7 +6360,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
               {/* Projects progress bars */}
               <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
-                <h3 className="text-[11px] font-semibold text-gray-600 mb-2 shrink-0">Projects</h3>
+                <h3 className="text-[11px] font-semibold text-[#232360] mb-2 shrink-0">Projects</h3>
                 <div className="flex flex-1 flex-col justify-center gap-3 min-h-0">
                   {programInsightProjectBars.map((bar) => {
                     const v = Math.max(0, Math.min(100, bar.val));
@@ -6388,7 +6396,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
               {/* Deliverables area chart */}
               <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
-                <h3 className="text-[11px] font-semibold text-gray-600 mb-1 shrink-0">Deliverables</h3>
+                <h3 className="text-[11px] font-semibold text-[#232360] mb-1 shrink-0">Deliverables</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
                     const monthLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -6453,7 +6461,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
               <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
               <div className="flex items-center justify-between mb-2 shrink-0">
-                <h3 className="text-[11px] font-semibold text-gray-600">Actual VS Planned</h3>
+                <h3 className="text-[11px] font-semibold text-[#232360]">Actual VS Planned</h3>
                 <div className="flex items-center gap-3">
                   <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d4b06a]" />Actual</span>
                   <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#9b6f2c]" />Planned</span>
@@ -6508,7 +6516,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
             {/* ── Deviation ── */}
             <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4 min-w-0">
               <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
-              <h3 className="text-[11px] font-semibold text-gray-600 mb-2 shrink-0">Deviation</h3>
+              <h3 className="text-[11px] font-semibold text-[#232360] mb-2 shrink-0">Deviation</h3>
               {(() => {
                 const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
                 const VW = 560, VH = 185;
@@ -6555,7 +6563,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
           {programPortfolioLatestFive.length > 0 && (
             <section className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-gray-900">Portfolio</h2>
+                <h2 className="text-sm font-bold text-[#232360]">Portfolio</h2>
                 <button
                   type="button"
                   onClick={() => setActiveNav('Portfolio')}
@@ -7858,8 +7866,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
         </header>
 
         <main
-          className={`enj-app-main flex-1 min-h-0 min-w-0 flex flex-col ${
-            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen)
+          className={`flex-1 min-h-0 min-w-0 flex flex-col px-4 pb-16 sm:px-6 sm:pb-20 md:px-8 ${
+            activeNav === 'Dashboard' && !showAllProjectsScreen ? 'pt-4 sm:pt-6 md:pt-6' : ''
+          } ${
+            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen) || activeNav === 'Meetings'
               ? 'overflow-hidden'
               : 'overflow-y-auto'
           }`}
@@ -8089,7 +8099,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </section>
           ) : activeNav === 'Meetings' ? (
-            <section className={enj.screenContainer}>
+            <>
               {showAddMeetingForm ? (
                 <AddMeetingFormPanel
                   parentLabel="Meetings"
@@ -8105,7 +8115,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                   onNotify={(type, message) => setProjectDashToast({ type, message })}
                 />
               )}
-            </section>
+            </>
           ) : activeNav === 'Deliverables' ? (
             <>
               {showAddDeliverableForm ? (
@@ -8250,9 +8260,9 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       ['Open Issues', String(issueCharts.openCount), 'border-[#ef4444]'],
                       ['Closed Issues', String(issueCharts.closedCount), 'border-[#2563eb]'],
                     ].map(([label, value, border]) => (
-                      <div key={String(label)} className={`bg-white rounded-xl border-2 ${border} p-3 text-center`}>
+                      <div key={String(label)} className={`bg-white rounded-xl border-2 ${border} p-4 sm:p-5 text-center`}>
                         <p className="text-[11px] text-gray-500">{label}</p>
-                        <p className="text-4xl font-bold text-primary mt-1">{value}</p>
+                        <p className="text-4xl font-bold text-primary mt-2">{value}</p>
                       </div>
                     ))}
                   </div>
@@ -8268,9 +8278,9 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       slices={issueCharts.severitySlices}
                     />
 
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
-                      <h3 className="text-sm font-semibold text-gray-800 mb-2">Issues vs Projects</h3>
-                      <p className="text-[10px] text-gray-500 mb-2">Top projects by number of issues</p>
+                    <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm">
+                      <h3 className="text-sm font-semibold text-[#232360] mb-3">Issues vs Projects</h3>
+                      <p className="text-[10px] text-gray-500 mb-3">Top projects by number of issues</p>
                       <svg viewBox="0 0 220 140" className="w-full h-40 chart-svg">
                         {issueCharts.projectTicks.map((v) => (
                           <g key={v}>
@@ -8552,7 +8562,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 <div className="grid grid-cols-1 xl:grid-cols-[65fr_35fr] gap-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-lg font-semibold text-primary">{teamTab === 'Evaluation' ? 'Team Evaluation' : 'Team Workload'}</h3>
+                      <h3 className="text-lg font-semibold text-[#232360]">{teamTab === 'Evaluation' ? 'Team Evaluation' : 'Team Workload'}</h3>
                       <button className="text-[10px] text-gray-400">{teamTab === 'Workload' ? 'Day/week/months' : teamTab}</button>
                     </div>
                     {teamTab === 'Performance' ? (
@@ -8791,7 +8801,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
           ) : activeNav === 'Dashboard' && showAllProjectsScreen ? (
             <section className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full min-h-0">
               <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between shrink-0">
-                <h3 className="text-base font-bold text-gray-900">All Projects</h3>
+                <h3 className="text-base font-bold text-[#232360]">All Projects</h3>
                 <div className="flex items-center gap-3">
                   <input
                     value={projectSearchText}
@@ -8911,7 +8921,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Budgeting</p>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-bold text-gray-900">Actual VS Planned</h3>
+                  <h3 className="text-sm font-bold text-[#232360]">Actual VS Planned</h3>
                   <div className="flex items-center gap-3">
                     <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#ef4444]" />Actual</span>
                     <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#2563eb]" />Planned</span>
@@ -8966,7 +8976,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               {/* ── Deviation ── */}
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Budgeting</p>
-                <h3 className="text-sm font-bold text-gray-900 mb-2">Deviation</h3>
+                <h3 className="text-sm font-bold text-[#232360] mb-2">Deviation</h3>
                 {(() => {
                   const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
                   const VW = 560, VH = 185;
@@ -9036,7 +9046,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
               {/* Projects progress bars */}
               <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Projects</h3>
+                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-[#232360]">Projects</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
                     const VW = 320, VH = 160;
@@ -9086,7 +9096,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
 
               {/* Tasks vertical bars */}
               <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Tasks</h3>
+                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-[#232360]">Tasks</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
                     const VW = 320, VH = 160;
@@ -9141,7 +9151,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
 
               {/* Deliverables area chart */}
               <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-gray-600">Deliverables</h3>
+                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-[#232360]">Deliverables</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
                     const monthLabels = projectInsights.monthNames;
@@ -9379,7 +9389,7 @@ export default function App() {
     return (
       <div className="relative h-screen">
         <RoleDashboard role={loginRole} onLogout={() => setIsLoggedIn(false)} />
-        <p className="fixed inset-x-0 bottom-0 z-50 bg-white/90 py-2 text-center text-[11px] text-gray-500 backdrop-blur-sm">
+        <p className="fixed inset-x-0 bottom-0 z-50 bg-[#E1E3EC] py-2 text-center text-[11px] text-black backdrop-blur-sm">
           Copyright @2026 Enjaz Management Tool. All rights reserved.
         </p>
       </div>
@@ -9467,7 +9477,7 @@ export default function App() {
         </div>
       </main>
 
-      <p className="fixed inset-x-0 bottom-0 z-50 bg-white/90 py-2 text-center text-[11px] text-gray-500 backdrop-blur-sm">
+      <p className="fixed inset-x-0 bottom-0 z-50 bg-white py-2 text-center text-[11px] text-gray-500 backdrop-blur-sm">
         Copyright @2026 Enjaz Management Tool. All rights reserved.
       </p>
     </div>

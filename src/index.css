@@ -132,9 +132,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
     font-size: 24px;
     font-weight: 500;
-    color: #000000;
+    color: #232360;
     line-height: 100%;
     letter-spacing: 0%;
+    display: flex;
+    align-items: center;
+    min-height: 32px;
   }
 
   /* ── Subheaders (consistent secondary titles) ── */
@@ -148,15 +151,15 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
   /* ── Standardized Screen Containers (All Screens) ── */
   .enj-screen-container {
-    @apply rounded-xl p-3 sm:p-4 bg-[#f5f6fb];
+    @apply rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb];
   }
 
   .enj-screen-section {
-    @apply rounded-xl p-3 sm:p-4 bg-[#f5f6fb] flex flex-col;
+    @apply rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-col;
   }
 
   .enj-screen-section-fullheight {
-    @apply rounded-xl p-3 sm:p-4 bg-[#f5f6fb] flex flex-1 min-h-0 w-full flex-col overflow-hidden;
+    @apply rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-1 min-h-0 w-full flex-col overflow-hidden;
   }
 
   /* ── Dashboard Overview/Insights Headers ── */
@@ -171,6 +174,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    display: flex;
+    align-items: center;
+    min-height: 32px;
   }
 
   .enj-control {
@@ -228,10 +234,10 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   /* ── Enjaz layout + typography scale (all roles / screens) ── */
   .enj-app-main {
     /* Extra bottom space prevents last section from being clipped near page end. */
-    @apply px-4 pt-4 pb-16 sm:px-5 sm:pt-5 sm:pb-20 md:px-6;
+    @apply px-4 pt-4 pb-16 sm:px-6 sm:pt-6 sm:pb-20 md:px-8 md:pt-6;
   }
   .enj-stack {
-    @apply space-y-4 sm:space-y-5;
+    @apply space-y-6 sm:space-y-8;
   }
   .enj-page-title {
     font-family: var(--font-headline);
@@ -259,10 +265,10 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     @apply overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm;
   }
   .enj-card-pad {
-    @apply p-4 sm:p-5;
+    @apply p-5 sm:p-6;
   }
   .enj-chart-svg {
-    @apply h-44 min-h-44 w-full sm:h-48 sm:min-h-48;
+    @apply h-48 min-h-48 w-full sm:h-56 sm:min-h-56;
   }
   /* ── Tables (Unified: Dummy style applied app-wide) ── */
   .enj-table {
@@ -271,12 +277,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     @apply w-full min-w-0 table-auto text-left;
   }
   .enj-table thead th {
-    height: 40.99082565307617px;
-    @apply border-0 bg-[rgba(225,227,236,1)] px-3 py-2 text-left text-[13px] font-bold normal-case tracking-normal text-[rgba(92,104,124,1)] first:pl-3 last:pr-3 sm:px-4;
+    height: 44px;
+    @apply border-0 bg-[rgba(225,227,236,1)] px-4 py-3 text-left text-[13px] font-bold normal-case tracking-normal text-[rgba(92,104,124,1)] first:pl-4 last:pr-4 sm:px-5;
   }
   .enj-table tbody td {
-    height: 61.48624038696289px;
-    @apply border-0 bg-white px-3 py-2 align-middle text-[12px] font-medium text-[rgba(35,35,96,1)] first:pl-3 last:pr-3 sm:px-4;
+    height: 56px;
+    @apply border-0 bg-white px-4 py-3 align-middle text-[12px] font-medium text-[rgba(35,35,96,1)] first:pl-4 last:pr-4 sm:px-5;
   }
   .enj-table tbody tr td:first-child {
     border-radius: 10.44px 0 0 10.44px;

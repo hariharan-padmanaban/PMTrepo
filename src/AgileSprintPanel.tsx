@@ -415,8 +415,8 @@ export function AgileSprintPanel({
 
   if (backlogSprintName) {
     return (
-      <section className="rounded-xl p-3 sm:p-4 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
-        <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-4 flex flex-1 flex-col">
+      <section className="rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
+        <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-5 flex flex-1 flex-col">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">
               <button type="button" className="underline text-gray-700" onClick={() => setBacklogSprintName('')}>Sprint</button>
@@ -571,9 +571,9 @@ export function AgileSprintPanel({
   }
 
   return (
-    <section className="rounded-xl p-3 sm:p-4 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
-      <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_15rem] overflow-hidden">
-        <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-4 flex flex-col gap-3 overflow-y-auto">
+    <section className="rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_15rem] overflow-hidden">
+        <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-5 flex flex-col gap-4 overflow-y-auto">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">
               <button type="button" onClick={onBack} className="text-gray-700 underline">

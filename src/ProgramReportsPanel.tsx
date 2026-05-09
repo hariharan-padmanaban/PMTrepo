@@ -867,8 +867,8 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   }
 
   return (
-    <>
-      <section className="flex items-center justify-between">
+    <div className="flex flex-col gap-4">
+      <section className="flex items-center justify-between shrink-0">
         <h2 className="enj-screen-header">Reports</h2>
         <div className="flex items-center gap-2">
           {showTableEdit && (
@@ -1287,6 +1287,6 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         <div className="px-0 py-2 text-right text-[10px] text-gray-400">Showing {Math.min(10, filteredReportTableRows.length)} of {filteredReportTableRows.length} rows</div>
       </section>
       {editReportModal}
-    </>
+    </div>
   );
 }
