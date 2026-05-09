@@ -65,4 +65,9 @@ export const enj = {
 
   /** Tinted section panel background. */
   panelBg: 'enj-panel-bg',
+
+  /** Standardized screen container. */
+  screenContainer: 'enj-screen-container',
+  screenSection: 'enj-screen-section',
+  screenSectionFullHeight: 'enj-screen-section-fullheight',
 } as const;

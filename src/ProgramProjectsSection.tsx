@@ -1567,9 +1567,9 @@ export function ProgramProjectsSection({
       </div>
     </section>
   ) : (
-    <section className={`${enj.panelBg} flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden`}>
+    <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-3 sm:p-4 bg-[#f5f6fb]">
       <div className="flex items-center justify-between mb-2 shrink-0">
-        <h2 className="text-xl sm:text-2xl font-bold text-primary">Projects</h2>
+        <h2 className="enj-screen-header">Projects</h2>
         {!hideNewProject && (
           <button
             type="button"

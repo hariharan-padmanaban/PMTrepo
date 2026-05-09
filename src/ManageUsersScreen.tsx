@@ -204,10 +204,10 @@ export function ManageUsersScreen({
             </button>
           )}
           {embeddedInManageData ? (
-            <h1 className={enj.sectionTitle}>Users</h1>
+            <h1 className="enj-screen-subheader">Users</h1>
           ) : (
             <>
-              <h1 className={enj.sectionTitle}>Manage</h1>
+              <h1 className="enj-screen-subheader">Manage</h1>
               <div className="relative">
                 <select
                   className="h-7 appearance-none rounded-md border border-gray-200 bg-gray-50 pl-2 pr-7 text-xs text-gray-800"
@@ -337,7 +337,7 @@ export function ManageUsersScreen({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className={enj.sectionTitle}>User Onboard</h2>
+              <h2 className="enj-screen-subheader">User Onboard</h2>
               <button
                 type="button"
                 onClick={() => setOnboardOpen(false)}
@@ -363,7 +363,7 @@ export function ManageUsersScreen({
         <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={() => setEditOpen(false)}>
           <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-100 bg-white p-5 shadow-xl" role="dialog" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className={enj.sectionTitle}>Edit User</h3>
+              <h3 className="enj-screen-subheader">Edit User</h3>
               <button type="button" onClick={() => setEditOpen(false)} className="h-8 w-8 rounded-md hover:bg-gray-100 inline-flex items-center justify-center">
                 <X size={18} />
               </button>
@@ -395,7 +395,7 @@ export function ManageUsersScreen({
             role="dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className={enj.sectionTitle}>Confirm Delete</h3>
+            <h3 className="enj-screen-subheader">Confirm Delete</h3>
             <p className="mt-2 text-sm text-gray-600">Do you want to remove this user?</p>
             <p className="mt-1 text-sm text-gray-500">{String(pendingDelete.new_name ?? 'User')}</p>
             <div className="mt-4 flex justify-end gap-2">

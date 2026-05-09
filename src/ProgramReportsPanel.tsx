@@ -698,7 +698,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 px-4">
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <h3 className={enj.sectionTitle}>Edit Report</h3>
+          <h3 className="enj-screen-subheader">Edit Report</h3>
           <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); }} className="text-sm text-gray-500 hover:text-gray-700">Close</button>
         </div>
         <div className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-3">
@@ -869,7 +869,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   return (
     <>
       <section className="flex items-center justify-between">
-        <h2 className={enj.pageTitle}>Reports</h2>
+        <h2 className="enj-screen-header">Reports</h2>
         <div className="flex items-center gap-2">
           {showTableEdit && (
             <>
@@ -1255,7 +1255,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
       </section>
       <section className="bg-transparent">
         <div className="flex items-center justify-between px-0 py-3">
-          <h3 className={enj.pageTitle}>Project Reports</h3>
+          <h3 className="enj-screen-header">Project Reports</h3>
           {filteredReportTableRows.length > 0 && (
             <button
               type="button"

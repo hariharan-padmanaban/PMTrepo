@@ -750,7 +750,7 @@ export default function BusinessFeedbackList() {
       <div className="min-w-0 max-w-full xl:col-span-3 relative text-[12px] leading-normal text-gray-700">
         {(isBusy || saveBusy) && <ScreenLoader overlay />}
         <div className="mb-3">
-          <h2 className={enj.sectionTitle}>{title}</h2>
+          <h2 className="enj-screen-subheader">{title}</h2>
         </div>
 
         {banner && (
@@ -827,7 +827,7 @@ export default function BusinessFeedbackList() {
 
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className={enj.sectionTitle}>Feedback list</h2>
+        <h2 className="enj-screen-header">Feedback list</h2>
         <div className="flex flex-shrink-0 items-center gap-1.5">
           <button
             type="button"

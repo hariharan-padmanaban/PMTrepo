@@ -107,7 +107,7 @@ export function AddSponsorScreen({ onCreated }: AddSponsorScreenProps = {}) {
       {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
 
       <div className={`max-w-4xl ${enj.card} p-6`}>
-        <h2 className="mb-6 text-lg font-bold text-gray-900">Add New Sponsor</h2>
+        <h2 className="enj-screen-subheader mb-6">Add New Sponsor</h2>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">

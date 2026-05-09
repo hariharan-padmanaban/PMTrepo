@@ -140,8 +140,8 @@ export function DeliverablesListPanel({
   const showActions = !!(onEditRequest || onDeleteRequest);
   const colSpan = showActions ? 5 : 4;
 
-  const h2 = enj.pageTitle;
-  const h3 = variant === 'program' ? enj.sectionTitle : enj.pageTitle;
+  const h2 = 'enj-screen-header';
+  const h3 = variant === 'program' ? 'enj-screen-subheader' : 'enj-screen-header';
   const btnNew = `${enj.btn} ${enj.btnPrimary} px-4 ${variant === 'program' ? 'text-sm font-medium' : 'text-xs font-semibold'}`;
 
   const tableBlock = (
@@ -293,7 +293,7 @@ export function DeliverablesListPanel({
 
   if (variant === 'project') {
     return (
-      <section className={enj.panelBg}>
+      <section className={enj.screenContainer}>
         <div className="mb-4">{headerRow}</div>
         {body}
       </section>

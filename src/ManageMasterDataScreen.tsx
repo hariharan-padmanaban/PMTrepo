@@ -481,7 +481,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
       }
     >
       {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
-      {!embeddedInManageData && <h2 className={`${enj.pageTitle} mb-3`}>Manage Master Data</h2>}
+      {!embeddedInManageData && <h2 className="enj-screen-header mb-3">Manage Master Data</h2>}
       <p className={embeddedInManageData ? 'shrink-0 text-xs text-gray-600 mb-2' : 'text-sm text-gray-600 mb-3'}>{`Manage '${selectedCategory}'`}</p>
       <div
         className={
@@ -587,7 +587,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
         <div className="fixed inset-0 z-[240] flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={() => setShowForm(false)}>
           <div className="w-full max-w-xl rounded-xl border border-gray-100 bg-white p-5 shadow-xl" role="dialog" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className={enj.sectionTitle}>
+              <h3 className="enj-screen-subheader">
                 {editingId ? `Edit '${selectedCategory}'` : `Add '${selectedCategory}'`}
               </h3>
               <button type="button" onClick={() => setShowForm(false)} className="h-8 w-8 rounded-md hover:bg-gray-100 inline-flex items-center justify-center">
@@ -641,7 +641,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
             role="dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className={enj.sectionTitle}>Confirm Delete</h3>
+            <h3 className="enj-screen-subheader">Confirm Delete</h3>
             <p className="mt-2 text-sm text-gray-600">Do you want to delete this item?</p>
             <p className="mt-1 text-sm text-gray-500">{String(pendingDelete.new_enjazmasterdata1 ?? 'Record')}</p>
             <div className="mt-4 flex justify-end gap-2">

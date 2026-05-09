@@ -415,7 +415,7 @@ export function AgileSprintPanel({
 
   if (backlogSprintName) {
     return (
-      <section className={`${enj.panelBg} flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden`}>
+      <section className="rounded-xl p-3 sm:p-4 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-4 flex flex-1 flex-col">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">
@@ -426,7 +426,7 @@ export function AgileSprintPanel({
           </div>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <p className={enj.pageTitle}>Backlog</p>
+              <p className="enj-screen-header">Backlog</p>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                 <input
@@ -571,7 +571,7 @@ export function AgileSprintPanel({
   }
 
   return (
-    <section className={`${enj.panelBg} flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden`}>
+    <section className="rounded-xl p-3 sm:p-4 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
       <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_15rem] overflow-hidden">
         <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-4 flex flex-col gap-3 overflow-y-auto">
           <div className="flex items-center justify-between">
@@ -588,7 +588,7 @@ export function AgileSprintPanel({
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <p className={enj.pageTitle}>Agile</p>
+            <p className="enj-screen-header">Agile</p>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
@@ -713,7 +713,7 @@ export function AgileSprintPanel({
           <div className="rounded-xl border border-[#dfe3f2] p-3 flex flex-col">
             <div className="mb-2 flex items-center justify-between gap-3 flex-shrink-0">
               <div className="flex items-center gap-2">
-                <h3 className={enj.pageTitle}>Activity</h3>
+                <h3 className="enj-screen-header">Activity</h3>
                 <select className="h-7 rounded border border-gray-200 bg-[#f5f6fb] px-2 text-xs" value={issueStatusFilter} onChange={(e) => setIssueStatusFilter(e.target.value)}>
                   {statusOptions.map((o) => <option key={o} value={o}>{o}</option>)}
                 </select>
@@ -826,7 +826,7 @@ export function AgileSprintPanel({
         <div className="fixed inset-0 z-[121] flex items-center justify-center bg-black/35 p-4">
           <div className="w-full max-w-3xl rounded-xl bg-white p-7 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
-              <p className={enj.sectionTitle}>Edit Sprint</p>
+              <p className="enj-screen-subheader">Edit Sprint</p>
               <button type="button" onClick={() => setEditSprint(null)} className="rounded p-1 text-gray-500 hover:bg-gray-100">
                 <X className="h-4 w-4" />
               </button>
@@ -919,7 +919,7 @@ export function AgileSprintPanel({
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/35 p-4">
           <div className="w-full max-w-3xl rounded-xl bg-white p-7 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
-              <p className={enj.sectionTitle}>
+              <p className="enj-screen-subheader">
                 Create Sprint {'>'} <span className="underline">{projectName}</span>
               </p>
               <button type="button" onClick={() => setShowCreateSprint(false)} className="rounded p-1 text-gray-500 hover:bg-gray-100">

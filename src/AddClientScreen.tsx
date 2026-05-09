@@ -126,7 +126,7 @@ export function AddClientScreen({ onCreated }: AddClientScreenProps = {}) {
       {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
 
       <div className={`${enj.card} p-6 max-w-4xl`}>
-        <h2 className="text-lg font-bold text-gray-900 mb-6">Add New Client</h2>
+        <h2 className="enj-screen-subheader mb-6">Add New Client</h2>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">

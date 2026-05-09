@@ -46,7 +46,7 @@ export function UserProfileModal({ open, onClose }: UserProfileModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-          <h2 id="user-profile-title" className={enj.sectionTitle}>
+          <h2 id="user-profile-title" className="enj-screen-subheader">
             User Profile
           </h2>
           <button

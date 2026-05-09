@@ -215,7 +215,7 @@ export function ManageVendorScreen({ onAddNew }: ManageVendorScreenProps = {}) {
       {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
 
       <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className={enj.sectionTitle}>Vendors</h1>
+        <h1 className="enj-screen-subheader">Vendors</h1>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5 sm:max-w-md sm:flex-1 md:max-w-lg">
           <div className="relative min-w-0 flex-1 sm:min-w-[160px]">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -339,7 +339,7 @@ export function ManageVendorScreen({ onAddNew }: ManageVendorScreenProps = {}) {
             role="dialog"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h3 className={enj.sectionTitle}>Edit Vendor</h3>
+              <h3 className="enj-screen-subheader">Edit Vendor</h3>
               <button
                 type="button"
                 onClick={() => {
@@ -487,7 +487,7 @@ export function ManageVendorScreen({ onAddNew }: ManageVendorScreenProps = {}) {
             role="dialog"
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className={enj.sectionTitle}>Vendor audit</h3>
+              <h3 className="enj-screen-subheader">Vendor audit</h3>
               <button
                 type="button"
                 onClick={() => setAuditRow(null)}
@@ -532,7 +532,7 @@ export function ManageVendorScreen({ onAddNew }: ManageVendorScreenProps = {}) {
             role="dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className={enj.sectionTitle}>Confirm Delete</h3>
+            <h3 className="enj-screen-subheader">Confirm Delete</h3>
             <p className="mt-2 text-sm text-gray-600">Do you want to delete this vendor?</p>
             <p className="mt-1 text-sm text-gray-500">{String(pendingDelete.new_vendorname ?? 'Record')}</p>
             <div className="mt-4 flex justify-end gap-2">

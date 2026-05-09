@@ -531,7 +531,7 @@ export default function BusinessPipelineScreen({
   return (
     <div className={enj.stack}>
       <div className="flex items-center justify-between">
-        <h1 className={enj.pageTitle}>{screenTitle}</h1>
+        <h1 className="enj-screen-header">{screenTitle}</h1>
         {showPipelineActions && (
           <button
             type="button"
@@ -547,7 +547,7 @@ export default function BusinessPipelineScreen({
       <section className={`chart-card ${enj.card} ${enj.cardPad}`}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <h2 className={enj.sectionTitle}>Projects</h2>
+            <h2 className="enj-screen-subheader">Projects</h2>
             <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
               <span>Year</span>
               <select className={`${enj.control} h-8 !w-[5.5rem] text-sm text-gray-800`} value={year} onChange={(e) => setYear(Number(e.target.value))}>
@@ -624,7 +624,7 @@ export default function BusinessPipelineScreen({
 
           {/* Donut chart */}
           <div className="flex flex-col min-w-0 pl-4 border-l border-gray-100">
-            <h2 className={`${enj.sectionTitle} mb-2 self-start text-xs`}>Pipeline Stage of Opportunity</h2>
+            <h2 className="enj-screen-subheader mb-2 self-start text-xs">Pipeline Stage of Opportunity</h2>
             {donutData.total === 0 ? (
               <p className="text-xs text-gray-400 mt-4">No data</p>
             ) : (() => {
@@ -669,7 +669,7 @@ export default function BusinessPipelineScreen({
 
       <section className={enj.card}>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100/90 px-4 py-3 sm:px-5">
-          <h2 className={enj.sectionTitle}>Pipeline Details</h2>
+          <h2 className="enj-screen-subheader">Pipeline Details</h2>
           {filteredRows.length > 0 && (
             <button type="button" onClick={() => setPipelineViewAll(true)} className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline">
               View All

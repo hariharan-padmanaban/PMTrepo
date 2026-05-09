@@ -35,7 +35,7 @@ export default function ManageDataScreen({
 
   return (
     <section className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-      <h2 className="shrink-0 text-base font-semibold text-primary">Manage Data</h2>
+      <h2 className="enj-screen-header shrink-0">Manage Data</h2>
       <p className="mb-2 shrink-0 text-xs text-gray-600">Users, clients, vendors, sponsors, and master data in one place.</p>
       <div className="mb-2 flex shrink-0 flex-wrap gap-1">
         {(

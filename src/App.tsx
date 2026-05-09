@@ -6,7 +6,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  Activity, AlertCircle, ArrowRight, Briefcase, Calendar, CheckSquare,
+  Activity, AlertCircle, Briefcase, Calendar, CheckSquare,
   ChevronDown, Clock, FileText, FolderOpen, HelpCircle, Inbox, LayoutGrid, ListTree, Pencil, RefreshCw,
   LogOut, MessageSquare, ShieldCheck, Trash2, TrendingUp, UserCircle, Users,
 } from 'lucide-react';
@@ -53,7 +53,7 @@ import { sendEmailNotification, generateEmailTemplate } from './services/PMTMail
 import { fetchSessionUserProfileFromUsers, getSessionUserEmail, type SessionUserProfile } from './sessionUser';
 import { buildInboxNotifications, NotificationBell } from './NotificationInbox';
 import { ThemeModeToggle } from './themeMode';
-import saudiHeroImage from '../refImages/ManAndWomanInSaudi.png?inline';
+import saudiHeroImage from '../refImages/Loginbackground.jpg?inline';
 import { LogoMark } from './LogoMark';
 import { enj } from './ui/enjForm';
 import { PagerBar } from './PagerBar';
@@ -1561,7 +1561,7 @@ function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLa
             className="absolute right-0 top-10 z-50 w-52 rounded-xl border border-gray-200 bg-white shadow-xl outline-none"
           >
             <div className="px-3 py-3 border-b border-gray-100">
-              <p className={enj.sectionTitle}>{displayName}</p>
+              <p className="enj-screen-subheader">{displayName}</p>
               <p className="text-[10px] text-gray-400">{roleLabel}</p>
             </div>
             <div className="py-1">
@@ -1758,11 +1758,11 @@ function MeetingsBoardPanel({
   }, [filteredMeetings]);
 
   return (
-    <section className={enj.panelBg}>
+    <section className={enj.screenContainer}>
       {loading && <ScreenLoader overlay className="rounded-xl" />}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-8">
-          <h2 className={enj.pageTitle}>Meetings</h2>
+          <h2 className="enj-screen-header">Meetings</h2>
           <div className="flex items-center gap-3 text-xs">
             <label className="text-gray-500 flex items-center gap-2"><span>Project Name</span><select className={`${enj.control} !w-auto max-w-[170px] text-sm text-gray-600`} value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="All">All</option>{projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
             <label className="text-gray-500 flex items-center gap-2"><span>Date</span><input type="date" className={`${enj.control} !w-auto text-sm`} value={selectedDateIso} onChange={(e) => setSelectedDateIso(e.target.value)} /></label>
@@ -2331,9 +2331,9 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               />
             </div>
           ) : activeNav === 'Timeline' ? (
-            <section className={`relative ${enj.panelBg}`}>
+            <section className={`relative ${enj.screenContainer}`}>
               <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
-                <h2 className={enj.pageTitle}>Timeline</h2>
+                <h2 className="enj-screen-header">Timeline</h2>
                 <div className="flex items-center gap-2 text-xs flex-wrap">
                   <button
                     type="button"
@@ -2479,7 +2479,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
             </section>
           ) : activeNav === 'Tasks' ? (
-            <section className={`${enj.panelBg} min-w-0 flex min-h-0 flex-1 flex-col overflow-y-auto`}>
+            <section className={`${enj.screenContainer} min-w-0 flex min-h-0 flex-1 flex-col overflow-y-auto`}>
               {showTeamSubTaskForm && viewingTaskRow ? (
                 <TeamSubTaskFormPanel
                   parentTask={viewingTaskRow}
@@ -2546,7 +2546,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                       onClose={() => setTeamTaskToast(null)}
                     />
                   )}
-                  <h2 className="text-xl font-bold text-primary mb-4 shrink-0">Tasks List</h2>
+                  <h2 className="enj-screen-header mb-4 shrink-0">Tasks List</h2>
                   <div className="w-full min-w-0 shrink-0">
                     <TasksScreenBoard
                       variant="team"
@@ -2565,7 +2565,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </section>
           ) : activeNav === 'Issues' ? (
-            <section className={`relative ${enj.panelBg}`}>
+            <section className={`relative ${enj.screenContainer}`}>
               {teamIssueToast && (
                 <NotificationToast
                   type={teamIssueToast.type}
@@ -2607,7 +2607,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                 />
               ) : (
                 <>
-              <h2 className="text-xl font-bold text-primary mb-4">Issue Register</h2>
+              <h2 className="enj-screen-header mb-4">Issue Register</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col">
@@ -2676,7 +2676,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                 ).map(([title, _accent, list]) => (
                   <div key={String(title)} className="space-y-3">
                     <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
-                      <p className={enj.sectionTitle}>{title}</p>
+                      <p className="enj-screen-subheader">{title}</p>
                       <span className="text-[10px] text-gray-500">{list.length} items</span>
                     </div>
                     {list.length === 0 ? (
@@ -2762,7 +2762,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </section>
           ) : activeNav === 'Meetings' ? (
-            <section className={enj.panelBg}>
+            <section className={enj.screenContainer}>
               {showAddCalendarMeetingForm ? (
                 <AddMeetingFormPanel
                   parentLabel="Meetings"
@@ -2776,7 +2776,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                   {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-8">
-                      <h2 className={enj.pageTitle}>Calendar</h2>
+                      <h2 className="enj-screen-header">Calendar</h2>
                       <div className="flex items-center gap-3 text-xs">
                         <label className="text-gray-500 flex items-center gap-2">
                           <span>Project Name</span>
@@ -2960,7 +2960,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
 
               {/* ── Overview ── */}
               <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">Overview</h2>
+                <h2 className="enj-dashboard-header mb-4">Overview</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                   {overviewCards.map(card => (
                     <div
@@ -2977,7 +2977,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
               {/* ── Insights ── */}
               <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
                 <div className="flex items-center justify-between mb-5">
-                  <h2 className="text-lg font-bold text-gray-900">Insights</h2>
+                  <h2 className="enj-dashboard-header">Insights</h2>
                 </div>
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                   <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 flex flex-col">
@@ -3064,7 +3064,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
       {teamTaskDeleteCandidate && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/35 px-4">
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-            <h3 className={enj.sectionTitle}>Delete task?</h3>
+            <h3 className="enj-screen-subheader">Delete task?</h3>
             <p className="mt-2 text-sm text-gray-600">
               Are you sure you want to delete
               {' '}
@@ -3475,7 +3475,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             <>
               <section className="relative bg-white rounded-xl p-4 shadow-sm chart-card">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <h2 className={enj.pageTitle}>Timeline</h2>
+                  <h2 className="enj-screen-header">Timeline</h2>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -3667,7 +3667,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
           ) : activeNav === 'Portfolio' ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <h1 className={enj.pageTitle}>Portfolio</h1>
+                <h1 className="enj-screen-header">Portfolio</h1>
               </div>
               {portfolioPrograms.length > 0 && (
                 <section className="space-y-3">
@@ -3899,20 +3899,6 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                 </p>
               ) : (
             <div className="enjaz-business-dashboard space-y-4">
-                <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
-                  <h1 className="text-lg font-bold text-gray-900">Business Dashboard</h1>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDataRefresh((k) => k + 1);
-                    }}
-                    disabled={timelineLoading}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    <RefreshCw size={14} className={timelineLoading ? 'animate-spin' : ''} />
-                    Refresh
-                  </button>
-                </div>
           {businessDash.skipReasons.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-950 mb-4">
               <p className="font-semibold text-amber-900">Charts not shown (missing data)</p>
@@ -5589,7 +5575,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               {showAddProgramForm ? (
                 <section className="bg-white rounded-xl p-6 shadow-sm">
                   <div className="flex items-start justify-between mb-6">
-                    <h2 className={enj.pageTitle}>
+                    <h2 className="enj-screen-header">
                       {programFormMode === 'edit' ? 'Program / Edit Program' : 'Program / Add New Program'}
                     </h2>
                     <button
@@ -5771,7 +5757,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               ) : (
                 <>
                   <section className="flex items-center justify-between">
-                    <h2 className={enj.pageTitle}>Programs</h2>
+                    <h2 className="enj-screen-header">Programs</h2>
                     <button
                       className={`${enj.btn} ${enj.btnPrimary} font-medium`}
                       onClick={openAddProgram}
@@ -6034,7 +6020,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
           ) : activeNav === 'Portfolio' ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <h1 className={enj.pageTitle}>Portfolio</h1>
+                <h1 className="enj-screen-header">Portfolio</h1>
               </div>
               {pagedProgramPortfolioRows.length > 0 && (
                 <section className="space-y-3">
@@ -6312,7 +6298,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
           ) : (
             <>
           <section className="bg-white rounded-xl p-5 shadow-sm chart-card">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Overview</h2>
+            <h2 className="enj-dashboard-header mb-4">Overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
               {overviewCards.map((card) => (
                 <div
@@ -6329,7 +6315,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
           <section className="bg-white rounded-xl p-4 shadow-sm chart-card">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-gray-900">Insights</h2>
+              <h2 className="enj-dashboard-header">Insights</h2>
               <div className="flex items-center gap-2">
                 <select
                   value={programInsightStatusFilter}
@@ -7897,7 +7883,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
           {issueDeleteCandidate && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/35 px-4">
               <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-                <h3 className={enj.sectionTitle}>Delete issue?</h3>
+                <h3 className="enj-screen-subheader">Delete issue?</h3>
                 <p className="mt-2 text-sm text-gray-600">
                   Are you sure you want to delete
                   {' '}
@@ -7929,7 +7915,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
           {projectTaskDeleteCandidate && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/35 px-4">
               <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-                <h3 className={enj.sectionTitle}>Delete task?</h3>
+                <h3 className="enj-screen-subheader">Delete task?</h3>
                 <p className="mt-2 text-sm text-gray-600">
                   Are you sure you want to delete
                   {' '}
@@ -7961,7 +7947,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           )}
           {activeNav === 'Tasks' ? (
-            <section className={`${enj.panelBg} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
+            <section className={`${enj.screenContainer} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
               {showTaskFormPanel ? (
                 <div className="min-h-0 max-h-[min(calc(100dvh-7rem),48rem)] overflow-y-auto">
                   <AddNewTaskFormPanel
@@ -8012,7 +7998,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                   {projectBoardTasksLoading && <ScreenLoader overlay className="rounded-xl" />}
                   <div className="flex items-center justify-between mb-3 shrink-0">
                     <div className="flex items-center gap-3 flex-wrap">
-                      <h2 className={enj.pageTitle}>Tasks List</h2>
+                      <h2 className="enj-screen-header">Tasks List</h2>
                       <label className="flex items-center gap-2 text-xs text-gray-600">
                         <span>Due date</span>
                         <select
@@ -8103,7 +8089,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </section>
           ) : activeNav === 'Meetings' ? (
-            <section className={enj.panelBg}>
+            <section className={enj.screenContainer}>
               {showAddMeetingForm ? (
                 <AddMeetingFormPanel
                   parentLabel="Meetings"
@@ -8140,7 +8126,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </>
           ) : activeNav === 'Issues' ? (
-            <section className={`relative min-w-0 max-w-full ${enj.panelBg}`}>
+            <section className={`relative min-w-0 max-w-full ${enj.screenContainer}`}>
               {!showAddIssueForm &&
                 !showProjectIssueDetails &&
                 !showProjectSubIssueForm &&
@@ -8198,7 +8184,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               ) : (
                 <>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className={enj.pageTitle}>Issue Tracking Dashboard</h2>
+                    <h2 className="enj-screen-header">Issue Tracking Dashboard</h2>
                     <button
                       type="button"
                       onClick={() => {
@@ -8496,7 +8482,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </section>
           ) : activeNav === 'Team Management' ? (
-            <section className={enj.panelBg}>
+            <section className={enj.screenContainer}>
               {showAddTeamMemberForm ? (
                 <section className="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto">
                   <p className="text-[11px] text-gray-400 mb-4">
@@ -8552,7 +8538,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               ) : (
                 <>
               <div className="flex items-center justify-between mb-3">
-                <h2 className={enj.pageTitle}>Team Management Dashboard</h2>
+                <h2 className="enj-screen-header">Team Management Dashboard</h2>
                 <button
                   type="button"
                   onClick={() => setShowAddTeamMemberForm(true)}
@@ -8911,7 +8897,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
           ) : (
             <>
           <section className="bg-white rounded-xl p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Overview</h2>
+            <h2 className="enj-dashboard-header mb-4">Overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
               {overview.map((item) => (
                 <div key={item.label} className="rounded-xl border-2 bg-white px-4 py-4" style={{ borderColor: item.color }}>
@@ -9028,7 +9014,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
 
           <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-bold text-[#1a1d2e]">Insights</h2>
+              <h2 className="enj-dashboard-header">Insights</h2>
               <label className="flex items-center gap-2 text-[10px] text-gray-500">
                 <span className="sr-only">Filter by project</span>
                 <select
@@ -9215,7 +9201,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
 
           <section className="bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
-              <h3 className="text-xl leading-none font-bold text-primary">Projects List</h3>
+              <h3 className="enj-screen-header">Projects List</h3>
               <button
                 type="button"
                 className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
@@ -9401,49 +9387,62 @@ export default function App() {
   }
 
   return (
-    <div className="relative h-screen">
-      <main className="flex h-screen flex-col md:flex-row w-full overflow-hidden">
-        {/* Left Side: Login Form */}
-        <section className="w-full md:w-1/2 flex flex-col justify-center items-center bg-surface-container-lowest px-6 py-10 z-10 text-center">
-        <div className="w-full flex flex-col items-center">
-          {/* Brand Anchor */}
+    <div className="relative h-screen w-full overflow-hidden">
+      {/* Full Screen Background Image */}
+      <div className="absolute inset-0 w-full h-full">
+        <img
+          alt="Login background illustration"
+          src={saudiHeroImage}
+          className="w-full h-full object-cover object-center"
+        />
+      </div>
+
+      {/* Login Form - Positioned on Left White Space */}
+      <main className="relative h-screen w-full flex flex-col justify-center z-10">
+        <div className="w-full max-w-sm flex flex-col items-center gap-8 px-8" style={{ marginLeft: '13%' }}>
+          {/* Brand Logo */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-4 flex flex-col items-center gap-2"
+            className="flex flex-col items-center gap-3"
           >
-            <div className="shadow-sm rounded-md">
-              <LogoMark sizeClass="w-20 h-20" />
+            <div className="shadow-md rounded-lg p-2 bg-white">
+              <LogoMark sizeClass="w-16 h-16" />
             </div>
-            <span className="text-base font-bold tracking-wide text-[#232360]">ENJAZ</span>
+            <span className="text-lg font-bold tracking-wide text-[#232360]">ENJAZ</span>
           </motion.div>
 
-          {/* Form Heading */}
+          {/* Heading */}
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="mb-6 text-center"
+            className="text-center space-y-3 w-full"
           >
-            <h1 className="text-3xl font-headline font-extrabold text-primary tracking-tight">Welcome to ENJAZ</h1>
+            <h1 className="text-4xl font-bold text-[#232360]">Welcome to Enjaz</h1>
+            <p className="text-gray-500 text-base font-normal">
+              Your workspace for efficient team collaboration and task tracking.
+            </p>
           </motion.div>
 
           {/* Form */}
-          <form className="space-y-4 w-1/2 text-left" onSubmit={(e) => { e.preventDefault(); setIsLoggedIn(true); }}>
+          <form className="w-full space-y-5" onSubmit={(e) => { e.preventDefault(); setIsLoggedIn(true); }}>
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 }}
-              className="space-y-2"
+              transition={{ delay: 0.2 }}
+              className="w-full"
             >
-              <label className="text-[10px] font-headline font-bold uppercase tracking-widest text-primary" htmlFor="role">
-                Role
-              </label>
               <select
-                id="role"
                 value={loginRole}
                 onChange={(e) => setLoginRole(e.target.value as AppRole)}
-                className="w-full px-3 py-2.5 bg-surface-container-low border border-outline-variant/15 rounded-lg focus:outline-none focus:border-primary text-primary text-sm font-sans cursor-pointer"
+                className="w-full px-4 py-3 bg-white border-2 border-[#b8a876] rounded-lg focus:outline-none focus:border-[#b8a876] text-[#232360] text-base font-medium font-sans cursor-pointer appearance-none"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23b8a876' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 1rem center',
+                  paddingRight: '2.5rem'
+                }}
               >
                 {(Object.keys(ROLE_LABELS) as AppRole[]).map((r) => (
                   <option key={r} value={r}>
@@ -9456,74 +9455,18 @@ export default function App() {
             <motion.button
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 }}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              className="w-full py-2.5 bg-secondary text-white font-headline font-bold text-base rounded-lg shadow-lg hover:brightness-110 transition-all duration-200 flex items-center justify-center gap-2"
+              transition={{ delay: 0.3 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full py-3 bg-[#b8a876] hover:bg-[#a59766] text-white font-bold text-base rounded-lg shadow-md transition-all duration-200"
               type="submit"
             >
               Get Started
-              <ArrowRight size={16} />
             </motion.button>
           </form>
-
         </div>
-      </section>
-
-      {/* Right Side: Editorial Illustration */}
-      <section className="hidden md:flex md:w-1/2 bg-surface-container-low relative overflow-hidden">
-        <div className="absolute inset-0 opacity-40">
-          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-secondary/5 to-transparent"></div>
-        </div>
-
-        <div className="relative w-full h-full flex items-center justify-center p-8 lg:p-12">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="relative w-full h-full max-w-xl bg-white/30 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl border border-white/20 flex flex-col"
-          >
-            <div className="flex-1 relative group">
-              <img
-                alt="Man and woman in traditional Saudi clothing looking forward"
-                className="w-full h-full object-cover object-center grayscale group-hover:grayscale-0 transition-all duration-1000 ease-in-out"
-                src={saudiHeroImage}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/20 to-transparent"></div>
-
-              <div className="absolute bottom-8 left-8 right-8">
-                <div className="flex flex-col space-y-4">
-                  <motion.span
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.8 }}
-                    className="text-secondary font-headline font-extrabold uppercase tracking-widest text-xs"
-                  >
-                    Project Management Platform
-                  </motion.span>
-                  <motion.h2
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.9 }}
-                    className="text-3xl lg:text-4xl font-headline font-black text-white leading-tight"
-                  >
-                    Plan Better. <br /> Deliver Faster.
-                  </motion.h2>
-                  <motion.p
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 1.0 }}
-                    className="text-white/80 font-sans text-sm max-w-sm"
-                  >
-                    One workspace for programs, projects, teams, tasks, issues, meetings, and delivery tracking.
-                  </motion.p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-        </section>
       </main>
+
       <p className="fixed inset-x-0 bottom-0 z-50 bg-white/90 py-2 text-center text-[11px] text-gray-500 backdrop-blur-sm">
         Copyright @2026 Enjaz Management Tool. All rights reserved.
       </p>

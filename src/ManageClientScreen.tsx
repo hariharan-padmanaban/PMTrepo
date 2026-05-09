@@ -189,7 +189,7 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
       {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
 
       <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className={enj.sectionTitle}>Clients</h1>
+        <h1 className="enj-screen-subheader">Clients</h1>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5 sm:max-w-md sm:flex-1 md:max-w-lg">
           <div className="relative min-w-0 flex-1 sm:min-w-[160px]">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -309,7 +309,7 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
             role="dialog"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className={enj.sectionTitle}>Edit Client</h3>
+              <h3 className="enj-screen-subheader">Edit Client</h3>
               <button
                 type="button"
                 onClick={() => {
@@ -408,7 +408,7 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
             role="dialog"
           >
             <div className="flex items-center justify-between mb-3">
-              <h3 className={enj.sectionTitle}>Client audit</h3>
+              <h3 className="enj-screen-subheader">Client audit</h3>
               <button type="button" onClick={() => setAuditRow(null)} className="h-8 w-8 rounded-md hover:bg-gray-100 inline-flex items-center justify-center" aria-label="Close">
                 <X size={18} />
               </button>
@@ -448,7 +448,7 @@ export function ManageClientScreen({ onAddNew }: ManageClientScreenProps = {}) {
             role="dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className={enj.sectionTitle}>Confirm Delete</h3>
+            <h3 className="enj-screen-subheader">Confirm Delete</h3>
             <p className="mt-2 text-sm text-gray-600">Do you want to delete this client?</p>
             <p className="mt-1 text-sm text-gray-500">{String(pendingDelete.new_clientname ?? 'Record')}</p>
             <div className="mt-4 flex justify-end gap-2">
