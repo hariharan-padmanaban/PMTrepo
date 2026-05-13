@@ -10013,13 +10013,12 @@ export default function App() {
 
       setAssignedRole(userRole);
       setIsTester(userRole === 'tester');
+      setLoginRole(userRole);
 
-      // If not a tester, set login role to assigned role; otherwise keep user's selection
+      // If not a tester, auto-login immediately; if tester, wait for role selection
       if (userRole !== 'tester') {
-        setLoginRole(userRole);
+        setIsLoggedIn(true);
       }
-
-      setIsLoggedIn(true);
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : 'An error occurred during login');
     } finally {
@@ -10122,9 +10121,18 @@ export default function App() {
           </motion.div>
 
           {/* Form */}
-          <form className="w-full space-y-5" onSubmit={(e) => { e.preventDefault(); void handleLogin(); }}>
-            {/* Role dropdown - only visible for tester or before login */}
-            {!assignedRole || isTester ? (
+          <form className="w-full space-y-5" onSubmit={(e) => {
+            e.preventDefault();
+            if (isTester && assignedRole) {
+              // Tester has selected their role - proceed with login
+              setIsLoggedIn(true);
+            } else if (!assignedRole) {
+              // First step - validate user and fetch their role
+              void handleLogin();
+            }
+          }}>
+            {/* Role dropdown - ONLY visible for Tester after validation */}
+            {isTester && assignedRole && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -10135,8 +10143,7 @@ export default function App() {
                 <select
                   value={loginRole}
                   onChange={(e) => setLoginRole(e.target.value as AppRole)}
-                  disabled={loginLoading}
-                  className="w-full px-4 py-3 bg-white border-2 border-[#b8a876] rounded-lg focus:outline-none focus:border-[#b8a876] text-[#232360] text-base font-medium font-sans cursor-pointer appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-3 bg-white border-2 border-[#b8a876] rounded-lg focus:outline-none focus:border-[#b8a876] text-[#232360] text-base font-medium font-sans cursor-pointer appearance-none"
                   style={{
                     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23b8a876' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E")`,
                     backgroundRepeat: 'no-repeat',
@@ -10144,18 +10151,14 @@ export default function App() {
                     paddingRight: '2.5rem'
                   }}
                 >
-                  {isTester ? (
-                    (Object.keys(ROLE_LABELS) as AppRole[]).map((r) => (
-                      <option key={r} value={r}>
-                        {ROLE_LABELS[r]}
-                      </option>
-                    ))
-                  ) : (
-                    <option value={loginRole}>{ROLE_LABELS[loginRole]}</option>
-                  )}
+                  {(Object.keys(ROLE_LABELS) as AppRole[]).map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
+                  ))}
                 </select>
               </motion.div>
-            ) : null}
+            )}
 
             {/* Display assigned role if not tester */}
             {assignedRole && !isTester && (
