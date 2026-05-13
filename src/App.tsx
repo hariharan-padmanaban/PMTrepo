@@ -64,7 +64,7 @@ import {
 } from './tableDesign';
 
 /** Application roles — pick at sign-in to route the correct workspace. */
-export type AppRole = 'admin' | 'business' | 'program' | 'project' | 'team';
+export type AppRole = 'admin' | 'business' | 'program' | 'project' | 'team' | 'tester';
 
 const ROLE_LABELS: Record<AppRole, string> = {
   admin: 'Admin',
@@ -72,6 +72,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   program: 'Program',
   project: 'Project',
   team: 'Team',
+  tester: 'Tester',
 };
 
 /** Dataverse-agnostic: calendar day in local time for timeline labels and bar math. */
@@ -9951,13 +9952,80 @@ function RoleDashboard({ role, onLogout }: { role: AppRole; onLogout: () => void
   if (role === 'business') return <BusinessDashboard onLogout={onLogout} />;
   if (role === 'program') return <ProgramDashboard onLogout={onLogout} />;
   if (role === 'project') return <ProjectDashboard onLogout={onLogout} />;
+  if (role === 'tester') return <AdminDashboard onLogout={onLogout} />;
   return <PlaceholderRoleDashboard role={role} onLogout={onLogout} />;
 }
 
-// ─── App (login page — unchanged) ─────────────────────────────────────────────
+// ─── App (login page with role validation) ─────────────────────────────────────────────
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginRole, setLoginRole] = useState<AppRole>('business');
+  const [assignedRole, setAssignedRole] = useState<AppRole | null>(null);
+  const [isTester, setIsTester] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  const handleLogin = useCallback(async () => {
+    setLoginLoading(true);
+    setLoginError(null);
+    try {
+      const sessionEmail = getSessionUserEmail();
+      if (!sessionEmail) {
+        setLoginError('Could not retrieve your email. Please ensure you are logged in to Power Apps.');
+        setLoginLoading(false);
+        return;
+      }
+
+      const res = await NewUsersService.getAll({ top: 2000, orderBy: ['createdon desc'] });
+      if (!res.success || !res.data) {
+        setLoginError('Failed to fetch user data. Please try again.');
+        setLoginLoading(false);
+        return;
+      }
+
+      // Find user by email
+      const normalizedEmail = sessionEmail.toLowerCase();
+      const userRow = (res.data as Array<Record<string, unknown>>).find((row) => {
+        const emailId = String(row.new_newcolumn ?? '').trim().toLowerCase();
+        const userId = String(row.new_userid ?? '').trim().toLowerCase();
+        return emailId === normalizedEmail || userId === normalizedEmail;
+      });
+
+      if (!userRow) {
+        setLoginError('Your email is not registered in the system. Please contact your administrator.');
+        setLoginLoading(false);
+        return;
+      }
+
+      // Extract role from user row
+      const roleName = String(userRow.new_rolename ?? '').trim().toLowerCase();
+      const roleValue = String(userRow.new_role ?? '').trim();
+
+      // Map role name or value to AppRole
+      // Model mapping: 100000000='Admin', 100000001='Business', 100000002='Program', 100000003='Project', 100000004='Team'
+      let userRole: AppRole = 'business';
+      if (roleName === 'admin' || roleValue === '100000000') userRole = 'admin';
+      else if (roleName === 'business' || roleValue === '100000001') userRole = 'business';
+      else if (roleName === 'program' || roleValue === '100000002') userRole = 'program';
+      else if (roleName === 'project' || roleValue === '100000003') userRole = 'project';
+      else if (roleName === 'team' || roleValue === '100000004') userRole = 'team';
+      else if (roleName === 'tester' || roleValue === '100000005') userRole = 'tester';
+
+      setAssignedRole(userRole);
+      setIsTester(userRole === 'tester');
+
+      // If not a tester, set login role to assigned role; otherwise keep user's selection
+      if (userRole !== 'tester') {
+        setLoginRole(userRole);
+      }
+
+      setIsLoggedIn(true);
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : 'An error occurred during login');
+    } finally {
+      setLoginLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const getPickerInput = (target: EventTarget | null) => {
@@ -10054,42 +10122,77 @@ export default function App() {
           </motion.div>
 
           {/* Form */}
-          <form className="w-full space-y-5" onSubmit={(e) => { e.preventDefault(); setIsLoggedIn(true); }}>
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="w-full"
-            >
-              <select
-                value={loginRole}
-                onChange={(e) => setLoginRole(e.target.value as AppRole)}
-                className="w-full px-4 py-3 bg-white border-2 border-[#b8a876] rounded-lg focus:outline-none focus:border-[#b8a876] text-[#232360] text-base font-medium font-sans cursor-pointer appearance-none"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23b8a876' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 1rem center',
-                  paddingRight: '2.5rem'
-                }}
+          <form className="w-full space-y-5" onSubmit={(e) => { e.preventDefault(); void handleLogin(); }}>
+            {/* Role dropdown - only visible for tester or before login */}
+            {!assignedRole || isTester ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="w-full"
               >
-                {(Object.keys(ROLE_LABELS) as AppRole[]).map((r) => (
-                  <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
-                  </option>
-                ))}
-              </select>
-            </motion.div>
+                <label className="block text-sm font-medium text-[#232360] mb-2">Select Role</label>
+                <select
+                  value={loginRole}
+                  onChange={(e) => setLoginRole(e.target.value as AppRole)}
+                  disabled={loginLoading}
+                  className="w-full px-4 py-3 bg-white border-2 border-[#b8a876] rounded-lg focus:outline-none focus:border-[#b8a876] text-[#232360] text-base font-medium font-sans cursor-pointer appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23b8a876' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 1rem center',
+                    paddingRight: '2.5rem'
+                  }}
+                >
+                  {isTester ? (
+                    (Object.keys(ROLE_LABELS) as AppRole[]).map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))
+                  ) : (
+                    <option value={loginRole}>{ROLE_LABELS[loginRole]}</option>
+                  )}
+                </select>
+              </motion.div>
+            ) : null}
+
+            {/* Display assigned role if not tester */}
+            {assignedRole && !isTester && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="w-full bg-blue-50 border border-blue-200 rounded-lg p-4"
+              >
+                <p className="text-sm text-gray-700">
+                  Your assigned role: <span className="font-semibold text-[#232360]">{ROLE_LABELS[assignedRole]}</span>
+                </p>
+              </motion.div>
+            )}
+
+            {/* Error message */}
+            {loginError && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="w-full bg-red-50 border border-red-200 rounded-lg p-4"
+              >
+                <p className="text-sm text-red-700">{loginError}</p>
+              </motion.div>
+            )}
 
             <motion.button
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full py-3 bg-[#b8a876] hover:bg-[#a59766] text-white font-bold text-base rounded-lg shadow-md transition-all duration-200"
+              whileHover={{ scale: !loginLoading ? 1.02 : 1 }}
+              whileTap={{ scale: !loginLoading ? 0.98 : 1 }}
+              className="w-full py-3 bg-[#b8a876] hover:bg-[#a59766] text-white font-bold text-base rounded-lg shadow-md transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               type="submit"
+              disabled={loginLoading}
             >
-              Get Started
+              {loginLoading ? 'Validating...' : 'Get Started'}
             </motion.button>
           </form>
         </div>
