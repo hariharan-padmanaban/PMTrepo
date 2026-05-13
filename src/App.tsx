@@ -9964,17 +9964,14 @@ export default function App() {
   const [isTester, setIsTester] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [manualEmail, setManualEmail] = useState<string>('');
-  const [showEmailInput, setShowEmailInput] = useState(false);
 
-  const handleLogin = useCallback(async (emailOverride?: string) => {
+  const handleLogin = useCallback(async () => {
     setLoginLoading(true);
     setLoginError(null);
     try {
-      const sessionEmail = emailOverride || getSessionUserEmail();
+      const sessionEmail = getSessionUserEmail();
       if (!sessionEmail) {
-        setLoginError('Could not retrieve your email. Please enter your email to continue.');
-        setShowEmailInput(true);
+        setLoginError('Could not retrieve your email. Please ensure you are logged in to Power Apps, then refresh this page and try again.');
         setLoginLoading(false);
         return;
       }
@@ -10131,33 +10128,9 @@ export default function App() {
               setIsLoggedIn(true);
             } else if (!assignedRole) {
               // First step - validate user and fetch their role
-              if (showEmailInput && manualEmail.trim()) {
-                void handleLogin(manualEmail.trim());
-              } else {
-                void handleLogin();
-              }
+              void handleLogin();
             }
           }}>
-            {/* Manual Email Input - shown if auto-detection fails */}
-            {showEmailInput && !assignedRole && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="w-full"
-              >
-                <label className="block text-sm font-medium text-[#232360] mb-2">Enter Your Email</label>
-                <input
-                  type="email"
-                  value={manualEmail}
-                  onChange={(e) => setManualEmail(e.target.value)}
-                  placeholder="your.email@example.com"
-                  disabled={loginLoading}
-                  className="w-full px-4 py-3 bg-white border-2 border-[#b8a876] rounded-lg focus:outline-none focus:border-[#b8a876] text-[#232360] text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-              </motion.div>
-            )}
-
             {/* Role dropdown - ONLY visible for Tester after validation */}
             {isTester && assignedRole && (
               <motion.div
@@ -10206,9 +10179,17 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="w-full bg-red-50 border border-red-200 rounded-lg p-4"
+                className="w-full bg-red-50 border border-red-200 rounded-lg p-4 space-y-3"
               >
-                <p className="text-sm text-red-700">{loginError}</p>
+                <p className="text-sm text-red-700 font-medium">⚠️ Authentication Required</p>
+                <p className="text-sm text-red-600">{loginError}</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="w-full text-sm font-medium text-red-700 hover:text-red-800 underline"
+                >
+                  Refresh Page
+                </button>
               </motion.div>
             )}
 
