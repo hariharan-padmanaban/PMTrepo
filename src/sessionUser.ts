@@ -66,12 +66,48 @@ export function displayNameFromXrmString(s: string): string {
   return formatLocalPartOfEmailOrUpn(t);
 }
 
-/** Power Apps `User().Email` — Xrm (incl. parent frame), or `VITE_DEV_USER_EMAIL` for local dev. */
+/** Power Apps `User().Email` — tries Xrm, PCF context, window, then environment fallback. */
 export function getSessionUserEmail(): string | undefined {
+  // Try 1: Xrm userSettings email
   const fromXrm = getGlobalContextFromPage()?.userSettings?.userEmail;
   if (typeof fromXrm === 'string' && fromXrm.includes('@')) return fromXrm.trim();
+
+  // Try 2: Power Apps PCF context (window.__PAC__)
+  try {
+    const pacContext = (window as any).__PAC__;
+    if (pacContext?.context?.userSettings?.userName) {
+      const email = String(pacContext.context.userSettings.userName).trim();
+      if (email.includes('@')) return email;
+    }
+  } catch {
+    /* PCF context not available */
+  }
+
+  // Try 3: Xrm userName (may contain email)
+  try {
+    const ctx = getGlobalContextFromPage();
+    const userName = ctx?.userSettings?.userName ?? ctx?.getUserName?.();
+    if (typeof userName === 'string' && userName.includes('@')) {
+      return userName.trim();
+    }
+  } catch {
+    /* Not available */
+  }
+
+  // Try 4: Check if email is stored in sessionStorage by Power Apps
+  try {
+    const stored = sessionStorage.getItem('__user_email__') ??
+                   sessionStorage.getItem('userEmail') ??
+                   sessionStorage.getItem('email');
+    if (typeof stored === 'string' && stored.includes('@')) return stored.trim();
+  } catch {
+    /* sessionStorage not available */
+  }
+
+  // Try 5: Environment variable for development
   const fromEnv = import.meta.env.VITE_DEV_USER_EMAIL as string | undefined;
   if (fromEnv?.trim() && fromEnv.includes('@')) return fromEnv.trim();
+
   return undefined;
 }
 

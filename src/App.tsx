@@ -9964,14 +9964,17 @@ export default function App() {
   const [isTester, setIsTester] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [manualEmail, setManualEmail] = useState<string>('');
+  const [showEmailInput, setShowEmailInput] = useState(false);
 
-  const handleLogin = useCallback(async () => {
+  const handleLogin = useCallback(async (emailOverride?: string) => {
     setLoginLoading(true);
     setLoginError(null);
     try {
-      const sessionEmail = getSessionUserEmail();
+      const sessionEmail = emailOverride || getSessionUserEmail();
       if (!sessionEmail) {
-        setLoginError('Could not retrieve your email. Please ensure you are logged in to Power Apps.');
+        setLoginError('Could not retrieve your email. Please enter your email to continue.');
+        setShowEmailInput(true);
         setLoginLoading(false);
         return;
       }
@@ -10128,9 +10131,33 @@ export default function App() {
               setIsLoggedIn(true);
             } else if (!assignedRole) {
               // First step - validate user and fetch their role
-              void handleLogin();
+              if (showEmailInput && manualEmail.trim()) {
+                void handleLogin(manualEmail.trim());
+              } else {
+                void handleLogin();
+              }
             }
           }}>
+            {/* Manual Email Input - shown if auto-detection fails */}
+            {showEmailInput && !assignedRole && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="w-full"
+              >
+                <label className="block text-sm font-medium text-[#232360] mb-2">Enter Your Email</label>
+                <input
+                  type="email"
+                  value={manualEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                  placeholder="your.email@example.com"
+                  disabled={loginLoading}
+                  className="w-full px-4 py-3 bg-white border-2 border-[#b8a876] rounded-lg focus:outline-none focus:border-[#b8a876] text-[#232360] text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </motion.div>
+            )}
+
             {/* Role dropdown - ONLY visible for Tester after validation */}
             {isTester && assignedRole && (
               <motion.div
