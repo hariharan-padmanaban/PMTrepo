@@ -19,6 +19,7 @@ import { AgileSprintPanel } from './AgileSprintPanel';
 import { WaterfallSprintPanel } from './WaterfallSprintPanel';
 import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
 import { enj } from './ui/enjForm';
+import { PagerBar } from './PagerBar';
 
 const projectBoardColumns = [
   { title: 'To Start', color: '#f6be00' },
@@ -325,6 +326,9 @@ export function ProgramProjectsSection({
   /** Row to populate into the quick-edit form once `loadProjectFormData` has committed (see useEffect). */
   const [editProjectPopulateFrom, setEditProjectPopulateFrom] = useState<Record<string, unknown> | null>(null);
   const [editMilestoneMenuOpen, setEditMilestoneMenuOpen] = useState(false);
+  const [viewAllStatus, setViewAllStatus] = useState<string | null>(null);
+  const [viewAllPage, setViewAllPage] = useState(1);
+  const VIEW_ALL_PAGE_SIZE = 12;
   const [projectForm, setProjectForm] = useState({
     projectName: '',
     programName: '',
@@ -1566,6 +1570,152 @@ export function ProgramProjectsSection({
         </button>
       </div>
     </section>
+  ) : viewAllStatus ? (
+    <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
+      <div className="flex items-center justify-between mb-4 shrink-0">
+        <h2 className="enj-screen-header">All Projects - {viewAllStatus}</h2>
+        <button
+          type="button"
+          className={`${enj.btn} ${enj.btnOutline} text-xs`}
+          onClick={() => setViewAllStatus(null)}
+        >
+          ← Back
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="h-[473px] overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-[11.5px]">
+            {(() => {
+              const allRows = boardProjectsByStatus[viewAllStatus] ?? [];
+              const totalPages = Math.max(1, Math.ceil(allRows.length / VIEW_ALL_PAGE_SIZE));
+              const pageSafe = Math.min(Math.max(1, viewAllPage), totalPages);
+              const pageRows = allRows.slice((pageSafe - 1) * VIEW_ALL_PAGE_SIZE, pageSafe * VIEW_ALL_PAGE_SIZE);
+              const column = projectBoardColumns.find(c => c.title === viewAllStatus);
+
+              return pageRows.map((row, idx) => {
+                const title = String(row.new_projectname ?? row.new_name ?? 'Project Name');
+                const desc = String(row.new_description ?? row.crcf8_description ?? '').trim() || 'No description';
+                const progress = readProjectRowProgress(row);
+                const sponsor = String(row.crcf8_projectsponsor ?? row.new_projectsponsorname ?? row.new_projectsponsor ?? '—');
+                const category = String(row.new_projectcategoryname ?? row.new_projectcategory ?? '—');
+                const method = String(row.new_methodologyname ?? row.new_methodology ?? '—');
+                const initials = projectCardInitials(row);
+                const budgetStr = formatProjectBudgetShort(row);
+
+                return (
+                  <div
+                    key={`${viewAllStatus}-${String(row.new_projectid ?? idx)}`}
+                    className="flex h-[150px] flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <button
+                        type="button"
+                        className="text-left text-[13px] font-bold leading-snug hover:underline break-words flex-1"
+                        style={{ color: column?.color || '#000' }}
+                        title={title}
+                        onClick={() => void openProjectQuickEdit(row)}
+                      >
+                        {title}
+                      </button>
+                      <div className="flex shrink-0 flex-col items-end">
+                        <span className="text-[10px] text-gray-500 tabular-nums leading-none">{progress}%</span>
+                        <div className="mt-0.5 h-1 w-12 overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${progress}%`, backgroundColor: column?.color }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[10px] font-medium leading-tight text-gray-700 break-words line-clamp-1 mb-2 min-h-[14px]">{desc}</p>
+                    <div className="flex min-w-0 items-start justify-between gap-2 text-[9px] leading-tight text-primary mb-2">
+                      <p className="min-w-0 flex-1 break-words">
+                        <span className="font-normal">Sponsor: </span>
+                        <span className="font-medium">{sponsor}</span>
+                      </p>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <span className="font-semibold tabular-nums">{budgetStr}</span>
+                      </div>
+                    </div>
+                    <div className="flex min-w-0 items-start justify-between gap-2 text-[9px] text-primary mb-2">
+                      <p className="min-w-0 max-w-[48%] break-words">
+                        <span className="font-normal">Category: </span>
+                        <span className="font-medium">{category}</span>
+                      </p>
+                      <p className="min-w-0 max-w-[48%] break-words text-right">
+                        <span className="font-normal">Approach: </span>
+                        <span className="font-medium">{method}</span>
+                      </p>
+                    </div>
+                    <div className="mt-auto flex items-end justify-between border-t border-gray-100 pt-2">
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#ffd8c2] text-[8px] font-semibold text-[#3d2914] leading-none">
+                        {initials}
+                      </div>
+                      <div className="flex items-center gap-1 text-primary">
+                        <button
+                          type="button"
+                          className="flex flex-col items-center gap-0 rounded p-1 hover:bg-gray-50"
+                          title="Files"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void openProjectFilesModal(row);
+                          }}
+                        >
+                          <Paperclip className="h-3 w-3 text-gray-600" strokeWidth={2} />
+                          <span className="text-[8px] font-medium">Files</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="flex flex-col items-center gap-0 rounded p-1 hover:bg-gray-50"
+                          title="Sprint"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isAgileProject(row)) setAgileSprintProject(row);
+                            else setWaterfallSprintProject(row);
+                          }}
+                        >
+                          <SquareArrowUpRight className="h-3 w-3 text-gray-600" strokeWidth={2} />
+                          <span className="text-[8px] font-medium">Sprint</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="flex flex-col items-center gap-0 rounded p-1 hover:bg-gray-50"
+                          title="Members"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAllocateMemberCtx({
+                              projectName: title,
+                              projectId: String(row.new_projectid ?? '').trim(),
+                            });
+                          }}
+                        >
+                          <Users className="h-3 w-3 text-gray-600" strokeWidth={2} />
+                          <span className="text-[8px] font-medium">Members</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+        {(() => {
+          const allRows = boardProjectsByStatus[viewAllStatus] ?? [];
+          return (
+            <div className="border-t border-gray-100 px-3 py-2 shrink-0">
+              <PagerBar
+                page={viewAllPage}
+                pageSize={VIEW_ALL_PAGE_SIZE}
+                total={allRows.length}
+                onPrev={() => setViewAllPage((p) => Math.max(1, p - 1))}
+                onNext={() => setViewAllPage((p) => Math.min(Math.ceil(allRows.length / VIEW_ALL_PAGE_SIZE), p + 1))}
+              />
+            </div>
+          );
+        })()}
+      </div>
+    </section>
   ) : (
     <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
       <div className="flex items-center justify-between mb-4 shrink-0">
@@ -1590,9 +1740,19 @@ export function ProgramProjectsSection({
             <div key={column.title} className="flex w-full min-w-0 flex-col gap-3">
               <div className="shrink-0 bg-white rounded-lg border border-gray-100 px-4 py-2.5 flex items-center justify-between">
                 <p className="text-xs font-semibold" style={{ color: column.color }}>{column.title}</p>
-                <span className="text-[10px] font-semibold tabular-nums" style={{ color: column.color }}>{rows.length}</span>
+                <button
+                  type="button"
+                  className="text-[10px] font-semibold px-3 py-1 rounded hover:bg-gray-100 transition-colors"
+                  style={{ color: column.color }}
+                  onClick={() => {
+                    setViewAllStatus(column.title);
+                    setViewAllPage(1);
+                  }}
+                >
+                  View All ({rows.length})
+                </button>
               </div>
-              <div className="h-[calc(3*8.75rem+0.5rem*2)] w-full min-h-0 shrink-0 space-y-2 overflow-y-auto pr-0.5">
+              <div className="h-[calc(3*135px+10.4px*2)] w-full min-h-0 shrink-0 space-y-[10.4px] overflow-y-auto pr-0.5">
                 {projectRowsLoading ? (
                   <p className="text-xs text-gray-500 px-1">Loading projects...</p>
                 ) : rows.length === 0 ? (
@@ -1610,7 +1770,7 @@ export function ProgramProjectsSection({
                     return (
                       <div
                         key={`${column.title}-${String(row.new_projectid ?? rowIdx)}`}
-                        className="flex h-[8.75rem] w-full shrink-0 flex-col overflow-hidden rounded-lg border border-gray-100 bg-white px-2 py-1.5 shadow-sm"
+                        className="flex h-[135px] w-full shrink-0 flex-col overflow-hidden rounded-lg border border-gray-100 bg-white px-2 py-1 shadow-sm"
                       >
                         <div className="grid min-h-0 grid-cols-[1fr_auto] items-start gap-2">
                           {hideEdit ? (
@@ -1644,11 +1804,11 @@ export function ProgramProjectsSection({
                             </div>
                           </div>
                         </div>
-                        <p className="mt-4 min-h-[2rem] line-clamp-2 text-[10px] font-medium leading-snug text-primary break-words pr-1" title={desc}>
+                        <p className="mt-1 min-h-[1rem] line-clamp-1 text-[9px] font-medium leading-tight text-primary break-words pr-1" title={desc}>
                           {desc}
                         </p>
 
-                        <div className="mt-1 flex min-w-0 items-start justify-between gap-2 text-[9px] leading-tight text-primary">
+                        <div className="mt-0.5 flex min-w-0 items-start justify-between gap-1 text-[8px] leading-tight text-primary">
                           <p className="min-w-0 flex-1 break-words line-clamp-2">
                             <span className="font-normal">Sponsor: </span>
                             <span className="font-medium">{sponsor}</span>

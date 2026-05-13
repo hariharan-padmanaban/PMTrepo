@@ -114,6 +114,7 @@ type Props = {
   onTaskOpen?: (row: TaskBoardRow) => void;
   onTaskEdit?: (row: TaskBoardRow) => void;
   onTaskDelete?: (row: TaskBoardRow) => void;
+  onViewAllStatus?: (status: string) => void;
   className?: string;
 };
 
@@ -123,6 +124,7 @@ export function TasksScreenBoard({
   onTaskOpen,
   onTaskEdit,
   onTaskDelete,
+  onViewAllStatus,
   className = '',
 }: Props) {
   const columns = variant === 'team' ? TEAM_COLUMNS : PROJECT_COLUMNS;
@@ -140,6 +142,15 @@ export function TasksScreenBoard({
                 {col.name}
                 <span className="ml-1 text-[10px] font-normal text-gray-400">({colTasks.length})</span>
               </p>
+              {variant === 'team' && colTasks.length > 0 && (
+                <button
+                  type="button"
+                  className="text-[10px] font-semibold text-blue-600 hover:underline"
+                  onClick={() => onViewAllStatus?.(col.name)}
+                >
+                  View All
+                </button>
+              )}
             </div>
             <div className="h-[calc(3*8rem+0.5rem*2)] w-full min-h-0 shrink-0 space-y-2 overflow-y-auto pr-0.5">
               {colTasks.length === 0 && (

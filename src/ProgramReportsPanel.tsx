@@ -391,33 +391,59 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   const reportProjectMap = useMemo(() => {
     try {
       const m = new Map<string, Record<string, unknown>>();
-      const idMap = new Map<string, Record<string, unknown>>();
-      filteredReportProjects.forEach((p) => {
+      reportProjectsRows.forEach((p) => {
         const name = String(p.new_projectname ?? p.new_name ?? '').trim().toLowerCase();
         if (name) m.set(name, p);
-        const id = String(p.new_projectid ?? p.crcf8_projectid ?? p._new_project_value ?? '').trim();
-        if (id) idMap.set(id, p);
       });
-      return { nameMap: m, idMap };
+      return m;
     } catch {
-      return { nameMap: new Map(), idMap: new Map() };
+      return new Map();
     }
-  }, [filteredReportProjects]);
+  }, [reportProjectsRows]);
 
   const filteredReportTableRows = useMemo(() => {
     try {
       const rows = reportEntityRows.map((r) => {
         const projectName = String(r.new_projectname ?? '').trim();
-        const projectId = String(r.new_projectid ?? r._new_project_value ?? '').trim();
 
-        // Try to find project by name first, then by ID
-        let project = reportProjectMap.nameMap.get(projectName.toLowerCase()) ?? null;
-        if (!project && projectId) {
-          project = reportProjectMap.idMap.get(projectId) ?? null;
+        // Find project using the map
+        let project = null;
+        if (projectName) {
+          project = reportProjectMap.get(projectName.toLowerCase()) ?? null;
         }
 
-        const status = String(project?.new_projectstatusname ?? 'To Start');
-        const progressValue = Number(project?.new_progress ?? 0);
+        // Get status using the same logic as canonicalStatusForFilter
+        let status = 'To Start';
+        let progressValue = 0;
+        if (project) {
+          // Convert status code to readable label
+          const raw = project.new_projectstatus;
+          const n = typeof raw === 'number' ? raw : Number(raw);
+          if (Number.isFinite(n) && (n as number) in New_projectsnew_projectstatus) {
+            const key = n as keyof typeof New_projectsnew_projectstatus;
+            const v = New_projectsnew_projectstatus[key];
+            if (v === 'ToStart') status = 'To Start';
+            else if (v === 'OnTrack') status = 'On Track';
+            else if (v === 'Delayed') status = 'Delayed';
+            else if (v === 'Completed') status = 'Completed';
+          } else {
+            const name = String(project.new_projectstatusname ?? '').trim();
+            if (name) {
+              const low = name.toLowerCase();
+              if (low.includes('complet')) status = 'Completed';
+              else if (low.includes('delay')) status = 'Delayed';
+              else if (low.includes('on') && low.includes('track')) status = 'On Track';
+              else if (low.includes('to start') || (low.includes('start') && !low.includes('track'))) status = 'To Start';
+            }
+          }
+
+          // Get progress from multiple possible field names
+          const progressRaw = project.new_progresslevel ?? project.new_progress ?? project.new_Progress ?? 0;
+          progressValue = Number(progressRaw) || 0;
+          // Ensure it's a valid number between 0-100
+          if (!Number.isFinite(progressValue) || progressValue < 0) progressValue = 0;
+          if (progressValue > 100) progressValue = 100;
+        }
 
         return {
           id: String(r.new_reportid ?? ''),

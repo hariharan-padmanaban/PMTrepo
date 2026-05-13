@@ -1665,6 +1665,22 @@ function teamIssueCardPriorityMeta(row: Record<string, unknown>): { p: string; r
   if (n === 100000000) return { p: 'P4', ring: 'bg-emerald-600' };
   return { p: 'P4', ring: 'bg-emerald-600' };
 }
+function projectIssueCardDueDate(row: Record<string, unknown>) {
+  const v = row.new_issuedate ?? row.modifiedon ?? row.createdon;
+  const s = String(v ?? '').trim();
+  if (!s) return '—';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function projectIssueCardPriorityMeta(row: Record<string, unknown>): { p: string; ring: string } {
+  const n = Number(row.new_issueseverity ?? NaN);
+  if (n === 100000003) return { p: 'P1', ring: 'bg-rose-600' };
+  if (n === 100000002) return { p: 'P2', ring: 'bg-amber-500' };
+  if (n === 100000001) return { p: 'P3', ring: 'bg-emerald-600' };
+  if (n === 100000000) return { p: 'P4', ring: 'bg-emerald-600' };
+  return { p: 'P4', ring: 'bg-emerald-600' };
+}
 function teamTaskIsDelayed(row: Record<string, unknown>) {
   const st = String(row.new_taskstatusname ?? '').toLowerCase();
   const stn = Number(row.new_taskstatus ?? NaN);
@@ -1833,6 +1849,10 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
     const t = new Date();
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
   });
+  const [viewAllTaskStatus, setViewAllTaskStatus] = useState<string | null>(null);
+  const [viewAllTaskPage, setViewAllTaskPage] = useState(1);
+  const [viewAllIssueStatus, setViewAllIssueStatus] = useState<string | null>(null);
+  const [viewAllIssuePage, setViewAllIssuePage] = useState(1);
 
   const myTasks = useMemo(
     () => teamAllTasks.filter((r) => teamTaskAssigneeMatch(r, teamSessionProfile)),
@@ -2538,6 +2558,159 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                     }}
                   />
                 </div>
+              ) : viewAllTaskStatus ? (
+                <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
+                  <div className="flex items-center justify-between mb-4 shrink-0">
+                    <h2 className="enj-screen-header">All Tasks - {viewAllTaskStatus}</h2>
+                    <button
+                      type="button"
+                      className={`${enj.btn} ${enj.btnOutline} text-xs`}
+                      onClick={() => setViewAllTaskStatus(null)}
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                  <div className="flex-1 min-h-0 flex flex-col">
+                    <div className="h-[420px] overflow-hidden">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {(() => {
+                          const VIEW_ALL_TASK_PAGE_SIZE_UPDATED = 8;
+                          const getTaskStatusBucket = (row: Record<string, unknown>) => {
+                            const STATUS_NOTSTARTED = 100000000;
+                            const STATUS_INPROGRESS = 100000001;
+                            const STATUS_COMPLETED = 100000002;
+                            const STATUS_ONHOLD = 100000003;
+                            const n = Number(row.new_taskstatus ?? NaN);
+                            if (n === STATUS_NOTSTARTED) return 'todo';
+                            if (n === STATUS_INPROGRESS) return 'inprogress';
+                            if (n === STATUS_COMPLETED) return 'done';
+                            if (n === STATUS_ONHOLD) return 'delayed';
+                            const name = String(row.new_taskstatusname ?? '').toLowerCase();
+                            if (name.includes('complet') || name.includes('done')) return 'done';
+                            if (name.includes('progress')) return 'inprogress';
+                            if (name.includes('hold') || name.includes('delay') || name.includes('on hold')) return 'delayed';
+                            return 'todo';
+                          };
+
+                          const statusBucketMap = {
+                            'To do': 'todo',
+                            'In Progress': 'inprogress',
+                            'Delayed': 'delayed',
+                            'Done': 'done',
+                          } as Record<string, string>;
+                          const bucketKey = statusBucketMap[viewAllTaskStatus] || viewAllTaskStatus;
+
+                          const allStatusTasks = myTasks.filter(t => getTaskStatusBucket(t) === bucketKey);
+                          const totalPages = Math.max(1, Math.ceil(allStatusTasks.length / VIEW_ALL_TASK_PAGE_SIZE_UPDATED));
+                          const pageSafe = Math.min(Math.max(1, viewAllTaskPage), totalPages);
+                          const pageRows = allStatusTasks.slice((pageSafe - 1) * VIEW_ALL_TASK_PAGE_SIZE_UPDATED, pageSafe * VIEW_ALL_TASK_PAGE_SIZE_UPDATED);
+                          const statusColorMap = {
+                            'To do': '#10b981',
+                            'In Progress': '#f59e0b',
+                            'Delayed': '#ef4444',
+                            'Done': '#3b82f6',
+                          } as Record<string, string>;
+                          const statusColor = statusColorMap[viewAllTaskStatus] || '#666';
+
+                          return pageRows.map((row, idx) => {
+                            const title = String(row.new_tasktitle ?? 'Task').trim();
+                            const desc = String(row.new_description ?? '').trim() || 'No description';
+                            const project = String(row.new_projectname ?? row.new_taskprojectname ?? '').trim();
+                            const priority = String(row.new_priorityname ?? 'Medium').trim();
+                            const assignee = String(row.new_assigntoteammember ?? '').trim();
+
+                            return (
+                              <div
+                                key={`${viewAllTaskStatus}-${String(row.new_taskid ?? idx)}`}
+                                className="flex h-[150px] flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
+                              >
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <button
+                                    type="button"
+                                    className="text-left text-[13px] font-bold leading-snug hover:underline break-words flex-1"
+                                    style={{ color: statusColor }}
+                                    title={title}
+                                    onClick={() => {
+                                      setViewingTaskRow(row as Record<string, unknown>);
+                                      setEditingTaskRow(row as Record<string, unknown>);
+                                    }}
+                                  >
+                                    {title}
+                                  </button>
+                                </div>
+                                <p className="text-[10px] font-medium leading-tight text-gray-700 break-words line-clamp-1 mb-2 min-h-[14px]">{desc}</p>
+                                <div className="flex min-w-0 items-start justify-between gap-2 text-[9px] leading-tight text-gray-700 mb-2">
+                                  <p className="min-w-0 flex-1 break-words">
+                                    <span className="font-normal">Project: </span>
+                                    <span className="font-medium">{project || '—'}</span>
+                                  </p>
+                                  <div className="flex shrink-0 items-center gap-0.5">
+                                    <span className="font-semibold tabular-nums text-gray-600">{priority}</span>
+                                  </div>
+                                </div>
+                                <div className="mt-auto flex items-end justify-between border-t border-gray-100 pt-2">
+                                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-bold text-amber-900 leading-none">
+                                    {assignee ? assignee.substring(0, 2).toUpperCase() : '?'}
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600"
+                                      title="Edit"
+                                      onClick={() => setEditingTaskRow(row as Record<string, unknown>)}
+                                    >
+                                      <Pencil className="h-3 w-3" strokeWidth={2} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-100 px-3 py-2 shrink-0">
+                    {(() => {
+                      const getTaskStatusBucket = (row: Record<string, unknown>) => {
+                        const STATUS_NOTSTARTED = 100000000;
+                        const STATUS_INPROGRESS = 100000001;
+                        const STATUS_COMPLETED = 100000002;
+                        const STATUS_ONHOLD = 100000003;
+                        const n = Number(row.new_taskstatus ?? NaN);
+                        if (n === STATUS_NOTSTARTED) return 'todo';
+                        if (n === STATUS_INPROGRESS) return 'inprogress';
+                        if (n === STATUS_COMPLETED) return 'done';
+                        if (n === STATUS_ONHOLD) return 'delayed';
+                        const name = String(row.new_taskstatusname ?? '').toLowerCase();
+                        if (name.includes('complet') || name.includes('done')) return 'done';
+                        if (name.includes('progress')) return 'inprogress';
+                        if (name.includes('hold') || name.includes('delay') || name.includes('on hold')) return 'delayed';
+                        return 'todo';
+                      };
+
+                      const statusBucketMap = {
+                        'To do': 'todo',
+                        'In Progress': 'inprogress',
+                        'Delayed': 'delayed',
+                        'Done': 'done',
+                      } as Record<string, string>;
+                      const bucketKey = statusBucketMap[viewAllTaskStatus!] || viewAllTaskStatus;
+                      const filteredTasks = myTasks.filter(t => getTaskStatusBucket(t) === bucketKey);
+                      const VIEW_ALL_TASK_PAGE_SIZE_UPDATED = 8;
+
+                      return (
+                        <PagerBar
+                          page={viewAllTaskPage}
+                          pageSize={VIEW_ALL_TASK_PAGE_SIZE_UPDATED}
+                          total={filteredTasks.length}
+                          onPrev={() => setViewAllTaskPage((p) => Math.max(1, p - 1))}
+                          onNext={() => setViewAllTaskPage((p) => Math.min(Math.ceil(filteredTasks.length / VIEW_ALL_TASK_PAGE_SIZE_UPDATED), p + 1))}
+                        />
+                      );
+                    })()}
+                  </div>
+                </section>
               ) : (
                 <div className="relative min-w-0 flex w-full flex-col">
                   {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
@@ -2561,12 +2734,135 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                         setViewingTaskRow(row as Record<string, unknown>);
                         setShowTeamTaskDetail(true);
                       }}
+                      onViewAllStatus={(status) => {
+                        setViewAllTaskStatus(status);
+                        setViewAllTaskPage(1);
+                      }}
                     />
                   </div>
                 </div>
               )}
             </section>
           ) : activeNav === 'Issues' ? (
+            viewAllIssueStatus ? (
+              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
+                <div className="flex items-center justify-between mb-4 shrink-0">
+                  <h2 className="enj-screen-header">All Issues - {viewAllIssueStatus}</h2>
+                  <button
+                    type="button"
+                    className={`${enj.btn} ${enj.btnOutline} text-xs`}
+                    onClick={() => setViewAllIssueStatus(null)}
+                  >
+                    ← Back
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <div className="h-[420px] overflow-hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {(() => {
+                        const VIEW_ALL_ISSUE_PAGE_SIZE_UPDATED = 8;
+                        const statusList = viewAllIssueStatus === 'Open' ? teamOpenIssues : teamClosedIssues;
+                        const totalPages = Math.max(1, Math.ceil(statusList.length / VIEW_ALL_ISSUE_PAGE_SIZE_UPDATED));
+                        const pageSafe = Math.min(Math.max(1, viewAllIssuePage), totalPages);
+                        const pageRows = statusList.slice((pageSafe - 1) * VIEW_ALL_ISSUE_PAGE_SIZE_UPDATED, pageSafe * VIEW_ALL_ISSUE_PAGE_SIZE_UPDATED);
+
+                        return pageRows.map((row) => {
+                          const t = String(row.new_issuetitle ?? 'Issue');
+                          const issueId = String(row.new_issueid ?? '');
+                          const subN = teamSubIssueCountByParent.get(issueId) ?? 0;
+                          const sevName = String(row.new_issueseverityname ?? '—').trim() || '—';
+                          const descPreview = (String(row.new_description ?? '').trim() || '—');
+                          const pri = teamIssueCardPriorityMeta(row);
+                          const projectTag = String(row.new_projectname ?? '—').trim() || '—';
+
+                          return (
+                            <div
+                              key={String(row.new_issueid ?? t)}
+                              className="bg-white rounded-xl border border-gray-200/90 shadow-sm p-4 sm:p-5"
+                            >
+                              <div className="flex items-start justify-between gap-3 mb-3">
+                                <div className="min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => { setViewingIssueRow(row); setShowIssueDetails(true); setViewAllIssueStatus(null); }}
+                                    className="text-sm font-semibold text-[#2563eb] text-left underline underline-offset-2 decoration-[#2563eb]/80 hover:text-[#1d4ed8] block truncate w-full"
+                                  >
+                                    {t}
+                                  </button>
+                                  <p className="text-[11px] text-gray-500 mt-1.5">
+                                    Issue Severity : {sevName}
+                                  </p>
+                                </div>
+                                <span
+                                  className="shrink-0 max-w-[9rem] truncate rounded-md bg-amber-100/90 px-2.5 py-1.5 text-center text-[10px] font-medium text-gray-800 border border-amber-200/60"
+                                  title={projectTag}
+                                >
+                                  {projectTag}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                                <div className="flex items-center gap-1.5 min-w-0 text-[11px] font-medium text-primary">
+                                  <ListTree className="h-3.5 w-3.5 text-[#2563eb] shrink-0" strokeWidth={2} />
+                                  <span>Sub Issue Count: {subN}</span>
+                                </div>
+                                <div className="min-w-0 max-w-full sm:max-w-[55%] text-right sm:pl-2">
+                                  <p className="text-[11px] font-bold text-[#1e3a5f]">Description</p>
+                                  <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 break-words">{descPreview}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-end justify-between gap-2 pt-1">
+                                <div>
+                                  <p className="text-[11px] text-gray-500">
+                                    Due Date : {teamIssueCardDueDate(row)}
+                                  </p>
+                                  <div className="mt-1.5 flex items-center gap-2.5">
+                                    <span
+                                      className={`inline-flex h-6 min-w-[1.5rem] px-1 rounded-full text-[9px] font-bold text-white items-center justify-center ${pri.ring}`}
+                                      title="Priority from severity"
+                                    >
+                                      {pri.p}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setViewingIssueRow(row);
+                                        setShowIssueDetails(true);
+                                        setViewAllIssueStatus(null);
+                                      }}
+                                      className="p-1 rounded-md text-gray-400 hover:text-secondary hover:bg-amber-50/80"
+                                      title="Issue details"
+                                    >
+                                      <Pencil className="h-4 w-4" strokeWidth={2} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                <div className="border-t border-gray-100 px-3 py-2 shrink-0">
+                  {(() => {
+                    const VIEW_ALL_ISSUE_PAGE_SIZE_UPDATED = 8;
+                    const statusList = viewAllIssueStatus === 'Open' ? teamOpenIssues : teamClosedIssues;
+                    const totalPages = Math.max(1, Math.ceil(statusList.length / VIEW_ALL_ISSUE_PAGE_SIZE_UPDATED));
+
+                    return (
+                      <PagerBar
+                        page={viewAllIssuePage}
+                        pageSize={VIEW_ALL_ISSUE_PAGE_SIZE_UPDATED}
+                        total={statusList.length}
+                        onPrev={() => setViewAllIssuePage((p) => Math.max(1, p - 1))}
+                        onNext={() => setViewAllIssuePage((p) => Math.min(totalPages, p + 1))}
+                      />
+                    );
+                  })()}
+                </div>
+              </section>
+            ) : (
             <section className={`relative ${enj.screenContainer}`}>
               {teamIssueToast && (
                 <NotificationToast
@@ -2673,13 +2969,27 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                 {(
                   [
                     ['Open', '#ef4444', teamOpenIssues],
-                    ['Solved', '#2563eb', teamClosedIssues],
+                    ['Closed', '#2563eb', teamClosedIssues],
                   ] as [string, string, Array<Record<string, unknown>>][]
                 ).map(([title, _accent, list]) => (
                   <div key={String(title)} className="space-y-3">
                     <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
                       <p className="enj-screen-subheader">{title}</p>
-                      <span className="text-[10px] text-gray-500">{list.length} items</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-500">{list.length} items</span>
+                        {list.length > 0 && (
+                          <button
+                            type="button"
+                            className="text-[10px] font-semibold text-blue-600 hover:underline"
+                            onClick={() => {
+                              setViewAllIssueStatus(title);
+                              setViewAllIssuePage(1);
+                            }}
+                          >
+                            View All
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {list.length === 0 ? (
                       <p className="text-sm text-gray-500 bg-white rounded-xl border border-gray-100 p-4">No {title === 'Open' ? 'open' : 'closed'} issues.</p>
@@ -2763,6 +3073,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
                 </>
               )}
             </section>
+            )
           ) : activeNav === 'Meetings' ? (
             <section className={enj.screenContainer}>
               {showAddCalendarMeetingForm ? (
@@ -6835,6 +7146,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   const [projectStatusFilterValue, setProjectStatusFilterValue] = useState('All');
   const [allProjectsPage, setAllProjectsPage] = useState(1);
   const ALL_PROJECTS_PAGE_SIZE = 6;
+  const [viewAllProjectTaskStatus, setViewAllProjectTaskStatus] = useState<string | null>(null);
+  const [viewAllProjectTaskPage, setViewAllProjectTaskPage] = useState(1);
+  const [viewAllProjectIssueStatus, setViewAllProjectIssueStatus] = useState<string | null>(null);
+  const [viewAllProjectIssuePage, setViewAllProjectIssuePage] = useState(1);
   /** Insights bar charts: All Projects or a single project (filters in-memory rows). */
   const [insightProjectFilter, setInsightProjectFilter] = useState<string>('all');
   const navItems = [
@@ -7954,6 +8269,174 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           )}
           {activeNav === 'Tasks' ? (
+            viewAllProjectTaskStatus ? (
+              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
+                <div className="flex items-center justify-between mb-4 shrink-0">
+                  <h2 className="enj-screen-header">All Tasks - {viewAllProjectTaskStatus}</h2>
+                  <button
+                    type="button"
+                    className={`${enj.btn} ${enj.btnOutline} text-xs`}
+                    onClick={() => setViewAllProjectTaskStatus(null)}
+                  >
+                    ← Back
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <div className="h-[420px] overflow-hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {(() => {
+                        const VIEW_ALL_PROJECT_TASK_PAGE_SIZE_UPDATED = 8;
+                        const getTaskStatusBucket = (row: Record<string, unknown>) => {
+                          const STATUS_NOTSTARTED = 100000000;
+                          const STATUS_INPROGRESS = 100000001;
+                          const STATUS_COMPLETED = 100000002;
+                          const STATUS_ONHOLD = 100000003;
+                          const n = Number(row.new_taskstatus ?? NaN);
+                          if (n === STATUS_NOTSTARTED) return 'todo';
+                          if (n === STATUS_INPROGRESS) return 'inprogress';
+                          if (n === STATUS_COMPLETED) return 'done';
+                          if (n === STATUS_ONHOLD) return 'delayed';
+                          const name = String(row.new_taskstatusname ?? '').toLowerCase();
+                          if (name.includes('complet') || name.includes('done')) return 'done';
+                          if (name.includes('progress')) return 'inprogress';
+                          if (name.includes('hold') || name.includes('delay') || name.includes('on hold')) return 'delayed';
+                          return 'todo';
+                        };
+
+                        const statusBucketMap = {
+                          'Future Tasks': 'todo',
+                          'In Progress': 'inprogress',
+                          'Delayed': 'delayed',
+                          'Completed': 'done',
+                        } as Record<string, string>;
+                        const bucketKey = statusBucketMap[viewAllProjectTaskStatus] || viewAllProjectTaskStatus;
+
+                        const allStatusTasks = projectBoardTasksFiltered.filter(t => getTaskStatusBucket(t) === bucketKey);
+                        const totalPages = Math.max(1, Math.ceil(allStatusTasks.length / VIEW_ALL_PROJECT_TASK_PAGE_SIZE_UPDATED));
+                        const pageSafe = Math.min(Math.max(1, viewAllProjectTaskPage), totalPages);
+                        const pageRows = allStatusTasks.slice((pageSafe - 1) * VIEW_ALL_PROJECT_TASK_PAGE_SIZE_UPDATED, pageSafe * VIEW_ALL_PROJECT_TASK_PAGE_SIZE_UPDATED);
+                        const statusColorMap = {
+                          'Future Tasks': '#10b981',
+                          'In Progress': '#f59e0b',
+                          'Delayed': '#ef4444',
+                          'Completed': '#3b82f6',
+                        } as Record<string, string>;
+                        const statusColor = statusColorMap[viewAllProjectTaskStatus] || '#666';
+
+                        return pageRows.map((row, idx) => {
+                          const title = String(row.new_tasktitle ?? 'Task').trim();
+                          const desc = String(row.new_description ?? '').trim() || 'No description';
+                          const project = String(row.new_projectname ?? row.new_taskprojectname ?? '').trim();
+                          const priority = String(row.new_priorityname ?? 'Medium').trim();
+                          const assignee = String(row.new_assigntoteammember ?? '').trim();
+
+                          return (
+                            <div
+                              key={`${viewAllProjectTaskStatus}-${String(row.new_taskid ?? idx)}`}
+                              className="flex h-[150px] flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
+                            >
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <button
+                                  type="button"
+                                  className="text-left text-[13px] font-bold leading-snug hover:underline break-words flex-1"
+                                  style={{ color: statusColor }}
+                                  title={title}
+                                  onClick={() => {
+                                    setProjectTaskDetailRow(row as Record<string, unknown>);
+                                    setViewAllProjectTaskStatus(null);
+                                  }}
+                                >
+                                  {title}
+                                </button>
+                              </div>
+                              <p className="text-[10px] font-medium leading-tight text-gray-700 break-words line-clamp-1 mb-2 min-h-[14px]">{desc}</p>
+                              <div className="flex min-w-0 items-start justify-between gap-2 text-[9px] leading-tight text-gray-700 mb-2">
+                                <p className="min-w-0 flex-1 break-words">
+                                  <span className="font-normal">Project: </span>
+                                  <span className="font-medium">{project || '—'}</span>
+                                </p>
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  <span className="font-semibold tabular-nums text-gray-600">{priority}</span>
+                                </div>
+                              </div>
+                              <div className="mt-auto flex items-end justify-between border-t border-gray-100 pt-2">
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[8px] font-bold text-amber-900 leading-none">
+                                  {assignee ? assignee.substring(0, 2).toUpperCase() : '?'}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-blue-600"
+                                    title="Edit"
+                                    onClick={() => {
+                                      setEditingTaskRow(row as Record<string, unknown>);
+                                      setViewAllProjectTaskStatus(null);
+                                    }}
+                                  >
+                                    <Pencil className="h-3 w-3" strokeWidth={2} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded p-1 text-gray-400 hover:bg-rose-50 hover:text-rose-600"
+                                    title="Delete"
+                                    onClick={() => {
+                                      requestDeleteProjectTask(row as Record<string, unknown>);
+                                      setViewAllProjectTaskStatus(null);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3 w-3" strokeWidth={2} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                <div className="border-t border-gray-100 px-3 py-2 shrink-0">
+                  {(() => {
+                    const getTaskStatusBucket = (row: Record<string, unknown>) => {
+                      const STATUS_NOTSTARTED = 100000000;
+                      const STATUS_INPROGRESS = 100000001;
+                      const STATUS_COMPLETED = 100000002;
+                      const STATUS_ONHOLD = 100000003;
+                      const n = Number(row.new_taskstatus ?? NaN);
+                      if (n === STATUS_NOTSTARTED) return 'todo';
+                      if (n === STATUS_INPROGRESS) return 'inprogress';
+                      if (n === STATUS_COMPLETED) return 'done';
+                      if (n === STATUS_ONHOLD) return 'delayed';
+                      const name = String(row.new_taskstatusname ?? '').toLowerCase();
+                      if (name.includes('complet') || name.includes('done')) return 'done';
+                      if (name.includes('progress')) return 'inprogress';
+                      if (name.includes('hold') || name.includes('delay') || name.includes('on hold')) return 'delayed';
+                      return 'todo';
+                    };
+
+                    const statusBucketMap = {
+                      'Future Tasks': 'todo',
+                      'In Progress': 'inprogress',
+                      'Delayed': 'delayed',
+                      'Completed': 'done',
+                    } as Record<string, string>;
+                    const bucketKey = statusBucketMap[viewAllProjectTaskStatus!] || viewAllProjectTaskStatus;
+                    const filteredTasks = projectBoardTasksFiltered.filter(t => getTaskStatusBucket(t) === bucketKey);
+
+                    const VIEW_ALL_PROJECT_TASK_PAGE_SIZE_UPDATED = 8;
+                    return (
+                      <PagerBar
+                        page={viewAllProjectTaskPage}
+                        pageSize={VIEW_ALL_PROJECT_TASK_PAGE_SIZE_UPDATED}
+                        total={filteredTasks.length}
+                        onPrev={() => setViewAllProjectTaskPage((p) => Math.max(1, p - 1))}
+                        onNext={() => setViewAllProjectTaskPage((p) => Math.min(Math.ceil(filteredTasks.length / VIEW_ALL_PROJECT_TASK_PAGE_SIZE_UPDATED), p + 1))}
+                      />
+                    );
+                  })()}
+                </div>
+              </section>
+            ) : (
             <section className={`${enj.screenContainer} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
               {showTaskFormPanel ? (
                 <div className="min-h-0 max-h-[min(calc(100dvh-7rem),48rem)] overflow-y-auto">
@@ -8090,11 +8573,16 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                         setShowAddTaskForm(false);
                       }}
                       onTaskDelete={requestDeleteProjectTask}
+                      onViewAllStatus={(status) => {
+                        setViewAllProjectTaskStatus(status);
+                        setViewAllProjectTaskPage(1);
+                      }}
                     />
                   </div>
                 </div>
               )}
             </section>
+            )
           ) : activeNav === 'Meetings' ? (
             <>
               {showAddMeetingForm ? (
@@ -8133,6 +8621,127 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </>
           ) : activeNav === 'Issues' ? (
+            viewAllProjectIssueStatus ? (
+              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
+                <div className="flex items-center justify-between mb-4 shrink-0">
+                  <h2 className="enj-screen-header">All Issues - {viewAllProjectIssueStatus}</h2>
+                  <button
+                    type="button"
+                    className={`${enj.btn} ${enj.btnOutline} text-xs`}
+                    onClick={() => setViewAllProjectIssueStatus(null)}
+                  >
+                    ← Back
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <div className="h-[420px] overflow-hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {(() => {
+                        const VIEW_ALL_PROJECT_ISSUE_PAGE_SIZE_UPDATED = 8;
+                        const filteredIssues = viewAllProjectIssueStatus === 'Open'
+                          ? filteredIssueRows.filter(r => issueStatusLabel(r).toLowerCase().includes('open'))
+                          : filteredIssueRows.filter(r => issueStatusLabel(r).toLowerCase().includes('closed'));
+                        const totalPages = Math.max(1, Math.ceil(filteredIssues.length / VIEW_ALL_PROJECT_ISSUE_PAGE_SIZE_UPDATED));
+                        const pageSafe = Math.min(Math.max(1, viewAllProjectIssuePage), totalPages);
+                        const pageRows = filteredIssues.slice((pageSafe - 1) * VIEW_ALL_PROJECT_ISSUE_PAGE_SIZE_UPDATED, pageSafe * VIEW_ALL_PROJECT_ISSUE_PAGE_SIZE_UPDATED);
+
+                        return pageRows.map((row) => {
+                          const t = String(row.new_issuetitle ?? 'Issue');
+                          const sevName = String(row.new_issueseverityname ?? '—').trim() || '—';
+                          const descPreview = (String(row.new_description ?? '').trim() || '—');
+                          const pri = projectIssueCardPriorityMeta(row);
+                          const projectTag = String(row.new_projectname ?? '—').trim() || '—';
+
+                          return (
+                            <div
+                              key={String(row.new_issueid ?? t)}
+                              className="bg-white rounded-xl border border-gray-200/90 shadow-sm p-4 sm:p-5"
+                            >
+                              <div className="flex items-start justify-between gap-3 mb-3">
+                                <div className="min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => { setProjectIssueDetailRow(row); setShowProjectIssueDetails(true); setViewAllProjectIssueStatus(null); }}
+                                    className="text-sm font-semibold text-[#2563eb] text-left underline underline-offset-2 decoration-[#2563eb]/80 hover:text-[#1d4ed8] block truncate w-full"
+                                  >
+                                    {t}
+                                  </button>
+                                  <p className="text-[11px] text-gray-500 mt-1.5">
+                                    Issue Severity : {sevName}
+                                  </p>
+                                </div>
+                                <span
+                                  className="shrink-0 max-w-[9rem] truncate rounded-md bg-amber-100/90 px-2.5 py-1.5 text-center text-[10px] font-medium text-gray-800 border border-amber-200/60"
+                                  title={projectTag}
+                                >
+                                  {projectTag}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                                <div className="flex items-center gap-1.5 min-w-0 text-[11px] font-medium text-primary">
+                                  <ListTree className="h-3.5 w-3.5 text-[#2563eb] shrink-0" strokeWidth={2} />
+                                  <span>Sub Issue Count: 0</span>
+                                </div>
+                                <div className="min-w-0 max-w-full sm:max-w-[55%] text-right sm:pl-2">
+                                  <p className="text-[11px] font-bold text-[#1e3a5f]">Description</p>
+                                  <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 break-words">{descPreview}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-end justify-between gap-2 pt-1">
+                                <div>
+                                  <p className="text-[11px] text-gray-500">
+                                    Due Date : {projectIssueCardDueDate(row)}
+                                  </p>
+                                  <div className="mt-1.5 flex items-center gap-2.5">
+                                    <span
+                                      className={`inline-flex h-6 min-w-[1.5rem] px-1 rounded-full text-[9px] font-bold text-white items-center justify-center ${pri.ring}`}
+                                      title="Priority from severity"
+                                    >
+                                      {pri.p}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setProjectIssueDetailRow(row);
+                                        setShowProjectIssueDetails(true);
+                                        setViewAllProjectIssueStatus(null);
+                                      }}
+                                      className="p-1 rounded-md text-gray-400 hover:text-secondary hover:bg-amber-50/80"
+                                      title="Issue details"
+                                    >
+                                      <Pencil className="h-4 w-4" strokeWidth={2} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                <div className="border-t border-gray-100 px-3 py-2 shrink-0">
+                  {(() => {
+                    const VIEW_ALL_PROJECT_ISSUE_PAGE_SIZE_UPDATED = 8;
+                    const filteredIssues = viewAllProjectIssueStatus === 'Open'
+                      ? filteredIssueRows.filter(r => issueStatusLabel(r).toLowerCase().includes('open'))
+                      : filteredIssueRows.filter(r => issueStatusLabel(r).toLowerCase().includes('closed'));
+                    const totalPages = Math.max(1, Math.ceil(filteredIssues.length / VIEW_ALL_PROJECT_ISSUE_PAGE_SIZE_UPDATED));
+
+                    return (
+                      <PagerBar
+                        page={viewAllProjectIssuePage}
+                        pageSize={VIEW_ALL_PROJECT_ISSUE_PAGE_SIZE_UPDATED}
+                        total={filteredIssues.length}
+                        onPrev={() => setViewAllProjectIssuePage((p) => Math.max(1, p - 1))}
+                        onNext={() => setViewAllProjectIssuePage((p) => Math.min(totalPages, p + 1))}
+                      />
+                    );
+                  })()}
+                </div>
+              </section>
+            ) : (
             <section className={`relative min-w-0 max-w-full ${enj.screenContainer}`}>
               {!showAddIssueForm &&
                 !showProjectIssueDetails &&
@@ -8253,14 +8862,25 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     {[
-                      ['Total Issues', String(issueCharts.total), 'border-[#d4a759]'],
-                      ['Open Issues', String(issueCharts.openCount), 'border-[#ef4444]'],
-                      ['Closed Issues', String(issueCharts.closedCount), 'border-[#2563eb]'],
-                    ].map(([label, value, border]) => (
-                      <div key={String(label)} className={`bg-white rounded-xl border-2 ${border} p-4 sm:p-5 text-center`}>
+                      ['Total Issues', String(issueCharts.total), 'border-[#d4a759]', null],
+                      ['Open Issues', String(issueCharts.openCount), 'border-[#ef4444]', 'Open'],
+                      ['Closed Issues', String(issueCharts.closedCount), 'border-[#2563eb]', 'Closed'],
+                    ].map(([label, value, border, statusValue]) => (
+                      <button
+                        key={String(label)}
+                        type="button"
+                        onClick={() => {
+                          if (statusValue) {
+                            setViewAllProjectIssueStatus(statusValue);
+                            setViewAllProjectIssuePage(1);
+                          }
+                        }}
+                        disabled={!statusValue}
+                        className={`bg-white rounded-xl border-2 ${border} p-4 sm:p-5 text-center ${statusValue ? 'cursor-pointer hover:shadow-md transition-shadow' : ''} disabled:cursor-default`}
+                      >
                         <p className="text-[11px] text-gray-500">{label}</p>
                         <p className="text-4xl font-bold text-primary mt-2">{value}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
 
@@ -8488,6 +9108,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 </>
               )}
             </section>
+            )
           ) : activeNav === 'Team Management' ? (
             <section className={enj.screenContainer}>
               {showAddTeamMemberForm ? (

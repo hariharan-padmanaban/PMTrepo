@@ -97,23 +97,45 @@ function isSpecialCategory(category: string): boolean {
 
 function optionsFromMetadataAttribute(attrs: Array<Record<string, unknown>>, logicalName: string): Array<{ label: string; value: number }> {
   const target = logicalName.toLowerCase();
-  const attr = attrs.find((a) => String(a.LogicalName ?? a.logicalName ?? '').toLowerCase() === target);
-  const optionSet = (attr?.OptionSet ?? attr?.optionSet ?? {}) as Record<string, unknown>;
-  const options = (optionSet.Options ?? optionSet.options ?? []) as Array<Record<string, unknown>>;
+  const attr = attrs.find((a) => {
+    const attrName = String(a.LogicalName ?? a.logicalName ?? '').toLowerCase();
+    return attrName === target;
+  });
+
+  if (!attr) return [];
+
+  // Extract OptionSet/options from attribute
+  const optionSet = (
+    (attr?.OptionSet as { Options?: Array<Record<string, unknown>>; options?: Array<Record<string, unknown>> } | undefined)
+    ?? (attr?.optionSet as { Options?: Array<Record<string, unknown>>; options?: Array<Record<string, unknown>> } | undefined)
+    ?? {}
+  ) as Record<string, unknown>;
+
+  const options = (
+    optionSet.Options
+    ?? optionSet.options
+    ?? (attr?.Options as Array<Record<string, unknown>> | undefined)
+    ?? (attr?.options as Array<Record<string, unknown>> | undefined)
+    ?? []
+  ) as Array<Record<string, unknown>>;
+
   return options
     .map((opt) => {
-      const value = Number(opt.Value ?? opt.value);
-      const labels = (opt.Label ?? opt.label ?? {}) as Record<string, unknown>;
-      const userLabel = (labels.UserLocalizedLabel ?? labels.userLocalizedLabel ?? {}) as Record<string, unknown>;
-      const text = String(
-        userLabel.Label
-        ?? userLabel.label
-        ?? ((labels.LocalizedLabels ?? labels.localizedLabels ?? []) as Array<Record<string, unknown>>)[0]?.Label
-        ?? ((labels.LocalizedLabels ?? labels.localizedLabels ?? []) as Array<Record<string, unknown>>)[0]?.label
-        ?? '',
-      ).trim();
-      if (!text || Number.isNaN(value)) return null;
-      return { label: text, value };
+      const value = Number(opt.Value ?? opt.value ?? NaN);
+      // Extract label from Label object or as direct string
+      const label =
+        String(
+          (opt.Label as { UserLocalizedLabel?: { Label?: string } } | undefined)?.UserLocalizedLabel?.Label
+          ?? (opt.Label as { LocalizedLabels?: Array<{ Label?: string }> } | undefined)?.LocalizedLabels?.[0]?.Label
+          ?? (opt.label as string | undefined)
+          ?? (opt.DisplayName as string | undefined)
+          ?? (opt.displayName as string | undefined)
+          ?? (opt.Text as string | undefined)
+          ?? (opt.text as string | undefined)
+          ?? '',
+        ).trim();
+      if (!label || Number.isNaN(value)) return null;
+      return { label, value };
     })
     .filter((x): x is { label: string; value: number } => Boolean(x));
 }
@@ -154,14 +176,24 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
   }, [categoryLabelByValue]);
 
   const sortedCategories = useMemo(() => {
-    if (rows.length > 0) {
-      const fromData = Array.from(
-        new Set(rows.map((r) => categoryTextForRow(r)).filter((v) => Boolean(v) && !/^\d+$/.test(v)))
-      ).sort((a, b) => a.localeCompare(b));
-      if (fromData.length > 0) return fromData;
+    // Combine categories from multiple sources, with metadata as primary
+    const categories = new Set<string>();
+
+    // Add categories from Dataverse metadata (primary - includes new/custom values)
+    categoryOptions.forEach((o) => categories.add(o.label));
+
+    // Add categories from existing data in the table (ensures we show categories that are already in use)
+    rows
+      .map((r) => categoryTextForRow(r))
+      .filter((v) => Boolean(v) && !/^\d+$/.test(v))
+      .forEach((cat) => categories.add(cat));
+
+    // Add hardcoded categories as fallback (only if metadata load failed)
+    if (categories.size === 0) {
+      CATEGORIES.forEach((cat) => categories.add(cat));
     }
-    if (categoryOptions.length > 0) return categoryOptions.map((o) => o.label).sort((a, b) => a.localeCompare(b));
-    return [...CATEGORIES].sort((a, b) => a.localeCompare(b));
+
+    return Array.from(categories).sort((a, b) => a.localeCompare(b));
   }, [rows, categoryOptions, categoryTextForRow]);
   const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
 
@@ -190,11 +222,23 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
     const loadCategoryOptions = async () => {
       try {
         const metaRes = await New_enjazmasterdatasService.getMetadata();
-        const attrs = ((metaRes as { data?: { Attributes?: Array<Record<string, unknown>> } })?.data?.Attributes ?? []);
+        let attrs: Array<Record<string, unknown>> = [];
+
+        // Try multiple possible metadata response structures following the pattern from App.tsx
+        if (metaRes && typeof metaRes === 'object') {
+          // Extract attributes from various possible response structures
+          const meta = (metaRes as { data?: unknown })?.data as { Attributes?: Array<Record<string, unknown>> } | undefined;
+          attrs = meta?.Attributes ?? (metaRes as any)?.Attributes ?? (metaRes as any)?.MetadataEntityMetadata?.Attributes ?? [];
+        }
+
+        // Extract category options from metadata
         const categoryChoices = optionsFromMetadataAttribute(attrs, 'new_category');
-        if (categoryChoices.length > 0) setCategoryOptions(categoryChoices);
-      } catch {
-        // Keep static fallback categories when metadata is unavailable.
+
+        // Always update categoryOptions, even if empty, to ensure state is fresh
+        setCategoryOptions(categoryChoices);
+      } catch (error) {
+        // Keep empty array when metadata is unavailable - fallback will handle it
+        setCategoryOptions([]);
       }
     };
     void loadCategoryOptions();
@@ -393,6 +437,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
       const payload = {
         new_enjazmasterdata1: recordName,
         new_category: resolvedCategoryValue,
+        new_categorytype: selectedCategory,
         new_code: finalCodeNumeric,
         ...(isSpecialCategory(selectedCategory) ? { new_uniqueid: finalCode.toUpperCase() } : {}),
       };
@@ -548,7 +593,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
                   key={String(row.new_enjazmasterdataid ?? `${row.new_enjazmasterdata1}-${row.new_code}`)}
                   className="w-full max-w-full self-start rounded-xl border border-gray-100 bg-white p-3 shadow-sm"
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2 mb-2">
                     <div>
                       <p className="text-sm font-semibold text-primary">{String(row.new_enjazmasterdata1 ?? '-')}</p>
                       <p className="text-xs text-gray-500 mt-1">ID: {displayCodeForRow(row)}</p>
@@ -556,6 +601,12 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
                     <span className={`${enj.badge} ${statusText(row) === 'Active' ? enj.badgeSuccess : enj.badgeNeutral}`}>
                       {statusText(row)}
                     </span>
+                  </div>
+                  <div className="mb-3 pt-2 border-t border-gray-100">
+                    <p className="text-[11px] text-gray-600">
+                      <span className="font-medium text-gray-700">Category Type: </span>
+                      <span className="text-gray-700">{categoryTextForRow(row)}</span>
+                    </p>
                   </div>
                   <div className="mt-3 flex items-center justify-end gap-2">
                     <button type="button" onClick={() => openEdit(row)} className="h-8 w-8 rounded-md border border-gray-200 inline-flex items-center justify-center text-gray-600 hover:bg-gray-50">
@@ -603,7 +654,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
               <label>
                 <span className="text-xs text-gray-600">Code (ID) *</span>
                 <input
-                  type="number"
+                  type="text"
                   readOnly
                   className={`mt-1 ${enj.control}`}
                   value={form.code}
