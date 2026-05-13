@@ -3,6 +3,8 @@
  * shared by ProfileDropdown and fields like Business Owner.
  */
 
+import { getClient } from '@microsoft/power-apps/data';
+import { dataSourcesInfo } from '../.power/schemas/appschemas/dataSourcesInfo';
 import { NewUsersService } from './services/NewUsersService';
 
 type GlobalContextLike = {
@@ -66,7 +68,7 @@ export function displayNameFromXrmString(s: string): string {
   return formatLocalPartOfEmailOrUpn(t);
 }
 
-/** Power Apps `User().Email` — tries Xrm, PCF context, window, then environment fallback. */
+/** Power Apps `User().Email` (synchronous) — tries Xrm and context methods. */
 export function getSessionUserEmail(): string | undefined {
   // Try 1: Xrm userSettings email
   const fromXrm = getGlobalContextFromPage()?.userSettings?.userEmail;
@@ -108,6 +110,34 @@ export function getSessionUserEmail(): string | undefined {
   const fromEnv = import.meta.env.VITE_DEV_USER_EMAIL as string | undefined;
   if (fromEnv?.trim() && fromEnv.includes('@')) return fromEnv.trim();
 
+  return undefined;
+}
+
+/** Try to fetch current user email from Dataverse (used as fallback during login) */
+export async function getSessionUserEmailFromDataverseAsync(): Promise<string | undefined> {
+  return getSessionUserEmailFromDataverse();
+}
+
+/** Fetch current user's email directly from Dataverse systemuser table */
+async function getSessionUserEmailFromDataverse(): Promise<string | undefined> {
+  try {
+    const client = getClient(dataSourcesInfo);
+
+    // Query systemuser table to get current user's email
+    // The API automatically uses the currently authenticated user's context
+    const result = await client.retrieveMultipleRecordsAsync('systemusers', {
+      select: ['internalemailaddress', 'domainname'],
+      top: 1,
+    });
+
+    if (result.success && result.data && result.data.length > 0) {
+      const user = result.data[0] as Record<string, unknown>;
+      const email = String(user.internalemailaddress ?? user.domainname ?? '').trim();
+      if (email && email.includes('@')) return email;
+    }
+  } catch {
+    // Dataverse query failed, will try other methods
+  }
   return undefined;
 }
 

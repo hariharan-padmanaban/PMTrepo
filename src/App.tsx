@@ -9969,7 +9969,15 @@ export default function App() {
     setLoginLoading(true);
     setLoginError(null);
     try {
-      const sessionEmail = getSessionUserEmail();
+      // Try to get email from sync methods first
+      let sessionEmail = getSessionUserEmail();
+
+      // If sync methods fail, try async Dataverse query
+      if (!sessionEmail) {
+        const { getSessionUserEmailFromDataverseAsync } = await import('./sessionUser');
+        sessionEmail = await getSessionUserEmailFromDataverseAsync();
+      }
+
       if (!sessionEmail) {
         setLoginError('Could not retrieve your email. Please ensure you are logged in to Power Apps, then refresh this page and try again.');
         setLoginLoading(false);
