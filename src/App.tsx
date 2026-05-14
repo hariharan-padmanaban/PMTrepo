@@ -9966,6 +9966,30 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [detectedEmail, setDetectedEmail] = useState<string | null>(null);
   const [confirmingEmail, setConfirmingEmail] = useState(false);
+  const [office365Email, setOffice365Email] = useState<string | null>(null);
+  const [office365Loading, setOffice365Loading] = useState(false);
+
+  // Debug: Fetch Office 365 email on component mount
+  useEffect(() => {
+    const fetchOffice365Email = async () => {
+      setOffice365Loading(true);
+      try {
+        const { Office365UsersService } = await import('./generated/services/Office365UsersService');
+        const result = await Office365UsersService.MyProfile_V2();
+        if (result?.success && result?.data) {
+          const profile = result.data as Record<string, unknown>;
+          const email = String(profile.mail ?? profile.userPrincipalName ?? '').trim();
+          if (email) setOffice365Email(email);
+        }
+      } catch (error) {
+        console.error('Office 365 Users connector error:', error);
+        setOffice365Email(`ERROR: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+        setOffice365Loading(false);
+      }
+    };
+    void fetchOffice365Email();
+  }, []);
 
   const handleLogin = useCallback(async (skipEmailDetection?: boolean) => {
     setLoginLoading(true);
@@ -10120,6 +10144,18 @@ export default function App() {
           src={saudiHeroImage}
           className="w-full h-full object-cover object-center"
         />
+      </div>
+
+      {/* DEBUG: Office 365 Users Email Display (Top Right Corner) */}
+      <div className="fixed top-4 right-4 bg-white border border-gray-300 rounded-lg p-3 max-w-xs shadow-lg z-50">
+        <p className="text-xs font-bold text-gray-700 mb-2">DEBUG: Office 365 Email</p>
+        {office365Loading ? (
+          <p className="text-xs text-gray-500">Loading...</p>
+        ) : office365Email ? (
+          <p className="text-xs font-mono text-green-700 break-all">{office365Email}</p>
+        ) : (
+          <p className="text-xs text-red-700">No email detected</p>
+        )}
       </div>
 
       {/* Login Form - Positioned on Left White Space */}
