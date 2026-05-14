@@ -9964,22 +9964,44 @@ export default function App() {
   const [isTester, setIsTester] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [detectedEmail, setDetectedEmail] = useState<string | null>(null);
+  const [confirmingEmail, setConfirmingEmail] = useState(false);
 
-  const handleLogin = useCallback(async () => {
+  const handleLogin = useCallback(async (skipEmailDetection?: boolean) => {
     setLoginLoading(true);
     setLoginError(null);
     try {
-      // Try to get email from sync methods first
-      let sessionEmail = getSessionUserEmail();
+      let sessionEmail = detectedEmail;
 
-      // If sync methods fail, try async Dataverse query
-      if (!sessionEmail) {
-        const { getSessionUserEmailFromDataverseAsync } = await import('./sessionUser');
-        sessionEmail = await getSessionUserEmailFromDataverseAsync();
+      // If we don't have a detected email yet, try to find it
+      if (!sessionEmail && !skipEmailDetection) {
+        // Try to get email from sync methods first
+        let foundEmail = getSessionUserEmail();
+
+        // If sync methods fail, try async Dataverse query
+        if (!foundEmail) {
+          const { getSessionUserEmailFromDataverseAsync } = await import('./sessionUser');
+          foundEmail = await getSessionUserEmailFromDataverseAsync();
+        }
+
+        // Show the detected email for confirmation
+        if (foundEmail) {
+          sessionEmail = foundEmail;
+          setDetectedEmail(foundEmail);
+          setConfirmingEmail(true);
+          setLoginLoading(false);
+          return;
+        }
+
+        // No email found
+        setLoginError('Could not retrieve your email. Please ensure you are logged in to Power Apps, then refresh this page and try again.');
+        setLoginLoading(false);
+        return;
       }
 
-      if (!sessionEmail) {
-        setLoginError('Could not retrieve your email. Please ensure you are logged in to Power Apps, then refresh this page and try again.');
+      // At this point, sessionEmail is guaranteed to be a string
+      if (!sessionEmail || typeof sessionEmail !== 'string') {
+        setLoginError('Invalid email format. Please try again.');
         setLoginLoading(false);
         return;
       }
@@ -10131,14 +10153,33 @@ export default function App() {
           {/* Form */}
           <form className="w-full space-y-5" onSubmit={(e) => {
             e.preventDefault();
-            if (isTester && assignedRole) {
+            if (confirmingEmail && detectedEmail) {
+              // User confirmed email - proceed with validation
+              void handleLogin(true);
+            } else if (isTester && assignedRole) {
               // Tester has selected their role - proceed with login
               setIsLoggedIn(true);
             } else if (!assignedRole) {
-              // First step - validate user and fetch their role
+              // First step - detect and show email
               void handleLogin();
             }
           }}>
+            {/* Email Confirmation - shown after detection, before validation */}
+            {confirmingEmail && detectedEmail && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="w-full bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3"
+              >
+                <p className="text-sm text-gray-700 font-medium">✓ Email Detected</p>
+                <p className="text-sm font-semibold text-[#232360] break-all">{detectedEmail}</p>
+                <p className="text-xs text-gray-600">
+                  Is this the email address shown in Power Apps? If not, please refresh and ensure you're logged in with the correct account.
+                </p>
+              </motion.div>
+            )}
+
             {/* Role dropdown - ONLY visible for Tester after validation */}
             {isTester && assignedRole && (
               <motion.div
@@ -10211,7 +10252,11 @@ export default function App() {
               type="submit"
               disabled={loginLoading}
             >
-              {loginLoading ? 'Validating...' : 'Get Started'}
+              {loginLoading ? (
+                confirmingEmail ? 'Validating...' : 'Detecting Email...'
+              ) : (
+                confirmingEmail ? 'Confirm & Continue' : 'Get Started'
+              )}
             </motion.button>
           </form>
         </div>
