@@ -6,6 +6,7 @@
 import { getClient } from '@microsoft/power-apps/data';
 import { dataSourcesInfo } from '../.power/schemas/appschemas/dataSourcesInfo';
 import { NewUsersService } from './services/NewUsersService';
+import { Office365UsersService } from './generated/services/Office365UsersService';
 
 type GlobalContextLike = {
   getUserName?: () => string;
@@ -127,25 +128,17 @@ export async function getSessionUserEmailFromDataverseAsync(): Promise<string | 
 /** Fetch current user's email from Office 365 Users connector */
 async function getSessionUserEmailFromOffice365(): Promise<string | undefined> {
   try {
-    const client = getClient(dataSourcesInfo);
+    // Call Office 365 Users MyProfile_V2 to get current user's profile
+    const result = await Office365UsersService.MyProfile_V2();
 
-    // Call Office 365 Users MyProfileV2 to get current user's profile
-    const result = await client.executeAsync({
-      dataverseRequest: {
-        action: 'CloudLogicFlow',
-        parameters: {
-          actionName: 'office365users_GetMyProfile',
-        },
-      },
-    } as any);
-
-    if (result?.data) {
+    if (result?.success && result?.data) {
       const profileData = result.data as Record<string, unknown>;
       const email = String(profileData.mail ?? profileData.userPrincipalName ?? '').trim();
       if (email && email.includes('@')) return email;
     }
-  } catch {
+  } catch (error) {
     // Office 365 connector call failed, will try other methods
+    console.debug('Office 365 Users connector error:', error);
   }
   return undefined;
 }
