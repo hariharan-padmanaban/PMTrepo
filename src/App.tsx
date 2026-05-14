@@ -9964,8 +9964,6 @@ export default function App() {
   const [isTester, setIsTester] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [detectedEmail, setDetectedEmail] = useState<string | null>(null);
-  const [confirmingEmail, setConfirmingEmail] = useState(false);
   const [office365Email, setOffice365Email] = useState<string | null>(null);
 
   // Fetch Office 365 email on component mount
@@ -9986,54 +9984,39 @@ export default function App() {
     void fetchOffice365Email();
   }, []);
 
-  const handleLogin = useCallback(async (skipEmailDetection?: boolean) => {
+  const handleLogin = useCallback(async () => {
     setLoginLoading(true);
     setLoginError(null);
+    setAssignedRole(null);
+    setIsTester(false);
+
     try {
-      let sessionEmail = detectedEmail;
+      // Try to get email: Office 365 → Sync methods → Dataverse
+      let sessionEmail: string | undefined = office365Email ?? undefined;
 
-      // If we don't have a detected email yet, try to find it
-      if (!sessionEmail && !skipEmailDetection) {
-        // Use Office 365 email if already retrieved (most reliable)
-        let foundEmail: string | undefined = office365Email ?? undefined;
+      if (!sessionEmail) {
+        sessionEmail = getSessionUserEmail();
+      }
 
-        // If Office 365 not available, try sync methods
-        if (!foundEmail) {
-          foundEmail = getSessionUserEmail();
-        }
+      if (!sessionEmail) {
+        const { getSessionUserEmailFromDataverseAsync } = await import('./sessionUser');
+        sessionEmail = await getSessionUserEmailFromDataverseAsync();
+      }
 
-        // If sync methods fail, try async Dataverse query
-        if (!foundEmail) {
-          const { getSessionUserEmailFromDataverseAsync } = await import('./sessionUser');
-          foundEmail = await getSessionUserEmailFromDataverseAsync();
-        }
-
-        // Show the detected email for confirmation
-        if (foundEmail) {
-          sessionEmail = foundEmail;
-          setDetectedEmail(foundEmail);
-          setConfirmingEmail(true);
-          setLoginLoading(false);
-          return;
-        }
-
-        // No email found
+      if (!sessionEmail) {
         setLoginError('Could not retrieve your email. Please ensure you are logged in to Power Apps, then refresh this page and try again.');
-        setLoginLoading(false);
         return;
       }
 
       // At this point, sessionEmail is guaranteed to be a string
       if (!sessionEmail || typeof sessionEmail !== 'string') {
         setLoginError('Invalid email format. Please try again.');
-        setLoginLoading(false);
         return;
       }
 
       const res = await NewUsersService.getAll({ top: 2000, orderBy: ['createdon desc'] });
       if (!res.success || !res.data) {
         setLoginError('Failed to fetch user data. Please try again.');
-        setLoginLoading(false);
         return;
       }
 
@@ -10047,7 +10030,6 @@ export default function App() {
 
       if (!userRow) {
         setLoginError('Your email is not registered in the system. Please contact your administrator.');
-        setLoginLoading(false);
         return;
       }
 
@@ -10056,7 +10038,7 @@ export default function App() {
       const roleValue = String(userRow.new_role ?? '').trim();
 
       // Map role name or value to AppRole
-      // Model mapping: 100000000='Admin', 100000001='Business', 100000002='Program', 100000003='Project', 100000004='Team'
+      // Model mapping: 100000000='Admin', 100000001='Business', 100000002='Program', 100000003='Project', 100000004='Team', 100000005='Tester'
       let userRole: AppRole = 'business';
       if (roleName === 'admin' || roleValue === '100000000') userRole = 'admin';
       else if (roleName === 'business' || roleValue === '100000001') userRole = 'business';
@@ -10066,19 +10048,21 @@ export default function App() {
       else if (roleName === 'tester' || roleValue === '100000005') userRole = 'tester';
 
       setAssignedRole(userRole);
-      setIsTester(userRole === 'tester');
       setLoginRole(userRole);
 
       // If not a tester, auto-login immediately; if tester, wait for role selection
       if (userRole !== 'tester') {
+        setIsTester(false);
         setIsLoggedIn(true);
+      } else {
+        setIsTester(true);
       }
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : 'An error occurred during login');
     } finally {
       setLoginLoading(false);
     }
-  }, []);
+  }, [office365Email]);
 
   useEffect(() => {
     const getPickerInput = (target: EventTarget | null) => {
@@ -10177,33 +10161,14 @@ export default function App() {
           {/* Form */}
           <form className="w-full space-y-5" onSubmit={(e) => {
             e.preventDefault();
-            if (confirmingEmail && detectedEmail) {
-              // User confirmed email - proceed with validation
-              void handleLogin(true);
-            } else if (isTester && assignedRole) {
+            if (isTester && assignedRole) {
               // Tester has selected their role - proceed with login
               setIsLoggedIn(true);
             } else if (!assignedRole) {
-              // First step - detect and show email
+              // Fetch email, validate, and get role
               void handleLogin();
             }
           }}>
-            {/* Email Confirmation - shown after detection, before validation */}
-            {confirmingEmail && detectedEmail && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="w-full bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3"
-              >
-                <p className="text-sm text-gray-700 font-medium">✓ Email Detected</p>
-                <p className="text-sm font-semibold text-[#232360] break-all">{detectedEmail}</p>
-                <p className="text-xs text-gray-600">
-                  Is this the email address shown in Power Apps? If not, please refresh and ensure you're logged in with the correct account.
-                </p>
-              </motion.div>
-            )}
-
             {/* Role dropdown - ONLY visible for Tester after validation */}
             {isTester && assignedRole && (
               <motion.div
@@ -10224,11 +10189,13 @@ export default function App() {
                     paddingRight: '2.5rem'
                   }}
                 >
-                  {(Object.keys(ROLE_LABELS) as AppRole[]).map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABELS[r]}
-                    </option>
-                  ))}
+                  {(Object.keys(ROLE_LABELS) as AppRole[])
+                    .filter(r => r !== 'tester')
+                    .map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </option>
+                    ))}
                 </select>
               </motion.div>
             )}
@@ -10276,11 +10243,7 @@ export default function App() {
               type="submit"
               disabled={loginLoading}
             >
-              {loginLoading ? (
-                confirmingEmail ? 'Validating...' : 'Detecting Email...'
-              ) : (
-                confirmingEmail ? 'Confirm & Continue' : 'Get Started'
-              )}
+              {loginLoading ? 'Validating...' : 'Get Started'}
             </motion.button>
           </form>
         </div>
