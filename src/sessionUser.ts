@@ -113,9 +113,41 @@ export function getSessionUserEmail(): string | undefined {
   return undefined;
 }
 
-/** Try to fetch current user email from Dataverse (used as fallback during login) */
+/** Try to fetch current user email from Office 365 Users connector first, then Dataverse (async fallback during login) */
 export async function getSessionUserEmailFromDataverseAsync(): Promise<string | undefined> {
-  return getSessionUserEmailFromDataverse();
+  // Try Office 365 Users connector first (most reliable)
+  let email = await getSessionUserEmailFromOffice365();
+  if (email) return email;
+
+  // Fallback to Dataverse systemuser table
+  email = await getSessionUserEmailFromDataverse();
+  return email;
+}
+
+/** Fetch current user's email from Office 365 Users connector */
+async function getSessionUserEmailFromOffice365(): Promise<string | undefined> {
+  try {
+    const client = getClient(dataSourcesInfo);
+
+    // Call Office 365 Users MyProfileV2 to get current user's profile
+    const result = await client.executeAsync({
+      dataverseRequest: {
+        action: 'CloudLogicFlow',
+        parameters: {
+          actionName: 'office365users_GetMyProfile',
+        },
+      },
+    } as any);
+
+    if (result?.data) {
+      const profileData = result.data as Record<string, unknown>;
+      const email = String(profileData.mail ?? profileData.userPrincipalName ?? '').trim();
+      if (email && email.includes('@')) return email;
+    }
+  } catch {
+    // Office 365 connector call failed, will try other methods
+  }
+  return undefined;
 }
 
 /** Fetch current user's email directly from Dataverse systemuser table */
