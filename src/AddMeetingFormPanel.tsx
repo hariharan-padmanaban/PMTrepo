@@ -16,7 +16,6 @@ type AddMeetingFormPanelProps = {
 };
 
 const DEPARTMENT_OPTIONS = ['Team', 'Business', 'Program', 'Project'] as const;
-const MEETING_REPEAT_OPTIONS = ['Does not Repeat', 'Repeat'] as const;
 
 const MEETING_DEPARTMENT_CODE: Record<(typeof DEPARTMENT_OPTIONS)[number], number> = {
   Team: 100000000,
@@ -69,6 +68,14 @@ type MultiSelectComboProps = {
   placeholder: string;
   disabled?: boolean;
 };
+
+function ReqFieldMeeting({ label }: { label: string }) {
+  return (
+    <span className="text-[11px] font-medium text-gray-700">
+      {label} <span className="text-red-500">*</span>
+    </span>
+  );
+}
 
 function MultiSelectCombo({ label, options, selected, onChange, placeholder, disabled }: MultiSelectComboProps) {
   const [open, setOpen] = useState(false);
@@ -163,7 +170,6 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
   const [vendorName, setVendorName] = useState('');
   const [projectManager, setProjectManager] = useState('');
   const [inviteMembers, setInviteMembers] = useState<string[]>([]);
-  const [meetingRepeat, setMeetingRepeat] = useState<(typeof MEETING_REPEAT_OPTIONS)[number]>('Does not Repeat');
   const [meetingDate, setMeetingDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
@@ -308,7 +314,7 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
             projectManager: projectManager.trim() || undefined,
             inviteMembers,
             department: departments,
-            repeat: meetingRepeat,
+            repeat: 'Does not Repeat',
             meetingDate,
             startTime,
             endTime,
@@ -329,7 +335,7 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
           departments.length > 0
             ? (MEETING_DEPARTMENT_CODE[departments[0] as keyof typeof MEETING_DEPARTMENT_CODE] as 100000000 | 100000001 | 100000002 | 100000003)
             : undefined,
-        new_meetingtype: meetingRepeat,
+        new_meetingtype: 'Does not Repeat',
         new_meetingdate: new Date(`${meetingDate}T00:00:00`).toISOString(),
         new_starttime: startTime,
         new_endtime: endTime,
@@ -372,7 +378,7 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
       <form onSubmit={onSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-3">
           <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">Meeting Title *</span>
+            <div className="mb-1"><ReqFieldMeeting label="Meeting Title" /></div>
             <input
               className={`${enj.control} text-gray-700`}
               placeholder="Enter Meeting Title"
@@ -384,20 +390,8 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
             />
             {formErrors.meetingTitle && <p className="mt-1 text-[11px] text-rose-600">{formErrors.meetingTitle}</p>}
           </label>
-          <MultiSelectCombo
-            label="Department"
-            options={[...DEPARTMENT_OPTIONS]}
-            selected={departments}
-            onChange={(next) => {
-              setDepartments(next);
-              setFormErrors((prev) => ({ ...prev, departments: undefined }));
-            }}
-            placeholder="Select department(s)"
-            disabled={loadingOptions}
-          />
-          {formErrors.departments && <p className="-mt-2 text-[11px] text-rose-600">{formErrors.departments}</p>}
           <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">Meeting Category *</span>
+            <div className="mb-1"><ReqFieldMeeting label="Meeting Category" /></div>
             <select
               className={`${enj.control} text-gray-700`}
               value={meetingCategory}
@@ -415,6 +409,18 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
             </select>
             {formErrors.meetingCategory && <p className="mt-1 text-[11px] text-rose-600">{formErrors.meetingCategory}</p>}
           </label>
+          <MultiSelectCombo
+            label="Department"
+            options={[...DEPARTMENT_OPTIONS]}
+            selected={departments}
+            onChange={(next) => {
+              setDepartments(next);
+              setFormErrors((prev) => ({ ...prev, departments: undefined }));
+            }}
+            placeholder="Select department(s)"
+            disabled={loadingOptions}
+          />
+          {formErrors.departments && <p className="-mt-2 text-[11px] text-rose-600">{formErrors.departments}</p>}
           <label className="block">
             <span className="text-[11px] text-gray-500 mb-1 block">Project Name</span>
             <select
@@ -454,34 +460,8 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
               value={projectManager}
             />
           </label>
-          <MultiSelectCombo
-            label="Invite Members"
-            options={inviteOptions}
-            selected={inviteMembers}
-            onChange={(next) => {
-              setInviteMembers(next);
-              setFormErrors((prev) => ({ ...prev, inviteMembers: undefined }));
-            }}
-            placeholder={departments.length > 0 ? 'Select member(s)' : 'Select department first'}
-            disabled={departments.length === 0}
-          />
-          {formErrors.inviteMembers && <p className="-mt-2 text-[11px] text-rose-600">{formErrors.inviteMembers}</p>}
           <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">Repeat</span>
-            <select
-              className={`${enj.control} text-gray-700`}
-              value={meetingRepeat}
-              onChange={(e) => setMeetingRepeat(e.target.value as (typeof MEETING_REPEAT_OPTIONS)[number])}
-            >
-              {MEETING_REPEAT_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">Meeting Date *</span>
+            <div className="mb-1"><ReqFieldMeeting label="Meeting Date" /></div>
             <input
               type="date"
               className={`${enj.control} text-gray-700`}
@@ -494,7 +474,7 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
             {formErrors.meetingDate && <p className="mt-1 text-[11px] text-rose-600">{formErrors.meetingDate}</p>}
           </label>
           <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">Start Time *</span>
+            <div className="mb-1"><ReqFieldMeeting label="Start Time" /></div>
             <input
               type="time"
               className={`${enj.control} text-gray-700`}
@@ -507,7 +487,7 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
             {formErrors.startTime && <p className="mt-1 text-[11px] text-rose-600">{formErrors.startTime}</p>}
           </label>
           <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">End Time *</span>
+            <div className="mb-1"><ReqFieldMeeting label="End Time" /></div>
             <input
               type="time"
               className={`${enj.control} text-gray-700`}
@@ -519,6 +499,18 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
             />
             {formErrors.endTime && <p className="mt-1 text-[11px] text-rose-600">{formErrors.endTime}</p>}
           </label>
+          <MultiSelectCombo
+            label="Invite Members"
+            options={inviteOptions}
+            selected={inviteMembers}
+            onChange={(next) => {
+              setInviteMembers(next);
+              setFormErrors((prev) => ({ ...prev, inviteMembers: undefined }));
+            }}
+            placeholder={departments.length > 0 ? 'Select member(s)' : 'Select department first'}
+            disabled={departments.length === 0}
+          />
+          {formErrors.inviteMembers && <p className="-mt-2 text-[11px] text-rose-600">{formErrors.inviteMembers}</p>}
         </div>
         <label className="block mt-3">
           <span className="text-[11px] text-gray-500 mb-1 block">Meeting Location</span>

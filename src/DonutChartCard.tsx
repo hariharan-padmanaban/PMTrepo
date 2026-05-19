@@ -90,7 +90,7 @@ export function DonutChartCard({
                   key={`${slice.label}-${idx}`}
                   onMouseEnter={() => setHoveredIdx(idx)}
                   onMouseLeave={() => setHoveredIdx(-1)}
-                  className="flex cursor-pointer items-center gap-1.5 rounded-md border px-1.5 py-1"
+                  className="flex cursor-pointer items-center gap-2 rounded-md border px-1.5 py-1"
                   style={itemStyle}
                 >
                   <span
@@ -99,17 +99,18 @@ export function DonutChartCard({
                     aria-hidden
                   />
                   <span
-                    className="min-w-0 flex-1 text-[10px] font-medium leading-tight text-gray-700"
+                    className="min-w-0 text-[10px] font-medium leading-tight text-gray-700"
                     title={slice.label}
                     style={{
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      maxWidth: '100px',
                     }}
                   >
                     {slice.label}
                   </span>
-                  <span className="shrink-0 text-[10px] font-bold tabular-nums text-gray-900">
+                  <span className="shrink-0 text-[10px] font-bold tabular-nums text-gray-900 ml-auto">
                     {slice.value.toLocaleString()}
                   </span>
                   <span

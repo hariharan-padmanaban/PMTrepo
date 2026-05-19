@@ -9,10 +9,32 @@ import { X } from 'lucide-react';
 export type ActivityHistoryModalProps = {
   open: boolean;
   onClose: () => void;
+  userData?: Record<string, unknown> | null;
 };
 
 /** Compact read-only popup: employee snapshot and attendance-style fields (matches dashboard styling). */
-export function ActivityHistoryModal({ open, onClose }: ActivityHistoryModalProps) {
+export function ActivityHistoryModal({ open, onClose, userData }: ActivityHistoryModalProps) {
+  const formatDate = (dateString: unknown): string => {
+    if (!dateString) return '-';
+    const dateStr = String(dateString ?? '').trim();
+    if (!dateStr) return '-';
+    try {
+      const date = new Date(dateStr);
+      if (Number.isNaN(date.getTime())) return '-';
+      const formatted = date.toLocaleString('en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+      return formatted?.replace(/,/g, '') ?? '-';
+    } catch {
+      return '-';
+    }
+  };
   useEffect(() => {
     if (!open) return;
     const onEsc = (e: KeyboardEvent) => {
@@ -58,31 +80,44 @@ export function ActivityHistoryModal({ open, onClose }: ActivityHistoryModalProp
 
         <div className="space-y-5 px-5 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-[#b28a44] text-sm font-semibold text-white">
-              PN
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-primary">pms admin</p>
-              <p className="text-xs text-gray-500">Employee ID: EMP1</p>
-            </div>
+            {(() => {
+              const name = String(userData?.new_name ?? '').trim() || String(userData?.new_newcolumn ?? '').trim().split('@')[0] || 'User';
+              const initials = name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((p) => p[0]?.toUpperCase() ?? '')
+                .join('') || 'U';
+              return (
+                <>
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-[#b28a44] text-sm font-semibold text-white">
+                    {initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-primary">{name}</p>
+                    <p className="text-xs text-gray-500">Employee ID: {String(userData?.new_userid ?? '-')}</p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <p className="text-xs font-semibold text-gray-600">Onboard Date</p>
-              <p className="text-sm text-primary">2025-08-11</p>
+              <p className="text-sm text-primary">{userData?.new_onboardeddate ? formatDate(userData.new_onboardeddate) : '-'}</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold text-gray-600">Status</p>
-              <p className="text-sm text-primary">Active</p>
+              <p className="text-sm text-primary">{String(userData?.new_statusname ?? 'Active')}</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold text-gray-600">Last In Time</p>
-              <p className="text-sm text-primary">19/04/2026 22:32</p>
+              <p className="text-sm text-primary">{formatDate(userData?.crcf8_lastintime)}</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold text-gray-600">Last Out Time</p>
-              <p className="text-sm text-primary">1/29/2026 2:49 PM</p>
+              <p className="text-sm text-primary">{formatDate(userData?.crcf8_lastouttime)}</p>
             </div>
           </div>
         </div>

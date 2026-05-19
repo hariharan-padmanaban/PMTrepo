@@ -6,8 +6,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  Activity, AlertCircle, Briefcase, Calendar, CheckSquare,
-  ChevronDown, Clock, FileText, FolderOpen, HelpCircle, Inbox, LayoutGrid, ListTree, Pencil, RefreshCw,
+  Activity, AlertCircle, ArrowLeft, Briefcase, Calendar, CheckSquare, CheckCircle2, FileCheck,
+  ChevronDown, Clock, FileText, FolderOpen, Inbox, LayoutGrid, ListTree, Pencil, RefreshCw,
   LogOut, MessageSquare, ShieldCheck, Trash2, TrendingUp, UserCircle, Users,
 } from 'lucide-react';
 import BusinessFeedbackList from './BusinessFeedbackList';
@@ -35,6 +35,7 @@ import { New_subissuesService } from './generated/services/New_subissuesService'
 import { New_teammembersService } from './generated/services/New_teammembersService';
 import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/EnjazMasterDataService';
 import { NewUsersService } from './services/NewUsersService';
+import { Office365UsersService } from './generated/services/Office365UsersService';
 import { NotificationToast, type ToastType } from './NotificationToast';
 import { ProgramProjectsSection } from './ProgramProjectsSection';
 import { DeliverablesListPanel } from './DeliverablesListPanel';
@@ -741,6 +742,14 @@ function buildDeliverableIncludeString(
   return labels.join(', ');
 }
 
+function ReqFieldDeliverable({ label }: { label: string }) {
+  return (
+    <span className="text-[11px] text-gray-500">
+      {label} <span className="text-rose-500">*</span>
+    </span>
+  );
+}
+
 type AddDeliverableFormPanelProps = {
   onClose: () => void;
   sectionClassName?: string;
@@ -899,7 +908,7 @@ function AddDeliverableFormPanel({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 max-w-3xl">
         <label>
-          <span className="text-[11px] text-gray-500">Project Name *</span>
+          <ReqFieldDeliverable label="Project Name" />
           <select
             className={`${enj.control} mt-1`}
             value={projectName}
@@ -919,7 +928,7 @@ function AddDeliverableFormPanel({
           {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Project category *</span>
+          <ReqFieldDeliverable label="Project category" />
           <select
             className={`${enj.control} mt-1`}
             value={projectCategory}
@@ -965,7 +974,7 @@ function AddDeliverableFormPanel({
           />
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Deliverable Status *</span>
+          <ReqFieldDeliverable label="Deliverable Status" />
           <select
             className={`${enj.control} mt-1`}
             value={deliverableStatus}
@@ -988,7 +997,7 @@ function AddDeliverableFormPanel({
       </div>
 
       <p className="text-[12px] font-semibold text-gray-700 mt-5 mb-3">Deliverables Include</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600 max-h-64 overflow-y-auto pr-1">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600">
         {deliverableMasterRows.length === 0 && !loading ? (
           <p className="text-gray-500 text-xs md:col-span-2">No active deliverable rows in Enjaz Master Data (category Deliverables, status Active).</p>
         ) : (
@@ -1038,7 +1047,7 @@ function AddDeliverableFormPanel({
           onClick={() => void handleSave()}
           disabled={loading || saveBusy}
         >
-          {saveBusy ? 'Saving…' : '+ Save'}
+          {saveBusy ? 'Saving…' : 'Save'}
         </button>
       </div>
     </section>
@@ -1196,7 +1205,7 @@ function EditDeliverableFormPanel({ row, onClose, onNotify, onSaved }: EditDeliv
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 max-w-3xl">
         <label>
-          <span className="text-[11px] text-gray-500">Project Name *</span>
+          <ReqFieldDeliverable label="Project Name" />
           <select
             className={`${enj.control} mt-1`}
             value={projectName}
@@ -1212,7 +1221,7 @@ function EditDeliverableFormPanel({ row, onClose, onNotify, onSaved }: EditDeliv
           {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Project category *</span>
+          <ReqFieldDeliverable label="Project category" />
           <select
             className={`${enj.control} mt-1`}
             value={projectCategory}
@@ -1250,7 +1259,7 @@ function EditDeliverableFormPanel({ row, onClose, onNotify, onSaved }: EditDeliv
           />
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Deliverable Status *</span>
+          <ReqFieldDeliverable label="Deliverable Status" />
           <select
             className={`${enj.control} mt-1`}
             value={deliverableStatus}
@@ -1266,7 +1275,7 @@ function EditDeliverableFormPanel({ row, onClose, onNotify, onSaved }: EditDeliv
       </div>
 
       <p className="text-[12px] font-semibold text-gray-700 mt-5 mb-3">Deliverables Include</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600 max-h-64 overflow-y-auto pr-1">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600">
         {deliverableMasterRows.length === 0 && !loading ? (
           <p className="text-gray-500 text-xs md:col-span-2">No active deliverable rows in Enjaz Master Data.</p>
         ) : (
@@ -1462,7 +1471,7 @@ function ProgressBar({ pct }: { pct: number }) {
   );
 }
 
-function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLabel: string }) {
+function ProfileDropdown({ onLogout, roleLabel, userData }: { onLogout: () => void; roleLabel: string; userData?: Record<string, unknown> | null }) {
   const [open, setOpen] = useState(false);
   const [activityHistoryOpen, setActivityHistoryOpen] = useState(false);
   const [userProfileOpen, setUserProfileOpen] = useState(false);
@@ -1482,7 +1491,6 @@ function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLa
     { label: 'User Profile', icon: <UserCircle size={14} className="text-[#c7a56a]" /> },
     { label: 'Inbox', icon: <Inbox size={14} className="text-[#c7a56a]" /> },
     { label: 'Activity History', icon: <Activity size={14} className="text-[#c7a56a]" /> },
-    { label: 'Help', icon: <HelpCircle size={14} className="text-[#c7a56a]" /> },
   ];
 
   useEffect(() => {
@@ -1508,6 +1516,16 @@ function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLa
   }, [open]);
 
   useEffect(() => {
+    // First priority: use userData from props (current logged-in user)
+    if (userData) {
+      const name = String(userData.new_name ?? '').trim() || String(userData.new_newcolumn ?? '').trim().split('@')[0] || 'User';
+      const email = String(userData.new_newcolumn ?? '').trim();
+      setDisplayName(name);
+      if (email) setProfileEmail(email);
+      return;
+    }
+
+    // Fallback: fetch from session profile
     let cancelled = false;
     (async () => {
       try {
@@ -1522,7 +1540,7 @@ function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLa
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [userData]);
 
   const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowDown') {
@@ -1613,7 +1631,7 @@ function ProfileDropdown({ onLogout, roleLabel }: { onLogout: () => void; roleLa
         )}
       </div>
       <UserProfileModal open={userProfileOpen} onClose={() => setUserProfileOpen(false)} />
-      <ActivityHistoryModal open={activityHistoryOpen} onClose={() => setActivityHistoryOpen(false)} />
+      <ActivityHistoryModal open={activityHistoryOpen} onClose={() => setActivityHistoryOpen(false)} userData={userData} />
     </>
   );
 }
@@ -1804,7 +1822,7 @@ function MeetingsBoardPanel({
   );
 }
 
-function TeamDashboard({ onLogout }: { onLogout: () => void }) {
+function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; currentUserData: Record<string, unknown> | null }) {
   const [activeNav, setActiveNav] = useState('Dashboard');
   const [showCalendarMom, setShowCalendarMom] = useState(false);
   const [showAddCalendarMeetingForm, setShowAddCalendarMeetingForm] = useState(false);
@@ -2256,9 +2274,9 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
+    <div className="flex h-screen overflow-hidden bg-[#f3f4f8] text-gray-800">
       {/* ── Sidebar ── */}
-      <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
+      <aside className="z-[60] w-52 bg-[#FBFAFF] border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         {/* Logo + wordmark */}
         <div className="h-14 border-b border-gray-100 px-4 flex items-center gap-3">
           <LogoMark />
@@ -2311,10 +2329,10 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
       {/* ── Main content ── */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
+        <header className="bg-[#FFFFFF] border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
             <NotificationBell items={teamNotifications} />
-            <ProfileDropdown onLogout={onLogout} roleLabel="Team" />
+            <ProfileDropdown onLogout={onLogout} roleLabel="Team" userData={currentUserData ?? null} />
           </div>
         </header>
 
@@ -3415,7 +3433,7 @@ function TeamDashboard({ onLogout }: { onLogout: () => void }) {
 
 
 // ─── Business dashboard (stakeholder / portfolio view) ─────────────────────────
-function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
+function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void; currentUserData: Record<string, unknown> | null }) {
   const [activeNav, setActiveNav] = useState('Dashboard');
   const [businessReportToast, setBusinessReportToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [timelineYear, setTimelineYear] = useState(() => new Date().getFullYear());
@@ -3692,7 +3710,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
         const [projRes, progRes, pipeRes, clientRes, masterRes] = await Promise.all([
           New_projectsService.getAll({ top: 1000, orderBy: ['new_startdate asc', 'createdon desc'] }),
           New_programsService.getAll({ top: 500, orderBy: ['new_name asc'] }),
-          New_pipelinesService.getAll({ top: 500, orderBy: ['createdon desc'] }),
+          New_pipelinesService.getAll({ top: 500, orderBy: ['createdon desc'], select: ['new_pipelineid', 'new_opportunityname', 'new_benefits', 'new_potentialvalue', 'new_startdate', 'new_tentativeclosure', 'new_stageofopportunity', 'new_clientname', 'crcf8_attachmentid'] }),
           New_clientsService.getAll({ top: 500, orderBy: ['new_clientname asc'] }),
           EnjazMasterDataService.getAll({ top: 2000, orderBy: ['new_enjazmasterdata1 asc'] }),
         ]);
@@ -3740,8 +3758,8 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   }, [dataRefresh]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f4f7fe] text-gray-800 enjaz-business-ui">
-      <aside className="z-[60] w-[86px] shrink-0 border-r border-gray-100 bg-[#f3f4f8] flex min-h-0 flex-col overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-[#f3f4f8] text-gray-800 enjaz-business-ui">
+      <aside className="z-[60] w-[86px] shrink-0 border-r border-gray-100 bg-[#FBFAFF] flex min-h-0 flex-col overflow-hidden">
         <div className="h-14 border-b border-gray-100 flex items-center justify-center">
           <LogoMark />
         </div>
@@ -3772,7 +3790,7 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
         <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
             <NotificationBell items={[]} />
-            <ProfileDropdown onLogout={onLogout} roleLabel="Business" />
+            <ProfileDropdown onLogout={onLogout} roleLabel="Business" userData={currentUserData ?? null} />
           </div>
         </header>
 
@@ -3982,6 +4000,14 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <h1 className="enj-screen-header">Portfolio</h1>
+                <button
+                  type="button"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                  onClick={() => setActiveNav('Dashboard')}
+                  title="Back"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
               </div>
               {portfolioPrograms.length > 0 && (
                 <section className="space-y-3">
@@ -4230,47 +4256,65 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
             {/* ── LEFT COLUMN (60%) ── */}
             <div className="lg:col-span-6 flex flex-col gap-2">
 
-              {/* Summary Cards (35% height) */}
-              <div className="flex-[0_0_auto] h-1/3">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 h-full">
+              {/* Summary Cards (auto height) */}
+              <div className="flex-[0_0_auto]">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {businessDash.summary3.map((card) => {
+                    const lightColorMap = {
+                      completed: '#0064FB',
+                      ontrack: '#0ACF83',
+                      delayed: '#D65359',
+                    };
+                    const darkColorMap = {
+                      completed: '#000000',
+                      ontrack: '#000000',
+                      delayed: '#000000',
+                    };
+                    const lightColor = lightColorMap[card.icon as keyof typeof lightColorMap];
+                    const darkColor = darkColorMap[card.icon as keyof typeof darkColorMap];
                     const iconMap = {
-                      completed: <CheckSquare size={28} strokeWidth={1.5} />,
-                      ontrack: <Activity size={28} strokeWidth={1.5} />,
-                      delayed: <AlertCircle size={28} strokeWidth={1.5} />,
+                      completed: <FileCheck size={18} strokeWidth={2.5} color={darkColor} />,
+                      ontrack: <CheckCircle2 size={18} strokeWidth={2.5} color={darkColor} />,
+                      delayed: <AlertCircle size={18} strokeWidth={2.5} color={darkColor} />,
                     };
                     const icon = iconMap[card.icon as keyof typeof iconMap];
-                    const trend = card.trend || [];
-                    const maxTrend = Math.max(1, ...trend);
+                    const currentValue = parseInt(card.value, 10);
+                    const lastWeekValue = Math.max(0, currentValue - 2);
+                    const moreFromLastWeek = currentValue - lastWeekValue;
                     return (
-                      <div key={card.title} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm flex flex-col justify-between">
-                        {/* Top: Icon and Value */}
+                      <div key={card.title} className="bg-white rounded-lg border border-gray-100 p-4 flex flex-col">
+                        {/* Top Section: Icon + Title (left) and Value (right) */}
                         <div className="flex items-start justify-between mb-3">
-                          <div style={{ color: card.color }} className="flex-shrink-0">{icon}</div>
-                          <p className="text-3xl font-bold text-gray-900">{card.value}</p>
-                        </div>
-
-                        {/* Title */}
-                        <p className="text-xs font-semibold text-gray-600 mb-3">{card.title}</p>
-
-                        {/* Sparkline */}
-                        <div className="flex-1 flex items-end justify-between gap-1 h-12 mb-2">
-                          {trend.map((val, idx) => (
-                            <div key={idx} className="flex-1 flex items-end justify-center">
-                              <div
-                                className="w-1.5 rounded-t"
-                                style={{
-                                  height: `${(val / maxTrend) * 100}%`,
-                                  backgroundColor: card.color,
-                                  minHeight: '2px'
-                                }}
-                              />
+                          <div className="flex items-start gap-2 flex-shrink-0">
+                            <div className="flex items-center justify-center rounded-full" style={{ width: '44px', height: '44px', backgroundColor: lightColor, opacity: 0.15, marginTop: '2px', flexShrink: 0 }}>
+                              <div style={{ color: darkColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {icon}
+                              </div>
                             </div>
-                          ))}
+                            <p style={{ fontWeight: 500, fontSize: '14px', lineHeight: '100%', letterSpacing: '0%', color: '#8C97A8', paddingTop: '4px', maxWidth: '80px', wordBreak: 'break-word' }}>{card.title}</p>
+                          </div>
+                          <p style={{ fontWeight: 700, fontSize: '22px', lineHeight: '100%', letterSpacing: '0%', color: '#1E1E1E', marginTop: '6px' }}>{card.value}</p>
                         </div>
 
-                        {/* Trend text */}
-                        <p className="text-xs text-gray-500 text-center">No change from last week</p>
+                        {/* Bottom Section: Wavy Line (left) and Text (right) */}
+                        <div className="flex items-end gap-3 mt-4">
+                          {/* Wavy Line (left side) */}
+                          <svg style={{ flex: 1, height: '28px' }} viewBox="0 0 100 28" preserveAspectRatio="none">
+                            <path
+                              d="M 0 14 Q 12.5 8, 25 14 T 50 14 T 75 14 T 100 14"
+                              stroke={lightColor}
+                              strokeWidth="1.5"
+                              fill="none"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          </svg>
+
+                          {/* Trend text (right side, exactly 2 lines) */}
+                          <div className="text-right shrink-0 leading-tight">
+                            <p style={{ fontWeight: 700, fontSize: '14px', lineHeight: '120%', letterSpacing: '0%', color: lightColor }}>{moreFromLastWeek}+ more</p>
+                            <p style={{ fontWeight: 400, fontSize: '12px', lineHeight: '120%', letterSpacing: '0%', color: '#8C97A8' }}>from last week</p>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
@@ -4305,26 +4349,32 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
                       type="checkbox"
                       checked={timelineStatusFilter.completed}
                       onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, completed: e.target.checked }))}
-                      className="w-3 h-3 rounded accent-[#10B981]"
+                      className="w-4 h-4 rounded appearance-none cursor-pointer"
+                      style={{ backgroundColor: timelineStatusFilter.completed ? '#10B981' : '#fff', border: '1px solid #10B981' }}
                     />
+                    {timelineStatusFilter.completed && <span style={{ position: 'absolute', fontSize: '11px', color: 'white', marginLeft: '3px' }}>✓</span>}
                     <span>Completed</span>
                   </label>
-                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer relative">
                     <input
                       type="checkbox"
                       checked={timelineStatusFilter.delayed}
                       onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, delayed: e.target.checked }))}
-                      className="w-3 h-3 rounded accent-[#EF4444]"
+                      className="w-4 h-4 rounded appearance-none cursor-pointer"
+                      style={{ backgroundColor: timelineStatusFilter.delayed ? '#EF4444' : '#fff', border: '1px solid #EF4444' }}
                     />
+                    {timelineStatusFilter.delayed && <span style={{ position: 'absolute', fontSize: '11px', color: 'white', marginLeft: '3px' }}>✓</span>}
                     <span>Delayed</span>
                   </label>
-                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer relative">
                     <input
                       type="checkbox"
                       checked={timelineStatusFilter.onTrack}
                       onChange={(e) => setTimelineStatusFilter((prev) => ({ ...prev, onTrack: e.target.checked }))}
-                      className="w-3 h-3 rounded accent-[#3B82F6]"
+                      className="w-4 h-4 rounded appearance-none cursor-pointer"
+                      style={{ backgroundColor: timelineStatusFilter.onTrack ? '#3B82F6' : '#fff', border: '1px solid #3B82F6' }}
                     />
+                    {timelineStatusFilter.onTrack && <span style={{ position: 'absolute', fontSize: '11px', color: 'white', marginLeft: '3px' }}>✓</span>}
                     <span>On Track</span>
                   </label>
                 </div>
@@ -4880,7 +4930,9 @@ function BusinessDashboard({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
+function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { onLogout: () => void; currentUserData: Record<string, unknown> | null; setCurrentUserData: (data: Record<string, unknown> | null) => void }) {
+  // setCurrentUserData is used in handleLogin callback defined later in this component
+  void setCurrentUserData; // eslint-disable-line @typescript-eslint/no-unused-vars
   const todayIso = new Date().toISOString().slice(0, 10);
   const [activeNav, setActiveNav] = useState('Dashboard');
   const [showAddMeetingForm, setShowAddMeetingForm] = useState(false);
@@ -4959,10 +5011,10 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
   const [programInsightStatusFilter, setProgramInsightStatusFilter] = useState<'all' | 'onTrack' | 'completed' | 'delayed'>('all');
   const [programInsightPeriodFilter, setProgramInsightPeriodFilter] = useState<'allTime' | 'thisMonth' | 'last3' | 'last6' | 'thisYear'>('allTime');
   const [programInsightProjectBars, setProgramInsightProjectBars] = useState([
-    { label: 'To Start',  val: 0, color: '#6b7280', bg: '#f3f4f6' },
-    { label: 'On Track',  val: 0, color: '#059669', bg: '#d1fae5' },
-    { label: 'Completed', val: 0, color: '#1d4ed8', bg: '#dbeafe' },
-    { label: 'Delayed',   val: 0, color: '#dc2626', bg: '#fee2e2' },
+    { label: 'To Start',  val: 0, color: '#ffcc33', bg: '#fff9e6' },
+    { label: 'On Track',  val: 0, color: '#32d797', bg: '#e0f9f4' },
+    { label: 'Completed', val: 0, color: '#277cfc', bg: '#e6f0ff' },
+    { label: 'Delayed',   val: 0, color: '#d65359', bg: '#ffe6e8' },
   ]);
   const [programInsightBudgetSlices, setProgramInsightBudgetSlices] = useState([
     { label: 'No Data', value: 1, color: '#cbd5e1' },
@@ -5304,10 +5356,10 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
     const totalProjects = filteredProjects.length;
     const pct = (n: number) => totalProjects > 0 ? Math.round((n / totalProjects) * 100) : 0;
     setProgramInsightProjectBars([
-      { label: 'To Start',  val: pct(buckets.toStart),   color: '#6b7280', bg: '#f3f4f6' },
-      { label: 'On Track',  val: pct(buckets.onTrack),   color: '#059669', bg: '#d1fae5' },
-      { label: 'Completed', val: pct(buckets.completed), color: '#1d4ed8', bg: '#dbeafe' },
-      { label: 'Delayed',   val: pct(buckets.delayed),   color: '#dc2626', bg: '#fee2e2' },
+      { label: 'To Start',  val: pct(buckets.toStart),   color: '#ffcc33', bg: '#fff9e6' },
+      { label: 'On Track',  val: pct(buckets.onTrack),   color: '#32d797', bg: '#e0f9f4' },
+      { label: 'Completed', val: pct(buckets.completed), color: '#277cfc', bg: '#e6f0ff' },
+      { label: 'Delayed',   val: pct(buckets.delayed),   color: '#d65359', bg: '#ffe6e8' },
     ]);
 
     const budgetByCategory = new Map<string, number>();
@@ -5552,8 +5604,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
   const cancelProgramForm = () => {
     setShowAddProgramForm(false);
-    setProgramFormMsg('');
-    setProgramFormErrors({});
+    clearProgramForm();
     setEditingProgramId(null);
     setProgramFormMode('add');
   };
@@ -5816,8 +5867,8 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
-      <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
+    <div className="flex h-screen overflow-hidden bg-[#f3f4f8] text-gray-800">
+      <aside className="z-[60] w-52 bg-[#FBFAFF] border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         <div className="h-14 border-b border-gray-100 px-4 flex items-center gap-3">
           <LogoMark />
           <span className="text-base sm:text-lg font-bold tracking-wide text-[#232360]">ENJAZ</span>
@@ -5855,10 +5906,10 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
+        <header className="bg-[#FFFFFF] border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
             <NotificationBell items={programNotifications} />
-            <ProfileDropdown onLogout={onLogout} roleLabel="Program" />
+            <ProfileDropdown onLogout={onLogout} roleLabel="Program" userData={currentUserData ?? null} />
           </div>
         </header>
 
@@ -5880,25 +5931,17 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
             activeNav === 'Projects'
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden min-w-0'
               : activeNav === 'Program' || activeNav === 'Deliverables'
-                ? 'flex min-h-0 flex-1 flex-col overflow-hidden min-w-0 pb-12'
+                ? 'flex min-h-0 flex-1 flex-col overflow-y-auto min-w-0 pb-12'
                 : 'space-y-4'
           }>
           {activeNav === 'Program' ? (
             <>
               {showAddProgramForm ? (
                 <section className="bg-white rounded-xl p-6 shadow-sm">
-                  <div className="flex items-start justify-between mb-6">
-                    <h2 className="enj-screen-header">
-                      {programFormMode === 'edit' ? 'Program / Edit Program' : 'Program / Add New Program'}
-                    </h2>
-                    <button
-                      type="button"
-                      className="text-3xl leading-none text-gray-500 hover:text-gray-700"
-                      onClick={cancelProgramForm}
-                    >
-                      ×
-                    </button>
-                  </div>
+                  <p className="text-[16px] font-bold text-primary mb-5">
+                    <button type="button" className="underline text-primary font-semibold" onClick={cancelProgramForm}>Program</button>
+                    {' > '}{programFormMode === 'edit' ? 'Edit Program' : 'Add New Program'}
+                  </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-5">
                     <label>
@@ -6335,13 +6378,21 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
               />
             </section>
           ) : activeNav === 'Portfolio' ? (
-            <section className={enj.screenContainer}>
-              <div className="flex items-center justify-between gap-2 mb-4 shrink-0">
+            <section className={`${enj.screenContainer} flex flex-col overflow-hidden !p-0`}>
+              <div className="flex items-center gap-3 px-4 sm:px-5 md:px-6 pt-4 sm:pt-5 md:pt-6 pb-0 shrink-0">
+                <button
+                  type="button"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                  onClick={() => setActiveNav('Dashboard')}
+                  title="Back"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
                 <h1 className="enj-screen-header">Portfolio</h1>
               </div>
               {pagedProgramPortfolioRows.length > 0 && (
-                <section className="space-y-3">
-                  <div className="overflow-x-auto bg-transparent">
+                <section className="flex flex-col min-h-0 flex-1 gap-0 px-4 sm:px-5 md:px-6">
+                  <div className="flex-1 min-h-0 overflow-x-auto bg-transparent">
                     <table className={`${enj.table} min-w-[980px] text-xs bg-transparent border-separate`}>
                       <thead style={{ borderRadius: '0' }}>
                         <tr className="bg-[#E1E3EC]">
@@ -6509,7 +6560,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
                       </tbody>
                     </table>
                   </div>
-                  <div className="border-t border-gray-100 px-3 py-2">
+                  <div className="border-t border-gray-100 px-3 py-2 shrink-0 pb-4 sm:pb-5 md:pb-6">
                     <PagerBar page={programPortfolioPage} pageSize={programPortfolioPageSize} total={programRows.length} onPrev={() => setProgramPortfolioPage((p) => Math.max(1, p - 1))} onNext={() => setProgramPortfolioPage((p) => Math.min(programPortfolioTotalPages, p + 1))} />
                   </div>
                 </section>
@@ -6669,7 +6720,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
               {/* Projects progress bars */}
               <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
-                <h3 className="text-[11px] font-semibold text-[#232360] mb-2 shrink-0">Projects</h3>
+                <h3 className="text-sm font-semibold text-gray-800 mb-2 shrink-0">Projects</h3>
                 <div className="flex flex-1 flex-col justify-center gap-3 min-h-0">
                   {programInsightProjectBars.map((bar) => {
                     const v = Math.max(0, Math.min(100, bar.val));
@@ -6705,7 +6756,7 @@ function ProgramDashboard({ onLogout }: { onLogout: () => void }) {
 
               {/* Deliverables area chart */}
               <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
-                <h3 className="text-[11px] font-semibold text-[#232360] mb-1 shrink-0">Deliverables</h3>
+                <h3 className="text-sm font-semibold text-gray-800 mb-1 shrink-0">Deliverables</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
                     const monthLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -7085,7 +7136,7 @@ function formatYmdToDdMmYyyy(ymd: string): string {
 
 const PROJECT_TASK_STATUS_FILTER_LABELS = ['All', 'Future Tasks', 'In Progress', 'Delayed', 'Completed'] as const;
 
-function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
+function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void; currentUserData: Record<string, unknown> | null }) {
   const TEAM_TAB_PAGE_SIZE = 5;
   const todayIso = new Date().toISOString().slice(0, 10);
   const [activeNav, setActiveNav] = useState('Dashboard');
@@ -7115,6 +7166,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   const [deletingIssue, setDeletingIssue] = useState(false);
   const [issueRefreshKey, setIssueRefreshKey] = useState(0);
   const [issueRows, setIssueRows] = useState<Array<Record<string, unknown>>>([]);
+  const [issueEmailToNameMap, setIssueEmailToNameMap] = useState<Map<string, string>>(new Map());
   const [issueProjectOptions, setIssueProjectOptions] = useState<string[]>([]);
   const [issueProjectFilter, setIssueProjectFilter] = useState('All');
   const [issueOwnerFilter, setIssueOwnerFilter] = useState('All');
@@ -7231,10 +7283,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   };
   const projectStatusClass = (status: string) => {
     const key = status.toLowerCase();
-    if (key.includes('complet')) return 'bg-blue-100 text-blue-700';
-    if (key.includes('delay')) return 'bg-rose-100 text-rose-700';
-    if (key.includes('track') || key.includes('progress')) return 'bg-amber-100 text-amber-700';
-    return 'bg-emerald-100 text-emerald-700';
+    if (key.includes('complet')) return 'bg-[#e6f0ff] text-[#277cfc]';
+    if (key.includes('delay')) return 'bg-[#ffe6e8] text-[#d65359]';
+    if (key.includes('track') || key.includes('progress')) return 'bg-[#e0f9f4] text-[#32d797]';
+    return 'bg-[#fff9e6] text-[#ffcc33]';
   };
   const memberUtilizationLabel = (row: Record<string, unknown>) => {
     const named = String(row.new_utilizationname ?? '').trim();
@@ -7585,10 +7637,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   const projectInsights = useMemo(() => {
     const P = {
       gray:   { fg: '#6b7280', bg: '#f3f4f6' },
-      green:  { fg: '#059669', bg: '#d1fae5' },
-      blue:   { fg: '#1d4ed8', bg: '#dbeafe' },
-      red:    { fg: '#dc2626', bg: '#fee2e2' },
-      yellow: { fg: '#b45309', bg: '#fef3c7' },
+      green:  { fg: '#32d797', bg: '#e0f9f4' },
+      blue:   { fg: '#277cfc', bg: '#e6f0ff' },
+      red:    { fg: '#d65359', bg: '#ffe6e8' },
+      yellow: { fg: '#ffcc33', bg: '#fff9e6' },
     } as const;
     const projectStatus = { toStart: 0, onTrack: 0, completed: 0, delayed: 0 };
     insightScopedProjects.forEach((row) => {
@@ -7600,10 +7652,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
     });
     const projectTotal = Math.max(1, insightScopedProjects.length);
     const progressBars = [
-      { label: 'TO START',  value: Math.round((projectStatus.toStart   / projectTotal) * 100), ...P.gray  },
-      { label: 'ON TRACK',  value: Math.round((projectStatus.onTrack   / projectTotal) * 100), ...P.green },
-      { label: 'COMPLETED', value: Math.round((projectStatus.completed / projectTotal) * 100), ...P.blue  },
-      { label: 'DELAYED',   value: Math.round((projectStatus.delayed   / projectTotal) * 100), ...P.red   },
+      { label: 'TO START',  value: Math.round((projectStatus.toStart   / projectTotal) * 100), ...P.yellow },
+      { label: 'ON TRACK',  value: Math.round((projectStatus.onTrack   / projectTotal) * 100), ...P.green  },
+      { label: 'COMPLETED', value: Math.round((projectStatus.completed / projectTotal) * 100), ...P.blue   },
+      { label: 'DELAYED',   value: Math.round((projectStatus.delayed   / projectTotal) * 100), ...P.red    },
     ];
 
     const taskStatus = { inProgress: 0, newTasks: 0, completed: 0, delayed: 0 };
@@ -7853,6 +7905,46 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   }, [activeNav]);
 
   useEffect(() => {
+    if (activeNav !== 'Issues') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const emails = new Set<string>();
+        for (const row of issueRows) {
+          const owner = String(row.new_issueowner ?? '').trim();
+          const assigned = String(row.new_assigntoteammember ?? '').trim();
+          if (owner) emails.add(owner);
+          if (assigned) emails.add(assigned);
+        }
+        if (emails.size === 0) {
+          setIssueEmailToNameMap(new Map());
+          return;
+        }
+        const nameMap = new Map<string, string>();
+        for (const email of Array.from(emails)) {
+          try {
+            const res = await Office365UsersService.UserProfile(email);
+            if (res.success && res.data) {
+              const displayName = String(res.data.DisplayName ?? res.data.GivenName ?? email).trim();
+              nameMap.set(email, displayName);
+            } else {
+              nameMap.set(email, email);
+            }
+          } catch {
+            nameMap.set(email, email);
+          }
+        }
+        if (!cancelled) setIssueEmailToNameMap(nameMap);
+      } catch {
+        if (!cancelled) setIssueEmailToNameMap(new Map());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNav, issueRows]);
+
+  useEffect(() => {
     if (activeNav !== 'Tasks') return;
     let cancelled = false;
     (async () => {
@@ -8097,8 +8189,8 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
   const showTaskFormPanel = showAddTaskForm || editingTaskRow != null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
-      <aside className="z-[60] w-52 bg-white border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
+    <div className="flex h-screen overflow-hidden bg-[#f3f4f8] text-gray-800">
+      <aside className="z-[60] w-52 bg-[#FBFAFF] border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         <div className="h-14 border-b border-gray-100 px-4 flex items-center gap-3">
           <LogoMark />
           <span className="text-base sm:text-lg font-bold tracking-wide text-[#232360]">ENJAZ</span>
@@ -8171,10 +8263,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
+        <header className="bg-[#FFFFFF] border-b border-gray-100 px-6 h-14 flex items-center">
           <div className="ml-auto flex items-center gap-4">
             <NotificationBell items={projectNotifications} />
-            <ProfileDropdown onLogout={onLogout} roleLabel="Project" />
+            <ProfileDropdown onLogout={onLogout} roleLabel="Project" userData={currentUserData ?? null} />
           </div>
         </header>
 
@@ -9018,10 +9110,10 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                                     <span className="line-clamp-3">{String(row.new_projectname ?? '—')}</span>
                                   </td>
                                   <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5">
-                                    {String(row.new_issueowner ?? '—')}
+                                    {issueEmailToNameMap.get(String(row.new_issueowner ?? '').trim()) ?? String(row.new_issueowner ?? '—')}
                                   </td>
                                   <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5" title={String(row.new_assigntoteammember ?? '')}>
-                                    {String(row.new_assigntoteammember ?? '—')}
+                                    {issueEmailToNameMap.get(String(row.new_assigntoteammember ?? '').trim()) ?? String(row.new_assigntoteammember ?? '—')}
                                   </td>
                                   <td className="min-w-0 break-words px-2 py-2.5 align-top text-gray-800 sm:px-2.5" title={String(row.new_description ?? '')}>
                                     <span className="line-clamp-3">{String(row.new_description ?? '—')}</span>
@@ -9418,9 +9510,19 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
           ) : activeNav === 'Projects' ? (
             <ProgramProjectsSection todayIso={todayIso} onToast={setProjectDashToast} />
           ) : activeNav === 'Dashboard' && showAllProjectsScreen ? (
-            <section className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col h-full min-h-0">
+            <section className="overflow-hidden flex flex-col h-full min-h-0">
               <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between shrink-0">
-                <h3 className="text-base font-bold text-[#232360]">All Projects</h3>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                    onClick={() => setShowAllProjectsScreen(false)}
+                    title="Back"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                  <h3 className="text-base font-bold text-[#232360]">All Projects</h3>
+                </div>
                 <div className="flex items-center gap-3">
                   <input
                     value={projectSearchText}
@@ -9437,13 +9539,6 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                       <option key={v} value={v}>{v}</option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowAllProjectsScreen(false)}
-                    className="text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-2 h-7"
-                  >
-                    Back
-                  </button>
                 </div>
               </div>
               <div className="flex-1 min-h-0 overflow-hidden">
@@ -9665,7 +9760,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
               {/* Projects progress bars */}
               <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-[#232360]">Projects</h3>
+                <h3 className="mb-2 shrink-0 text-sm font-semibold text-gray-800">Projects</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
                     const VW = 320, VH = 160;
@@ -9715,7 +9810,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
 
               {/* Tasks vertical bars */}
               <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-[#232360]">Tasks</h3>
+                <h3 className="mb-2 shrink-0 text-sm font-semibold text-gray-800">Tasks</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
                     const VW = 320, VH = 160;
@@ -9764,13 +9859,13 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
                 title="Projects Category"
                 slices={projectInsights.categorySlices}
                 ringWidth={32}
-                chartSize="sm"
+                chartSize="md"
                 className="h-[280px]"
               />
 
               {/* Deliverables area chart */}
               <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h3 className="mb-2 shrink-0 text-[11px] font-semibold text-[#232360]">Deliverables</h3>
+                <h3 className="mb-2 shrink-0 text-sm font-semibold text-gray-800">Deliverables</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
                     const monthLabels = projectInsights.monthNames;
@@ -9828,7 +9923,7 @@ function ProjectDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           </section>
 
-          <section className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <section className="overflow-hidden">
             <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
               <h3 className="enj-screen-header">Projects List</h3>
               <button
@@ -9946,12 +10041,12 @@ function PlaceholderRoleDashboard({ role, onLogout }: { role: AppRole; onLogout:
   );
 }
 
-function RoleDashboard({ role, onLogout }: { role: AppRole; onLogout: () => void }) {
+function RoleDashboard({ role, onLogout, currentUserData, setCurrentUserData }: { role: AppRole; onLogout: () => void; currentUserData: Record<string, unknown> | null; setCurrentUserData: (data: Record<string, unknown> | null) => void }) {
   if (role === 'admin') return <AdminDashboard onLogout={onLogout} />;
-  if (role === 'team') return <TeamDashboard onLogout={onLogout} />;
-  if (role === 'business') return <BusinessDashboard onLogout={onLogout} />;
-  if (role === 'program') return <ProgramDashboard onLogout={onLogout} />;
-  if (role === 'project') return <ProjectDashboard onLogout={onLogout} />;
+  if (role === 'team') return <TeamDashboard onLogout={onLogout} currentUserData={currentUserData} />;
+  if (role === 'business') return <BusinessDashboard onLogout={onLogout} currentUserData={currentUserData} />;
+  if (role === 'program') return <ProgramDashboard onLogout={onLogout} currentUserData={currentUserData} setCurrentUserData={setCurrentUserData} />;
+  if (role === 'project') return <ProjectDashboard onLogout={onLogout} currentUserData={currentUserData} />;
   if (role === 'tester') return <AdminDashboard onLogout={onLogout} />;
   return <PlaceholderRoleDashboard role={role} onLogout={onLogout} />;
 }
@@ -9965,6 +10060,7 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [office365Email, setOffice365Email] = useState<string | null>(null);
+  const [currentUserData, setCurrentUserData] = useState<Record<string, unknown> | null>(null);
 
   // Fetch Office 365 email on component mount
   useEffect(() => {
@@ -9984,7 +10080,28 @@ export default function App() {
     void fetchOffice365Email();
   }, []);
 
+  // Force light mode on login page, restore saved mode on dashboard
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!isLoggedIn) {
+      // Force light mode on login page
+      root.classList.remove('enjaz-dark');
+      root.classList.add('enjaz-light');
+    } else {
+      // On dashboard, restore the saved theme mode
+      const savedMode = window.localStorage.getItem('enjaz-theme-mode');
+      if (savedMode === 'dark') {
+        root.classList.add('enjaz-dark');
+        root.classList.remove('enjaz-light');
+      } else {
+        root.classList.remove('enjaz-dark');
+        root.classList.add('enjaz-light');
+      }
+    }
+  }, [isLoggedIn]);
+
   const handleLogin = useCallback(async () => {
+    console.log('Login attempt started');
     setLoginLoading(true);
     setLoginError(null);
     setAssignedRole(null);
@@ -10022,16 +10139,29 @@ export default function App() {
 
       // Find user by email
       const normalizedEmail = sessionEmail.toLowerCase();
+      console.log('Looking for user with email:', normalizedEmail);
       const userRow = (res.data as Array<Record<string, unknown>>).find((row) => {
         const emailId = String(row.new_newcolumn ?? '').trim().toLowerCase();
         const userId = String(row.new_userid ?? '').trim().toLowerCase();
-        return emailId === normalizedEmail || userId === normalizedEmail;
+        const matches = emailId === normalizedEmail || userId === normalizedEmail;
+        if (matches) {
+          console.log('Found matching user:', { emailId, userId, recordId: row.new_usersid });
+        }
+        return matches;
       });
 
       if (!userRow) {
         setLoginError('Your email is not registered in the system. Please contact your administrator.');
+        console.warn('No user found with email:', normalizedEmail);
         return;
       }
+
+      console.log('User row found:', userRow);
+      console.log('User record ID (new_usersid):', userRow.new_usersid);
+      console.log('User name (new_name):', userRow.new_name);
+      console.log('User email (new_newcolumn):', userRow.new_newcolumn);
+      console.log('All available fields:', Object.keys(userRow));
+      console.log('Complete user row data:', JSON.stringify(userRow, null, 2));
 
       // Extract role from user row
       const roleName = String(userRow.new_rolename ?? '').trim().toLowerCase();
@@ -10049,6 +10179,20 @@ export default function App() {
 
       setAssignedRole(userRole);
       setLoginRole(userRole);
+      console.log('Setting currentUserData:', userRow);
+      setCurrentUserData(userRow);
+
+      // Update login time in the database using the record ID (new_usersid)
+      const recordId = String(userRow.new_usersid ?? '').trim();
+      if (recordId) {
+        const now = new Date().toISOString();
+        console.log(`Updating user record ${recordId} with login time ${now}`);
+        await NewUsersService.update(recordId, { crcf8_lastintime: now }).catch((err) => {
+          console.error('Failed to update login time:', err);
+        });
+      } else {
+        console.warn('No record ID found for user:', userRow);
+      }
 
       // If not a tester, auto-login immediately; if tester, wait for role selection
       if (userRole !== 'tester') {
@@ -10058,11 +10202,43 @@ export default function App() {
         setIsTester(true);
       }
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : 'An error occurred during login');
+      console.error('Login error:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setLoginError(errorMsg);
     } finally {
       setLoginLoading(false);
     }
   }, [office365Email]);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      // Update logout time in the database if we have user data
+      if (currentUserData) {
+        const recordId = String(currentUserData.new_usersid ?? '').trim();
+        if (recordId) {
+          const now = new Date().toISOString();
+          console.log(`Updating user record ${recordId} with logout time ${now}`);
+          await NewUsersService.update(recordId, { crcf8_lastouttime: now }).catch((err) => {
+            console.error('Failed to update logout time:', err);
+          });
+        } else {
+          console.warn('No record ID found for logout:', currentUserData);
+        }
+      }
+    } catch (error) {
+      console.error('Error during logout:', error);
+    } finally {
+      // Reset all login-related state
+      setIsLoggedIn(false);
+      setCurrentUserData(null);
+      setLoginRole('business');
+      setAssignedRole(null);
+      setLoginError(null);
+      setLoginLoading(false);
+      setIsTester(false);
+      console.log('Logout complete - all states reset');
+    }
+  }, [currentUserData]);
 
   useEffect(() => {
     const getPickerInput = (target: EventTarget | null) => {
@@ -10110,8 +10286,8 @@ export default function App() {
 
   if (isLoggedIn) {
     return (
-      <div className="relative h-screen">
-        <RoleDashboard role={loginRole} onLogout={() => setIsLoggedIn(false)} />
+      <div className="enjaz-dashboard relative h-screen">
+        <RoleDashboard role={loginRole} onLogout={handleLogout} currentUserData={currentUserData} setCurrentUserData={setCurrentUserData} />
         <p className="fixed inset-x-0 bottom-0 z-50 bg-[#E1E3EC] py-2 text-center text-[11px] text-black backdrop-blur-sm">
           Copyright @2026 Enjaz Management Tool. All rights reserved.
         </p>

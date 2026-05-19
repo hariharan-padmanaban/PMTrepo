@@ -243,10 +243,22 @@ export function WaterfallSprintPanel({
       setEditBusy(false);
     }
   };
+  const PRIORITY_MAP: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+  const OBJECTIVE_MAP: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+
+  const priorityRaw = String(project.new_projectpriorityname ?? project.new_projectpriority ?? '—').trim();
+  const priorityText = priorityRaw && priorityRaw !== '—' ? PRIORITY_MAP[Number(priorityRaw)] ?? priorityRaw : '—';
+
+  const objectiveRaw = String(project.new_projecttypename ?? project.new_projecttype ?? '—').trim();
+  const objectiveText = objectiveRaw && objectiveRaw !== '—' ? OBJECTIVE_MAP[Number(objectiveRaw)] ?? objectiveRaw : '—';
+
+  const sponsorEmail = String(project.crcf8_projectsponsor ?? project.new_projectsponsor ?? '').trim();
+  const sponsorName = String(project.new_projectsponsorname ?? sponsorEmail ?? '—');
+
   const rightMeta = {
-    sponsor: String(project.crcf8_projectsponsor ?? project.new_projectsponsorname ?? project.new_projectsponsor ?? '—'),
-    objective: String(project.new_projecttypename ?? project.new_projecttype ?? '—'),
-    priority: String(project.new_projectpriorityname ?? project.new_projectpriority ?? '—'),
+    sponsor: sponsorName,
+    objective: objectiveText,
+    priority: priorityText,
     type: String(project.new_methodologyname ?? project.new_methodology ?? 'Waterfall'),
     budget: String(project.new_budget ?? '—'),
     category: String(project.new_projectcategoryname ?? project.new_projectcategory ?? '—'),
@@ -410,8 +422,8 @@ export function WaterfallSprintPanel({
         <aside className="rounded-xl border border-[#e4e7f1] bg-white px-5 py-4 text-xs text-primary">
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
-              <span className="text-primary">Pro. Sponsor</span>
-              <span className="font-semibold text-right">{rightMeta.sponsor}</span>
+              <span className="text-primary shrink-0">Pro. Sponsor</span>
+              <span className="font-semibold text-right break-words max-w-[150px]">{rightMeta.sponsor}</span>
             </div>
             <div className="flex items-start justify-between gap-3">
               <span className="text-primary">Strategic Goal</span>

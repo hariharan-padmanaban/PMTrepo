@@ -15,6 +15,10 @@ export type NewUserRow = {
   new_statusname?: string;
   new_onboardeddate?: string;
   new_lastloggedapp?: string;
+  /** Last In Time — ISO string of user’s last login. */
+  crcf8_lastintime?: string;
+  /** Last Out Time — ISO string of user’s last logout. */
+  crcf8_lastouttime?: string;
   [key: string]: unknown;
 };
 

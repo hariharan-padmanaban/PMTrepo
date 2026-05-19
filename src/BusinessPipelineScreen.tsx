@@ -5,7 +5,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Eye, Paperclip, Pencil, Plus, X } from 'lucide-react';
+import { ArrowLeft, Eye, Paperclip, Pencil, Plus, X, Trash2, Download } from 'lucide-react';
+import { fetchAttachments, uploadAttachments, type AttachmentFile } from './services/attachmentService';
 import { PagerBar } from './PagerBar';
 import {
   buildNewPipelineCreateBody,
@@ -84,7 +85,9 @@ type PipelineFormState = {
   stage: string;
   benefits: string;
   startDate: string;
-  attachment: File | null;
+  attachments: File[];
+  existingAttachments: AttachmentFile[];
+  existingAttachmentId: string;
 };
 
 const emptyPipelineForm = (dates: { start: string; end: string }): PipelineFormState => ({
@@ -96,7 +99,9 @@ const emptyPipelineForm = (dates: { start: string; end: string }): PipelineFormS
   stage: '',
   benefits: '',
   startDate: dates.start,
-  attachment: null,
+  attachments: [],
+  existingAttachments: [],
+  existingAttachmentId: '',
 });
 
 export default function BusinessPipelineScreen({
@@ -114,6 +119,7 @@ export default function BusinessPipelineScreen({
   const [pipelineModal, setPipelineModal] = useState<null | 'add' | 'edit'>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pipelineErrors, setPipelineErrors] = useState<Record<string, string>>({});
   const attachInputRef = useRef<HTMLInputElement>(null);
   const editFormBaseline = useRef<PipelineFormState | null>(null);
   const today = useMemo(() => new Date(), []);
@@ -127,6 +133,7 @@ export default function BusinessPipelineScreen({
     setPipelineModal(null);
     setEditingId(null);
     editFormBaseline.current = null;
+    setPipelineErrors({});
   }, []);
 
   const resetAddForm = useCallback(() => {
@@ -154,22 +161,23 @@ export default function BusinessPipelineScreen({
       benefits,
       startDate,
     } = pipelineForm;
-    if (
-      !pipelineName.trim() ||
-      !opportunityName.trim() ||
-      !potentialValue.trim() ||
-      !tentativeClosure ||
-      !clientId ||
-      !stage ||
-      !benefits.trim() ||
-      !startDate
-    ) {
-      onNotify?.('error', 'Please fill in all required fields (including a client from the list).');
+    const nextErrors: Record<string, string> = {};
+    if (!pipelineName.trim()) nextErrors.pipelineName = 'Pipeline Name is required';
+    if (!opportunityName.trim()) nextErrors.opportunityName = 'Opportunity Name is required';
+    if (!potentialValue.trim()) nextErrors.potentialValue = 'Potential Value is required';
+    if (!tentativeClosure) nextErrors.tentativeClosure = 'Tentative Closure is required';
+    if (!clientId) nextErrors.clientId = 'Client is required';
+    if (!stage) nextErrors.stage = 'Stage is required';
+    if (!benefits.trim()) nextErrors.benefits = 'Benefits is required';
+    if (!startDate) nextErrors.startDate = 'Start Date is required';
+    if (Object.keys(nextErrors).length > 0) {
+      setPipelineErrors(nextErrors);
       return;
     }
+    setPipelineErrors({});
     const clientRow = clientOptions.find((c) => c.id === clientId);
     if (!clientRow?.name) {
-      onNotify?.('error', 'Please select a valid client.');
+      setPipelineErrors({ clientId: 'Please select a valid client.' });
       return;
     }
     const formPayload = {
@@ -200,11 +208,26 @@ export default function BusinessPipelineScreen({
     }
     setSubmitting(true);
     try {
+      // Handle attachments
+      let attachmentId = pipelineForm.existingAttachmentId;
+      if (pipelineForm.attachments.length > 0 && !attachmentId) {
+        attachmentId = `ATT-${Date.now()}`;
+      }
+
+      if (attachmentId) {
+        body.crcf8_attachmentid = attachmentId;
+      }
+
       if (pipelineModal === 'add') {
         const res = await New_pipelinesService.create(
           body as unknown as Parameters<typeof New_pipelinesService.create>[0],
         );
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to create pipeline');
+
+        // Upload attachments
+        if (attachmentId && pipelineForm.attachments.length > 0) {
+          void uploadAttachments(attachmentId, pipelineForm.attachments);
+        }
 
         // Send email notification for new pipeline
         const clientRow = clientOptions.find((c) => c.id === pipelineForm.clientId);
@@ -242,6 +265,11 @@ export default function BusinessPipelineScreen({
           body as unknown as Parameters<typeof New_pipelinesService.update>[1],
         );
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to update pipeline');
+
+        // Upload new attachments
+        if (attachmentId && pipelineForm.attachments.length > 0) {
+          void uploadAttachments(attachmentId, pipelineForm.attachments);
+        }
       }
       onNotify?.(
         'success',
@@ -266,6 +294,13 @@ export default function BusinessPipelineScreen({
     closePipelineModal,
     resetAddForm,
   ]);
+
+  const updateFormAndClearError = useCallback((fieldName: string, updater: (f: PipelineFormState) => PipelineFormState) => {
+    setPipelineForm(updater);
+    if (pipelineErrors[fieldName]) {
+      setPipelineErrors((prev) => ({ ...prev, [fieldName]: '' }));
+    }
+  }, [pipelineErrors]);
 
   const categoryOptions = useMemo(() => {
     const s = new Set<string>([ALL_CLIENTS_FILTER]);
@@ -356,11 +391,31 @@ export default function BusinessPipelineScreen({
   }, [filteredRows, year]);
 
   const [viewingRow, setViewingRow] = useState<BusinessPipelineTableRow | null>(null);
+  const [viewingAttachments, setViewingAttachments] = useState<AttachmentFile[]>([]);
+
+  useEffect(() => {
+    const attachmentId = viewingRow?.crcf8_attachmentid;
+    if (!attachmentId) {
+      setViewingAttachments([]);
+      return;
+    }
+    const fetchFiles = async () => {
+      try {
+        const files = await fetchAttachments(attachmentId);
+        setViewingAttachments(files);
+      } catch (err) {
+        console.error('Failed to fetch attachments:', err);
+        setViewingAttachments([]);
+      }
+    };
+    fetchFiles();
+  }, [viewingRow?.crcf8_attachmentid]);
 
   const openEditModal = useCallback((row: BusinessPipelineTableRow) => {
     const matchedClient = clientOptions.find(
       (c) => c.name.trim().toLowerCase() === (row.categoryName ?? '').trim().toLowerCase()
     );
+    const attachmentId = String(row.crcf8_attachmentid ?? '').trim();
     const form: PipelineFormState = {
       pipelineName: row.pipelineName,
       opportunityName: row.name,
@@ -370,11 +425,29 @@ export default function BusinessPipelineScreen({
       stage: row.stage !== '—' ? row.stage : '',
       benefits: row.benefit !== '—' ? row.benefit : '',
       startDate: row.startDateYyyyMmDd || defaultDateStr,
-      attachment: null,
+      attachments: [],
+      existingAttachments: [],
+      existingAttachmentId: attachmentId,
     };
     setPipelineForm(form);
     editFormBaseline.current = form;
     setEditingId(row.id);
+
+    // Fetch existing attachments if any
+    if (attachmentId) {
+      fetchAttachments(attachmentId)
+        .then((files) => {
+          setPipelineForm((prev) => {
+            const updated = { ...prev, existingAttachments: files };
+            editFormBaseline.current = updated;
+            return updated;
+          });
+        })
+        .catch((error) => {
+          console.error('Failed to fetch pipeline attachments:', error);
+        });
+    }
+
     setPipelineModal('edit');
   }, [defaultDateStr, clientOptions]);
 
@@ -416,9 +489,9 @@ export default function BusinessPipelineScreen({
               type="button"
               onClick={() => setPipelineViewAll(false)}
               className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+              title="Back"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back
             </button>
             <h1 className="text-base font-bold text-[rgba(35,35,96,1)] truncate">{screenTitle} – All Records</h1>
           </div>
@@ -498,11 +571,17 @@ export default function BusinessPipelineScreen({
 
         {/* View Modal (also accessible from View All screen) */}
         {viewingRow && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setViewingRow(null)}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => {
+            setViewingRow(null);
+            setViewingAttachments([]);
+          }}>
             <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
                 <h2 className="text-base font-bold text-gray-900">Pipeline Details</h2>
-                <button type="button" onClick={() => setViewingRow(null)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"><X size={18} /></button>
+                <button type="button" onClick={() => {
+                  setViewingRow(null);
+                  setViewingAttachments([]);
+                }} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"><X size={18} /></button>
               </div>
               <div className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 {([
@@ -520,6 +599,296 @@ export default function BusinessPipelineScreen({
                     <p className="font-medium text-gray-800">{value || '—'}</p>
                   </div>
                 ))}
+              </div>
+              {viewingAttachments.length > 0 && (
+                <div className="border-t border-gray-100 px-5 py-4">
+                  <p className="text-[11px] text-gray-400 mb-3 font-medium">Attachments</p>
+                  <div className="space-y-2">
+                    {viewingAttachments.map((file) => (
+                      <div key={file.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-gray-700 font-medium">{file.name}</p>
+                          <p className="text-[11px] text-gray-500">{file.modified ? new Date(file.modified).toLocaleDateString() : '—'}</p>
+                        </div>
+                        {file.url && (
+                          <a
+                            href={file.url}
+                            download={file.name}
+                            className="ml-3 flex-shrink-0 rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                            title="Download"
+                          >
+                            <Download size={16} />
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Edit Modal (also accessible from View All screen) */}
+        {pipelineModal && showPipelineActions && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pipeline-form-title"
+            onClick={() => closePipelineModal()}
+          >
+            <div
+              className="max-h-[min(100vh-2rem,720px)] w-full max-w-5xl overflow-y-auto rounded-xl bg-white shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                <h2 id="pipeline-form-title" className="text-lg font-bold text-gray-900">
+                  {pipelineModal === 'add' ? 'Add Pipeline' : 'Edit Pipeline'}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => closePipelineModal()}
+                  className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+                  aria-label="Close"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <label className="flex min-w-0 flex-col gap-1">
+                    <ReqField label="Pipeline name" />
+                    <input
+                      className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
+                      value={pipelineForm.pipelineName}
+                      onChange={(e) => updateFormAndClearError('pipelineName', (f) => ({ ...f, pipelineName: e.target.value }))}
+                    />
+                    {pipelineErrors.pipelineName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.pipelineName}</p>}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1">
+                    <ReqField label="Opportunity Name" />
+                    <input
+                      className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
+                      value={pipelineForm.opportunityName}
+                      onChange={(e) => updateFormAndClearError('opportunityName', (f) => ({ ...f, opportunityName: e.target.value }))}
+                    />
+                    {pipelineErrors.opportunityName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.opportunityName}</p>}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1">
+                    <ReqField label="Potential Value" />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm tabular-nums placeholder:text-gray-400"
+                      value={pipelineForm.potentialValue}
+                      onChange={(e) =>
+                        updateFormAndClearError('potentialValue', (f) => ({ ...f, potentialValue: sanitizePotentialValueInput(e.target.value) }))
+                      }
+                    />
+                    {pipelineErrors.potentialValue && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.potentialValue}</p>}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1">
+                    <ReqField label="Tentative Closure" />
+                    <div className="relative">
+                      <input
+                        type="date"
+                        className="h-9 w-full rounded-md border border-gray-200 px-3 pr-9 text-sm [color-scheme:light]"
+                        value={pipelineForm.tentativeClosure}
+                        onChange={(e) => updateFormAndClearError('tentativeClosure', (f) => ({ ...f, tentativeClosure: e.target.value }))}
+                      />
+                    </div>
+                    {pipelineErrors.tentativeClosure && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.tentativeClosure}</p>}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1">
+                    <ReqField label="Client Name" />
+                    <select
+                      className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-gray-100"
+                      value={pipelineForm.clientId}
+                      disabled={clientOptions.length === 0}
+                      onChange={(e) => updateFormAndClearError('clientId', (f) => ({ ...f, clientId: e.target.value }))}
+                    >
+                      <option value="">
+                        {clientOptions.length === 0 ? '— No clients available —' : '— Select a client —'}
+                      </option>
+                      {clientOptions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    {pipelineErrors.clientId && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.clientId}</p>}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1">
+                    <ReqField label="Stage of Opportunity" />
+                    <select
+                      className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800"
+                      value={pipelineForm.stage}
+                      onChange={(e) => updateFormAndClearError('stage', (f) => ({ ...f, stage: e.target.value }))}
+                    >
+                      <option value="">Select stage</option>
+                      {STAGE_OF_OPPORTUNITY_OPTIONS.filter(Boolean).map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                      {pipelineForm.stage &&
+                        !(STAGE_OF_OPPORTUNITY_OPTIONS as readonly string[]).includes(pipelineForm.stage) && (
+                          <option value={pipelineForm.stage}>{pipelineForm.stage}</option>
+                        )}
+                    </select>
+                    {pipelineErrors.stage && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.stage}</p>}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1">
+                    <ReqField label="Benefits" />
+                    <input
+                      className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
+                      value={pipelineForm.benefits}
+                      onChange={(e) => updateFormAndClearError('benefits', (f) => ({ ...f, benefits: e.target.value }))}
+                    />
+                    {pipelineErrors.benefits && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.benefits}</p>}
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1">
+                    <ReqField label="Start Date" />
+                    <div className="relative">
+                      <input
+                        type="date"
+                        className="h-9 w-full rounded-md border border-gray-200 px-3 pr-9 text-sm [color-scheme:light]"
+                        value={pipelineForm.startDate}
+                        onChange={(e) => updateFormAndClearError('startDate', (f) => ({ ...f, startDate: e.target.value }))}
+                      />
+                    </div>
+                    {pipelineErrors.startDate && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.startDate}</p>}
+                  </label>
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <label className="text-[11px] font-medium text-secondary mb-1 block">Add attachments</label>
+                    <input
+                      ref={attachInputRef}
+                      type="file"
+                      className="sr-only"
+                      multiple
+                      onChange={(e) => {
+                        const files = e.target.files;
+                        if (files && files.length > 0) {
+                          const newFiles = Array.from(files);
+                          setPipelineForm((prev) => ({ ...prev, attachments: [...prev.attachments, ...newFiles] }));
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
+                      {pipelineForm.existingAttachments.length === 0 && pipelineForm.attachments.length === 0 ? (
+                        <div className="text-center">
+                          <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
+                          <button
+                            type="button"
+                            onClick={() => attachInputRef.current?.click()}
+                            disabled={submitting}
+                            className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+                            style={{ color: '#A08149' }}
+                          >
+                            <Paperclip size={16} />
+                            Attach file
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {pipelineForm.existingAttachments.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-2">Existing attachments</p>
+                              <ul className="space-y-1">
+                                {pipelineForm.existingAttachments.map((file) => (
+                                  <li key={file.id} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                                    <span className="truncate">{file.name}</span>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <a
+                                        href={file.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#A08149] hover:opacity-80"
+                                        title="Download"
+                                      >
+                                        <Download size={16} />
+                                      </a>
+                                      <button
+                                        type="button"
+                                        className="text-rose-600 hover:opacity-80"
+                                        disabled={submitting}
+                                        onClick={() => setPipelineForm((prev) => ({ ...prev, existingAttachments: prev.existingAttachments.filter((x) => x.id !== file.id) }))}
+                                        title="Remove"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {pipelineForm.attachments.length > 0 && (
+                            <div className={pipelineForm.existingAttachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
+                              <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
+                              <ul className="space-y-1">
+                                {pipelineForm.attachments.map((file) => (
+                                  <li key={file.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                                    <span className="truncate">{file.name}</span>
+                                    <button
+                                      type="button"
+                                      className="text-rose-600 shrink-0 hover:opacity-80"
+                                      disabled={submitting}
+                                      onClick={() => setPipelineForm((prev) => ({ ...prev, attachments: prev.attachments.filter((x) => x.name !== file.name) }))}
+                                      title="Remove"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <div className={pipelineForm.existingAttachments.length > 0 || pipelineForm.attachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
+                            <button
+                              type="button"
+                              onClick={() => attachInputRef.current?.click()}
+                              disabled={submitting}
+                              className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
+                              style={{ color: '#A08149' }}
+                            >
+                              <Paperclip size={14} />
+                              Attach more
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (attachInputRef.current) attachInputRef.current.value = '';
+                    if (pipelineModal === 'edit' && editFormBaseline.current) {
+                      setPipelineForm({ ...editFormBaseline.current });
+                    } else {
+                      resetAddForm();
+                    }
+                  }}
+                  disabled={submitting}
+                  className={`${enj.btnOutline} min-w-[5rem]`}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void submitPipelineModal()}
+                  disabled={submitting}
+                  className={`${enj.btnPrimary} min-w-[5rem]`}
+                >
+                  {submitting ? 'Saving…' : pipelineModal === 'add' ? 'Submit' : 'Save changes'}
+                </button>
               </div>
             </div>
           </div>
@@ -729,11 +1098,17 @@ export default function BusinessPipelineScreen({
 
       {/* View Modal */}
       {viewingRow && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setViewingRow(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => {
+          setViewingRow(null);
+          setViewingAttachments([]);
+        }}>
           <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
               <h2 className="text-base font-bold text-gray-900">Pipeline Details</h2>
-              <button type="button" onClick={() => setViewingRow(null)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"><X size={18} /></button>
+              <button type="button" onClick={() => {
+                setViewingRow(null);
+                setViewingAttachments([]);
+              }} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"><X size={18} /></button>
             </div>
             <div className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {([
@@ -752,6 +1127,31 @@ export default function BusinessPipelineScreen({
                 </div>
               ))}
             </div>
+            {viewingAttachments.length > 0 && (
+              <div className="border-t border-gray-100 px-5 py-4">
+                <p className="text-[11px] text-gray-400 mb-3 font-medium">Attachments</p>
+                <div className="space-y-2">
+                  {viewingAttachments.map((file) => (
+                    <div key={file.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-gray-700 font-medium">{file.name}</p>
+                        <p className="text-[11px] text-gray-500">{file.modified ? new Date(file.modified).toLocaleDateString() : '—'}</p>
+                      </div>
+                      {file.url && (
+                        <a
+                          href={file.url}
+                          download={file.name}
+                          className="ml-3 flex-shrink-0 rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700"
+                          title="Download"
+                        >
+                          <Download size={16} />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -788,16 +1188,18 @@ export default function BusinessPipelineScreen({
                   <input
                     className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
                     value={pipelineForm.pipelineName}
-                    onChange={(e) => setPipelineForm((f) => ({ ...f, pipelineName: e.target.value }))}
+                    onChange={(e) => updateFormAndClearError('pipelineName', (f) => ({ ...f, pipelineName: e.target.value }))}
                   />
+                  {pipelineErrors.pipelineName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.pipelineName}</p>}
                 </label>
                 <label className="flex min-w-0 flex-col gap-1">
                   <ReqField label="Opportunity Name" />
                   <input
                     className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
                     value={pipelineForm.opportunityName}
-                    onChange={(e) => setPipelineForm((f) => ({ ...f, opportunityName: e.target.value }))}
+                    onChange={(e) => updateFormAndClearError('opportunityName', (f) => ({ ...f, opportunityName: e.target.value }))}
                   />
+                  {pipelineErrors.opportunityName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.opportunityName}</p>}
                 </label>
                 <label className="flex min-w-0 flex-col gap-1">
                   <ReqField label="Potential Value" />
@@ -808,9 +1210,10 @@ export default function BusinessPipelineScreen({
                     className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm tabular-nums placeholder:text-gray-400"
                     value={pipelineForm.potentialValue}
                     onChange={(e) =>
-                      setPipelineForm((f) => ({ ...f, potentialValue: sanitizePotentialValueInput(e.target.value) }))
+                      updateFormAndClearError('potentialValue', (f) => ({ ...f, potentialValue: sanitizePotentialValueInput(e.target.value) }))
                     }
                   />
+                  {pipelineErrors.potentialValue && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.potentialValue}</p>}
                 </label>
                 <label className="flex min-w-0 flex-col gap-1">
                   <ReqField label="Tentative Closure" />
@@ -819,9 +1222,10 @@ export default function BusinessPipelineScreen({
                       type="date"
                       className="h-9 w-full rounded-md border border-gray-200 px-3 pr-9 text-sm [color-scheme:light]"
                       value={pipelineForm.tentativeClosure}
-                      onChange={(e) => setPipelineForm((f) => ({ ...f, tentativeClosure: e.target.value }))}
+                      onChange={(e) => updateFormAndClearError('tentativeClosure', (f) => ({ ...f, tentativeClosure: e.target.value }))}
                     />
                   </div>
+                  {pipelineErrors.tentativeClosure && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.tentativeClosure}</p>}
                 </label>
                 <label className="flex min-w-0 flex-col gap-1">
                   <ReqField label="Client Name" />
@@ -829,7 +1233,7 @@ export default function BusinessPipelineScreen({
                     className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-gray-100"
                     value={pipelineForm.clientId}
                     disabled={clientOptions.length === 0}
-                    onChange={(e) => setPipelineForm((f) => ({ ...f, clientId: e.target.value }))}
+                    onChange={(e) => updateFormAndClearError('clientId', (f) => ({ ...f, clientId: e.target.value }))}
                   >
                     <option value="">
                       {clientOptions.length === 0 ? '— No clients available —' : '— Select a client —'}
@@ -840,13 +1244,14 @@ export default function BusinessPipelineScreen({
                       </option>
                     ))}
                   </select>
+                  {pipelineErrors.clientId && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.clientId}</p>}
                 </label>
                 <label className="flex min-w-0 flex-col gap-1">
                   <ReqField label="Stage of Opportunity" />
                   <select
                     className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800"
                     value={pipelineForm.stage}
-                    onChange={(e) => setPipelineForm((f) => ({ ...f, stage: e.target.value }))}
+                    onChange={(e) => updateFormAndClearError('stage', (f) => ({ ...f, stage: e.target.value }))}
                   >
                     <option value="">Select stage</option>
                     {STAGE_OF_OPPORTUNITY_OPTIONS.filter(Boolean).map((o) => (
@@ -859,14 +1264,16 @@ export default function BusinessPipelineScreen({
                         <option value={pipelineForm.stage}>{pipelineForm.stage}</option>
                       )}
                   </select>
+                  {pipelineErrors.stage && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.stage}</p>}
                 </label>
                 <label className="flex min-w-0 flex-col gap-1">
                   <ReqField label="Benefits" />
                   <input
                     className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
                     value={pipelineForm.benefits}
-                    onChange={(e) => setPipelineForm((f) => ({ ...f, benefits: e.target.value }))}
+                    onChange={(e) => updateFormAndClearError('benefits', (f) => ({ ...f, benefits: e.target.value }))}
                   />
+                  {pipelineErrors.benefits && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.benefits}</p>}
                 </label>
                 <label className="flex min-w-0 flex-col gap-1">
                   <ReqField label="Start Date" />
@@ -875,33 +1282,111 @@ export default function BusinessPipelineScreen({
                       type="date"
                       className="h-9 w-full rounded-md border border-gray-200 px-3 pr-9 text-sm [color-scheme:light]"
                       value={pipelineForm.startDate}
-                      onChange={(e) => setPipelineForm((f) => ({ ...f, startDate: e.target.value }))}
+                      onChange={(e) => updateFormAndClearError('startDate', (f) => ({ ...f, startDate: e.target.value }))}
                     />
                   </div>
+                  {pipelineErrors.startDate && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.startDate}</p>}
                 </label>
                 <div className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Attachments" />
-                  <div className="flex min-h-[4.5rem] flex-1 flex-col justify-between rounded-md border border-dashed border-gray-300 bg-gray-50/80 px-3 py-2.5">
-                    <p className="text-[11px] text-gray-500">
-                      {pipelineForm.attachment ? pipelineForm.attachment.name : 'There is nothing attached.'}
-                    </p>
-                    <input
-                      ref={attachInputRef}
-                      type="file"
-                      className="sr-only"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] ?? null;
-                        setPipelineForm((prev) => ({ ...prev, attachment: f }));
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => attachInputRef.current?.click()}
-                      className="mt-1 inline-flex items-center gap-1 self-start text-xs font-medium text-primary underline decoration-primary/30 underline-offset-2 hover:text-secondary"
-                    >
-                      <Paperclip className="h-3.5 w-3.5" strokeWidth={2} />
-                      Attach file
-                    </button>
+                  <label className="text-[11px] font-medium text-secondary mb-1 block">Add attachments</label>
+                  <input
+                    ref={attachInputRef}
+                    type="file"
+                    className="sr-only"
+                    multiple
+                    onChange={(e) => {
+                      const files = e.target.files;
+                      if (files && files.length > 0) {
+                        const newFiles = Array.from(files);
+                        setPipelineForm((prev) => ({ ...prev, attachments: [...prev.attachments, ...newFiles] }));
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                  <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
+                    {pipelineForm.existingAttachments.length === 0 && pipelineForm.attachments.length === 0 ? (
+                      <div className="text-center">
+                        <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
+                        <button
+                          type="button"
+                          onClick={() => attachInputRef.current?.click()}
+                          disabled={submitting}
+                          className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+                          style={{ color: '#A08149' }}
+                        >
+                          <Paperclip size={16} />
+                          Attach file
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {pipelineForm.existingAttachments.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-gray-600 mb-2">Existing attachments</p>
+                            <ul className="space-y-1">
+                              {pipelineForm.existingAttachments.map((file) => (
+                                <li key={file.id} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                                  <span className="truncate">{file.name}</span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <a
+                                      href={file.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[#A08149] hover:opacity-80"
+                                      title="Download"
+                                    >
+                                      <Download size={16} />
+                                    </a>
+                                    <button
+                                      type="button"
+                                      className="text-rose-600 hover:opacity-80"
+                                      disabled={submitting}
+                                      onClick={() => setPipelineForm((prev) => ({ ...prev, existingAttachments: prev.existingAttachments.filter((x) => x.id !== file.id) }))}
+                                      title="Remove"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {pipelineForm.attachments.length > 0 && (
+                          <div className={pipelineForm.existingAttachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
+                            <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
+                            <ul className="space-y-1">
+                              {pipelineForm.attachments.map((file) => (
+                                <li key={file.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                                  <span className="truncate">{file.name}</span>
+                                  <button
+                                    type="button"
+                                    className="text-rose-600 shrink-0 hover:opacity-80"
+                                    disabled={submitting}
+                                    onClick={() => setPipelineForm((prev) => ({ ...prev, attachments: prev.attachments.filter((x) => x.name !== file.name) }))}
+                                    title="Remove"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <div className={pipelineForm.existingAttachments.length > 0 || pipelineForm.attachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
+                          <button
+                            type="button"
+                            onClick={() => attachInputRef.current?.click()}
+                            disabled={submitting}
+                            className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
+                            style={{ color: '#A08149' }}
+                          >
+                            <Paperclip size={14} />
+                            Attach more
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -910,9 +1395,9 @@ export default function BusinessPipelineScreen({
               <button
                 type="button"
                 onClick={() => {
+                  if (attachInputRef.current) attachInputRef.current.value = '';
                   if (pipelineModal === 'edit' && editFormBaseline.current) {
-                    if (attachInputRef.current) attachInputRef.current.value = '';
-                    setPipelineForm({ ...editFormBaseline.current, attachment: null });
+                    setPipelineForm({ ...editFormBaseline.current });
                   } else {
                     resetAddForm();
                   }

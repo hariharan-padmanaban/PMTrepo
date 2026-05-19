@@ -67,6 +67,9 @@ function readProjectSponsorLabel(row: ProjectRow): string {
 function readProjectSponsorFromProject(row: ProjectRow): string {
   const t = (v: unknown) => String(v ?? '').trim();
 
+  const crcf8 = t(row.crcf8_projectsponsor);
+  if (crcf8) return clip(crcf8, 100);
+
   const crcf8n = t(row.crcf8_projectsponsorname);
   if (crcf8n) return clip(crcf8n, 100);
 

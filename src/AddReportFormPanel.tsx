@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Paperclip, Trash2 } from 'lucide-react';
 import { enj } from './ui/enjForm';
 import { New_programsService } from './generated/services/New_programsService';
 import { New_projectsService } from './generated/services/New_projectsService';
@@ -382,7 +382,7 @@ export function AddReportFormPanel({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
         <label>
-          <span className="text-[11px] text-gray-500">Report title *</span>
+          <span className="text-[11px] text-gray-500">Report title <span className="text-rose-500">*</span></span>
           <input
             className={inputTextCls}
             placeholder="Enter report title"
@@ -396,7 +396,7 @@ export function AddReportFormPanel({
           {errors.reportTitle && <p className="mt-1 text-[11px] text-rose-600">{errors.reportTitle}</p>}
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Report Type *</span>
+          <span className="text-[11px] text-gray-500">Report Type <span className="text-rose-500">*</span></span>
           <select
             className={inputSelectCls}
             value={reportType}
@@ -422,7 +422,7 @@ export function AddReportFormPanel({
           {errors.reportType && <p className="mt-1 text-[11px] text-rose-600">{errors.reportType}</p>}
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Program Name *</span>
+          <span className="text-[11px] text-gray-500">Program Name <span className="text-rose-500">*</span></span>
           <select
             className={inputSelectCls}
             value={programName}
@@ -442,7 +442,7 @@ export function AddReportFormPanel({
           {errors.programName && <p className="mt-1 text-[11px] text-rose-600">{errors.programName}</p>}
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Project Name *</span>
+          <span className="text-[11px] text-gray-500">Project Name <span className="text-rose-500">*</span></span>
           <select
             className={inputSelectCls}
             value={projectName}
@@ -468,7 +468,7 @@ export function AddReportFormPanel({
           {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Sector *</span>
+          <span className="text-[11px] text-gray-500">Sector <span className="text-rose-500">*</span></span>
           <select
             className={inputSelectCls}
             value={sector}
@@ -494,7 +494,7 @@ export function AddReportFormPanel({
           {errors.sector && <p className="mt-1 text-[11px] text-rose-600">{errors.sector}</p>}
         </label>
         <label>
-          <span className="text-[11px] text-gray-500">Assign to management member *</span>
+          <span className="text-[11px] text-gray-500">Assign to management member <span className="text-rose-500">*</span></span>
           <select
             className={inputSelectCls}
             value={assignMember}
@@ -513,23 +513,25 @@ export function AddReportFormPanel({
           </select>
           {errors.assignMember && <p className="mt-1 text-[11px] text-rose-600">{errors.assignMember}</p>}
         </label>
-        <label>
-          <span className="text-[11px] text-gray-500">Remark</span>
-          <input
-            className={inputTextCls}
-            placeholder="Remarks (max 100 characters)"
-            value={remark}
-            onChange={(e) => setRemark(e.target.value)}
-            disabled={loading}
-            maxLength={100}
-          />
-        </label>
+        <div className="md:col-span-2">
+          <label>
+            <span className="text-[11px] text-gray-500">Remark</span>
+            <input
+              className={inputTextCls}
+              placeholder="Enter remarks"
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              disabled={loading}
+              maxLength={100}
+            />
+          </label>
+        </div>
         <div className="md:col-span-2">
           <label>
             <span className="text-[11px] text-gray-500">Summary</span>
             <textarea
               className="mt-1 w-full h-16 rounded-md border border-gray-200 px-3 py-2 text-sm resize-none"
-              placeholder="Report body (max 100 characters)"
+              placeholder="Enter summary"
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               disabled={loading}
@@ -538,7 +540,7 @@ export function AddReportFormPanel({
           </label>
         </div>
         <div className="md:col-span-2">
-          <span className="text-[11px] text-gray-500">Attachments</span>
+          <label className="text-[11px] font-medium text-secondary mb-1 block">Add attachments</label>
           <input
             ref={fileInputRef}
             type="file"
@@ -550,43 +552,57 @@ export function AddReportFormPanel({
               e.target.value = '';
             }}
           />
-          <div
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
-            }}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (e.dataTransfer.files?.length) addFilesFromList(e.dataTransfer.files);
-            }}
-            className="mt-1 min-h-20 border border-dashed border-gray-300 rounded-md text-[10px] text-gray-500 flex flex-col items-center justify-center gap-1 px-2 py-3 cursor-pointer hover:bg-gray-50"
-          >
-            <span>Click to choose or drop files here</span>
-          </div>
-          {attachmentFiles.length > 0 && (
-            <ul className="mt-2 space-y-1 text-xs text-gray-700">
-              {attachmentFiles.map((f) => (
-                <li key={f.name} className="flex items-center justify-between gap-2">
-                  <span className="truncate">{f.name}</span>
+          <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
+            {attachmentFiles.length === 0 ? (
+              <div className="text-center">
+                <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+                  style={{ color: '#A08149' }}
+                >
+                  <Paperclip size={16} />
+                  Attach file
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
+                  <ul className="space-y-1">
+                    {attachmentFiles.map((file) => (
+                      <li key={file.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                        <span className="truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          className="text-rose-600 shrink-0 hover:opacity-80"
+                          disabled={saving}
+                          onClick={() => setAttachmentFiles((prev) => prev.filter((x) => x.name !== file.name))}
+                          title="Remove"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="pt-2 border-t border-gray-200">
                   <button
                     type="button"
-                    className="text-rose-600 shrink-0"
+                    onClick={() => fileInputRef.current?.click()}
                     disabled={saving}
-                    onClick={() => setAttachmentFiles((prev) => prev.filter((x) => x.name !== f.name))}
+                    className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
+                    style={{ color: '#A08149' }}
                   >
-                    Remove
+                    <Paperclip size={14} />
+                    Attach more
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <div className="mt-4 flex items-center justify-end gap-3">

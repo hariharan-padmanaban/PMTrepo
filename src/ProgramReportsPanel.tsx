@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Calendar, Paperclip, Pencil } from 'lucide-react';
+import { ArrowLeft, Calendar, Paperclip, Pencil, Trash2, X, Download } from 'lucide-react';
 import { PagerBar } from './PagerBar';
 import { enj } from './ui/enjForm';
 import { TABLE_STYLES } from './tableStyles';
@@ -16,7 +16,8 @@ import { New_projectsnew_projectstatus, New_projectsnew_projecttype } from './ge
 import { New_reportsService } from './generated/services/New_reportsService';
 import { EnjazMasterDataService } from './services/EnjazMasterDataService';
 import { NewUsersService } from './services/NewUsersService';
-import { uploadFilesForReport, fetchFilesForReport } from './services/reportFileUpload';
+import { uploadFilesForReport } from './services/reportFileUpload';
+import { fetchAttachments, type AttachmentFile } from './services/attachmentService';
 import type { ToastType } from './NotificationToast';
 import { AddReportFormPanel } from './AddReportFormPanel';
 import { buildProgramIdToNameMap, resolveProjectProgramName } from './programNameResolve';
@@ -117,7 +118,8 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   const [reportEditError, setReportEditError] = useState('');
   const [editingReportId, setEditingReportId] = useState('');
   const [reportEditAttachmentFiles, setReportEditAttachmentFiles] = useState<File[]>([]);
-  const [reportEditExistingFiles, setReportEditExistingFiles] = useState<string[]>([]);
+  const [reportEditExistingFiles, setReportEditExistingFiles] = useState<AttachmentFile[]>([]);
+  const [reportEditExistingAttachmentId, setReportEditExistingAttachmentId] = useState<string>('');
   const reportEditFileInputRef = useRef<HTMLInputElement>(null);
   const [reportTypeMasterOptions, setReportTypeMasterOptions] = useState<string[]>([]);
   const [reportAssigneeEmailOptions, setReportAssigneeEmailOptions] = useState<string[]>([]);
@@ -170,7 +172,13 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         setProgramIdToName(new Map());
       }
       setReportProjectsRows(projectsRes.success ? ((projectsRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
-      setReportEntityRows(reportsRes.success ? ((reportsRes.data ?? []) as unknown as Array<Record<string, unknown>>) : []);
+      const reportRows = reportsRes.success ? ((reportsRes.data ?? []) as unknown as Array<Record<string, unknown>>) : [];
+      console.log('Loaded report rows:', reportRows);
+      if (reportRows.length > 0) {
+        console.log('First report row keys:', Object.keys(reportRows[0]));
+        console.log('First report row:', reportRows[0]);
+      }
+      setReportEntityRows(reportRows);
       if (usersRes.success) {
         const userRows = (usersRes.data ?? []) as Array<Record<string, unknown>>;
         const fromBusiness = userRows
@@ -485,7 +493,11 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     const reportRow = reportEntityRows.find((r) => String(r.new_reportid ?? '') === row.id);
     const attachmentId = reportRow ? String(reportRow.new_attachmentid ?? '').trim() : '';
 
+    console.log('Opening edit report - reportRow:', reportRow);
+    console.log('Opening edit report - attachmentId:', attachmentId);
+
     setEditingReportId(row.id);
+    setReportEditExistingAttachmentId(attachmentId);
     setReportEditForm({
       programName: row.programName,
       reportTitle: row.reportTitle,
@@ -501,9 +513,17 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     setReportEditError('');
 
     if (attachmentId) {
-      const existingFiles = await fetchFilesForReport(attachmentId);
-      setReportEditExistingFiles(existingFiles.map((f) => f.fileName));
+      console.log('Fetching files for attachmentId:', attachmentId);
+      try {
+        const existingFiles = await fetchAttachments(attachmentId);
+        console.log('Fetched existing files:', existingFiles);
+        setReportEditExistingFiles(existingFiles);
+      } catch (error) {
+        console.error('Failed to fetch attachments:', error);
+        setReportEditExistingFiles([]);
+      }
     } else {
+      console.log('No attachment ID found');
       setReportEditExistingFiles([]);
     }
 
@@ -564,7 +584,12 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     setReportEditBusy(true);
     setReportEditError('');
     try {
-      const attachmentId = reportEditAttachmentFiles.length > 0 ? `ATT-${Date.now()}` : undefined;
+      // Use existing attachment ID if available, otherwise generate a new one for new files
+      let attachmentId = reportEditExistingAttachmentId;
+      if (reportEditAttachmentFiles.length > 0 && !attachmentId) {
+        attachmentId = `ATT-${Date.now()}`;
+      }
+
       const updatePayload: Record<string, unknown> = {
         new_program: programName,
         new_report1: title,
@@ -709,7 +734,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           <button
             type="button"
             className={TABLE_STYLES.actionButton}
-            onClick={() => openEditReport(row)}
+            onClick={() => void openEditReport(row)}
             title="Edit"
           >
             <Pencil size={14} className="shrink-0" />
@@ -741,7 +766,14 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h3 className="enj-screen-subheader">Edit Report</h3>
-          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); }} className="text-sm text-gray-500 hover:text-gray-700">Close</button>
+          <button
+            type="button"
+            className="rounded-md p-1 text-2xl leading-none text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); setReportEditExistingAttachmentId(''); }}
+            aria-label="Close"
+          >
+            <X size={20} strokeWidth={2} />
+          </button>
         </div>
         <div className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-3">
           <label>
@@ -796,7 +828,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <textarea className="mt-1 h-20 w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-sm" value={reportEditForm.remark} onChange={(e) => setReportEditForm((f) => ({ ...f, remark: e.target.value }))} />
           </label>
           <label className="md:col-span-3">
-            <span className="text-[11px] text-gray-500">Attachments</span>
+            <span className="text-[11px] font-medium text-secondary mb-1 block">Add attachments</span>
             <input
               ref={reportEditFileInputRef}
               type="file"
@@ -808,56 +840,96 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                 e.target.value = '';
               }}
             />
-            <div
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') reportEditFileInputRef.current?.click();
-              }}
-              onClick={() => reportEditFileInputRef.current?.click()}
-              className="mt-1 min-h-16 border border-dashed border-gray-300 rounded-md text-[11px] text-gray-500 flex flex-col items-center justify-center gap-1 px-2 py-2 cursor-pointer hover:bg-gray-50"
-            >
-              <Paperclip className="h-4 w-4" />
-              <span>Click to choose or drop files</span>
+            <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
+              {reportEditExistingFiles.length === 0 && reportEditAttachmentFiles.length === 0 ? (
+                <div className="text-center">
+                  <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
+                  <button
+                    type="button"
+                    onClick={() => reportEditFileInputRef.current?.click()}
+                    disabled={reportEditBusy}
+                    className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+                    style={{ color: '#A08149' }}
+                  >
+                    <Paperclip size={16} />
+                    Attach file
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {reportEditExistingFiles.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-600 mb-2">Existing attachments</p>
+                      <ul className="space-y-1">
+                        {reportEditExistingFiles.map((file) => (
+                          <li key={file.id} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                            <span className="truncate">{file.name}</span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <a
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#A08149] hover:opacity-80"
+                                title="Download"
+                              >
+                                <Download size={16} />
+                              </a>
+                              <button
+                                type="button"
+                                className="text-rose-600 hover:opacity-80"
+                                disabled={reportEditBusy}
+                                onClick={() => setReportEditExistingFiles((prev) => prev.filter((x) => x.id !== file.id))}
+                                title="Remove"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {reportEditAttachmentFiles.length > 0 && (
+                    <div className={reportEditExistingFiles.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
+                      <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
+                      <ul className="space-y-1">
+                        {reportEditAttachmentFiles.map((f) => (
+                          <li key={f.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                            <span className="truncate">{f.name}</span>
+                            <button
+                              type="button"
+                              className="text-rose-600 shrink-0 hover:opacity-80"
+                              disabled={reportEditBusy}
+                              onClick={() => setReportEditAttachmentFiles((prev) => prev.filter((x) => x.name !== f.name))}
+                              title="Remove"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className={reportEditExistingFiles.length > 0 || reportEditAttachmentFiles.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
+                    <button
+                      type="button"
+                      onClick={() => reportEditFileInputRef.current?.click()}
+                      disabled={reportEditBusy}
+                      className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
+                      style={{ color: '#A08149' }}
+                    >
+                      <Paperclip size={14} />
+                      Attach more
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            {(reportEditExistingFiles.length > 0 || reportEditAttachmentFiles.length > 0) && (
-              <ul className="mt-2 space-y-1 text-xs text-gray-700">
-                {reportEditExistingFiles.length > 0 && (
-                  <>
-                    <li className="text-[10px] font-semibold text-gray-500 mt-2">Existing Files:</li>
-                    {reportEditExistingFiles.map((fileName) => (
-                      <li key={fileName} className="flex items-center gap-2 text-gray-600">
-                        <span className="truncate">{fileName}</span>
-                        <span className="shrink-0 text-[10px] text-gray-400">(existing)</span>
-                      </li>
-                    ))}
-                  </>
-                )}
-                {reportEditAttachmentFiles.length > 0 && (
-                  <>
-                    <li className="text-[10px] font-semibold text-gray-500 mt-2">New Files:</li>
-                    {reportEditAttachmentFiles.map((f) => (
-                      <li key={f.name} className="flex items-center justify-between gap-2">
-                        <span className="truncate">{f.name}</span>
-                        <button
-                          type="button"
-                          className="text-rose-600 shrink-0 hover:underline text-[11px]"
-                          disabled={reportEditBusy}
-                          onClick={() => setReportEditAttachmentFiles((prev) => prev.filter((x) => x.name !== f.name))}
-                        >
-                          Remove
-                        </button>
-                      </li>
-                    ))}
-                  </>
-                )}
-              </ul>
-            )}
           </label>
         </div>
         {reportEditError && <p className="px-5 pb-2 text-xs text-rose-600">{reportEditError}</p>}
         <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4">
-          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); }} className={enj.btnOutline} disabled={reportEditBusy}>Cancel</button>
+          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); setReportEditExistingAttachmentId(''); }} className={enj.btnOutline} disabled={reportEditBusy}>Cancel</button>
           <button type="button" onClick={() => void saveEditedReport()} className={enj.btnPrimary} disabled={reportEditBusy}>{reportEditBusy ? 'Saving...' : 'Save'}</button>
         </div>
       </div>
@@ -872,9 +944,9 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             type="button"
             onClick={() => { setShowReportViewAll(false); setReportViewAllPage(1); }}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+            title="Back"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
           </button>
           <h1 className="text-base font-bold text-[rgba(35,35,96,1)] truncate">Project Reports – All Records</h1>
         </div>
@@ -949,7 +1021,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <select
               value={reportSectorFilter}
               onChange={(e) => setReportSectorFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 px-2 text-[10px] text-gray-600"
+              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
             >
               {reportFilterOptions.sectors.map((v) => (
                 <option key={v} value={v}>
@@ -963,7 +1035,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <select
               value={reportProgramFilter}
               onChange={(e) => setReportProgramFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 px-2 text-[10px] text-gray-600"
+              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
             >
               {reportFilterOptions.programs.map((v) => (
                 <option key={v} value={v}>
@@ -977,7 +1049,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <select
               value={reportProjectFilter}
               onChange={(e) => setReportProjectFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 px-2 text-[10px] text-gray-600"
+              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
             >
               {reportFilterOptions.projects.map((v) => (
                 <option key={v} value={v}>
@@ -991,7 +1063,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <select
               value={reportTypeFilter}
               onChange={(e) => setReportTypeFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 px-2 text-[10px] text-gray-600"
+              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
             >
               {reportFilterOptions.types.map((v) => (
                 <option key={v} value={v}>
@@ -1005,7 +1077,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <select
               value={reportPmFilter}
               onChange={(e) => setReportPmFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 px-2 text-[10px] text-gray-600"
+              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
             >
               {reportFilterOptions.pms.map((v) => (
                 <option key={v} value={v}>
@@ -1019,7 +1091,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <select
               value={reportStatusFilter}
               onChange={(e) => setReportStatusFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 px-2 text-[10px] text-gray-600"
+              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
             >
               {reportFilterOptions.statuses.map((v) => (
                 <option key={v} value={v}>
@@ -1033,7 +1105,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             <select
               value={reportDurationFilter}
               onChange={(e) => setReportDurationFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 px-2 text-[10px] text-gray-600"
+              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
             >
               <option>All Dates</option>
               <option>This Month</option>

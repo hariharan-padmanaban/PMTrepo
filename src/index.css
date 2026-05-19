@@ -8,9 +8,9 @@
   --color-primary: #151d5d;
   --color-primary-container: #2c3474;
   --color-secondary: #745b27;
-  --color-surface: #f9f9f9;
-  --color-surface-container-low: #f3f3f3;
-  --color-surface-container-lowest: #ffffff;
+  --color-surface: #f3f4f8;
+  --color-surface-container-low: #FBFAFF;
+  --color-surface-container-lowest: #FFFFFF;
   --color-on-surface-variant: #464650;
   --color-outline-variant: #c7c5d2;
   --color-error: #ba1a1a;
@@ -41,17 +41,27 @@
   }
 }
 
-/* App-wide dark mode without rewriting each Tailwind utility class. */
-html.enjaz-dark #root {
+/* Dark mode for dashboard (but NOT login page). */
+html.enjaz-dark .enjaz-dashboard {
   filter: invert(0.9) hue-rotate(180deg) brightness(1.1) contrast(0.95) saturate(0.95);
   background: #2b3445;
   transition: filter 220ms ease, background-color 220ms ease;
 }
 
-html.enjaz-dark img,
-html.enjaz-dark video {
+html.enjaz-dark .enjaz-dashboard img,
+html.enjaz-dark .enjaz-dashboard video {
   filter: invert(0.9) hue-rotate(180deg) brightness(1.1) contrast(0.95) saturate(0.95);
   transition: filter 220ms ease;
+}
+
+html.enjaz-dark .enjaz-dashboard select {
+  color-scheme: dark;
+  accent-color: #b28a44;
+}
+
+html.enjaz-dark .enjaz-dashboard select option {
+  background-color: #2b3445;
+  color: #e5e7eb;
 }
 
 .chart-card {
@@ -151,7 +161,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
   /* ── Standardized Screen Containers (All Screens) ── */
   .enj-screen-container {
-    @apply rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb];
+    @apply rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] overflow-y-auto;
   }
 
   .enj-screen-section {
@@ -200,6 +210,10 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     background-repeat: no-repeat;
     background-position: right 0.55rem center;
     background-size: 1rem 1rem;
+  }
+
+  html.enjaz-dark .enjaz-dashboard select.enj-control {
+    border-color: #444;
   }
   .enj-textarea {
     @apply min-h-[5.5rem] w-full max-w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 shadow-sm
@@ -334,20 +348,20 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     @apply inline-block min-w-[90px] rounded-md px-2 py-1 text-center text-[11px] font-semibold leading-tight;
   }
   .enj-table-status--completed {
-    background-color: #dbeafe;
-    color: #1d4ed8;
+    background-color: #e6f0ff;
+    color: #277cfc;
   }
   .enj-table-status--ontrack {
-    background-color: #d1fae5;
-    color: #065f46;
+    background-color: #e0f9f4;
+    color: #32d797;
   }
   .enj-table-status--delayed {
-    background-color: #fee2e2;
-    color: #991b1b;
+    background-color: #ffe6e8;
+    color: #d65359;
   }
   .enj-table-status--neutral {
-    background-color: #f3f4f6;
-    color: #374151;
+    background-color: #fff9e6;
+    color: #ffcc33;
   }
 
   /**

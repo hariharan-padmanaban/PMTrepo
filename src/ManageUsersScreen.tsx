@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowLeft, ChevronDown, Pencil, Search, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { ArrowLeft, ChevronDown, Download, Paperclip, Pencil, Search, Trash2, X } from 'lucide-react';
 import { NewUsersService, type NewUserRow } from './services/NewUsersService';
+import { fetchAttachments, uploadAttachments, type AttachmentFile } from './services/attachmentService';
 import { NotificationToast, type ToastType } from './NotificationToast';
 import { PagerBar } from './PagerBar';
 import { enj } from './ui/enjForm';
@@ -22,6 +23,14 @@ const EMPTY_FORM: OnboardingForm = {
   department: '100000001',
   resume: null,
 };
+
+function extractFirstNameFromEmail(email: string): string {
+  const trimmed = email.trim();
+  if (!trimmed) return '';
+  const prefix = trimmed.split('@')[0] ?? '';
+  const parts = prefix.split('.');
+  return parts[parts.length - 1] ?? prefix;
+}
 
 export const roleLabel: Record<OnboardingForm['department'], string> = {
   '100000000': 'Admin',
@@ -95,6 +104,9 @@ export function ManageUsersScreen({
   const [editForm, setEditForm] = useState<OnboardingForm>(EMPTY_FORM);
   const [editErrors, setEditErrors] = useState<Partial<Record<keyof OnboardingForm, string>>>({});
   const [editBusy, setEditBusy] = useState(false);
+  const [editAttachments, setEditAttachments] = useState<File[]>([]);
+  const [editExistingAttachments, setEditExistingAttachments] = useState<AttachmentFile[]>([]);
+  const [editAttachLoading, setEditAttachLoading] = useState(false);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<NewUserRow | null>(null);
@@ -132,8 +144,9 @@ export function ManageUsersScreen({
     setPage((p) => Math.min(p, pageCount));
   }, [pageCount]);
 
-  const openEdit = (row: NewUserRow) => {
-    setEditingId(row.new_usersid ?? null);
+  const openEdit = async (row: NewUserRow) => {
+    const userId = row.new_usersid ?? null;
+    setEditingId(userId);
     setEditForm({
       fullName: row.new_name ?? '',
       email: (row.new_newcolumn as string | undefined) ?? '',
@@ -143,6 +156,21 @@ export function ManageUsersScreen({
       resume: null,
     });
     setEditErrors({});
+    setEditAttachments([]);
+    setEditExistingAttachments([]);
+
+    if (userId) {
+      setEditAttachLoading(true);
+      try {
+        const attachments = await fetchAttachments(userId);
+        setEditExistingAttachments(attachments);
+      } catch (error) {
+        console.error('Error fetching attachments:', error);
+      } finally {
+        setEditAttachLoading(false);
+      }
+    }
+
     setEditOpen(true);
   };
 
@@ -162,6 +190,11 @@ export function ManageUsersScreen({
       };
       const res = await NewUsersService.update(editingId, payload);
       if (!res.success) throw new Error(res.error?.message ?? 'Failed to update user');
+
+      if (editAttachments.length > 0) {
+        await uploadAttachments(editingId, editAttachments);
+      }
+
       setToast({ type: 'success', message: 'User updated successfully.' });
       setEditOpen(false);
       await onRefresh();
@@ -360,28 +393,34 @@ export function ManageUsersScreen({
       )}
 
       {editOpen && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={() => setEditOpen(false)}>
-          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-100 bg-white p-5 shadow-xl" role="dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="enj-screen-subheader">Edit User</h3>
-              <button type="button" onClick={() => setEditOpen(false)} className="h-8 w-8 rounded-md hover:bg-gray-100 inline-flex items-center justify-center">
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={saveEdit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label><span className="text-xs text-gray-600">Full Name *</span><input className={`mt-1 ${enj.control}`} value={editForm.fullName} onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))} />{editErrors.fullName && <p className={`mt-1 ${enj.fieldError}`}>{editErrors.fullName}</p>}</label>
-              <label><span className="text-xs text-gray-600">Email ID *</span><input className={`mt-1 ${enj.control}`} type="email" autoComplete="email" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />{editErrors.email && <p className={`mt-1 ${enj.fieldError}`}>{editErrors.email}</p>}</label>
-              <label><span className="text-xs text-gray-600">Employee ID *</span><input className={`mt-1 ${enj.control}`} value={editForm.userId} onChange={(e) => setEditForm((f) => ({ ...f, userId: e.target.value }))} />{editErrors.userId && <p className={`mt-1 ${enj.fieldError}`}>{editErrors.userId}</p>}</label>
-              <label><span className="text-xs text-gray-600">Gender *</span><select className={`mt-1 ${enj.control}`} value={editForm.gender} onChange={(e) => setEditForm((f) => ({ ...f, gender: e.target.value as OnboardingForm['gender'] }))}><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></label>
-              <label><span className="text-xs text-gray-600">Department *</span><select className={`mt-1 ${enj.control}`} value={editForm.department} onChange={(e) => setEditForm((f) => ({ ...f, department: e.target.value as OnboardingForm['department'] }))}>{Object.entries(roleLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-              <label><span className="text-xs text-gray-600">Resume (File Upload)</span><input type="file" accept=".pdf,.doc,.docx" className={`mt-1 ${enj.control} px-2`} onChange={(e) => setEditForm((f) => ({ ...f, resume: e.target.files?.[0] ?? null }))} /></label>
-              <div className="md:col-span-2 flex justify-end gap-2 mt-1">
-                <button type="button" onClick={() => setEditOpen(false)} className={enj.btnOutline}>Cancel</button>
-                <button type="submit" disabled={editBusy} className={enj.btnPrimary}>{editBusy ? 'Updating...' : 'Update User'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <EditUserModal
+          editForm={editForm}
+          editErrors={editErrors}
+          editBusy={editBusy}
+          editAttachments={editAttachments}
+          editExistingAttachments={editExistingAttachments}
+          editAttachLoading={editAttachLoading}
+          onEmailChange={(email) => setEditForm((f) => ({ ...f, email }))}
+          onFullNameChange={(fullName) => setEditForm((f) => ({ ...f, fullName }))}
+          onUserIdChange={(userId) => setEditForm((f) => ({ ...f, userId }))}
+          onGenderChange={(gender) => setEditForm((f) => ({ ...f, gender }))}
+          onDepartmentChange={(department) => setEditForm((f) => ({ ...f, department }))}
+          onAttachFile={(files) => setEditAttachments((prev) => [...prev, ...files])}
+          onRemoveAttachment={(fileName) => setEditAttachments((prev) => prev.filter((a) => a.name !== fileName))}
+          onRemoveExistingAttachment={(id) => setEditExistingAttachments((prev) => prev.filter((a) => a.id !== id))}
+          onDownloadAttachment={(file) => {
+            const link = document.createElement('a');
+            link.href = file.url;
+            link.download = file.name;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }}
+          onSave={saveEdit}
+          onClose={() => setEditOpen(false)}
+        />
       )}
 
       {pendingDelete && (
@@ -425,17 +464,236 @@ export function ManageUsersScreen({
   );
 }
 
+type EditUserModalProps = {
+  editForm: OnboardingForm;
+  editErrors: Partial<Record<keyof OnboardingForm, string>>;
+  editBusy: boolean;
+  editAttachments: File[];
+  editExistingAttachments: AttachmentFile[];
+  editAttachLoading: boolean;
+  onEmailChange: (email: string) => void;
+  onFullNameChange: (fullName: string) => void;
+  onUserIdChange: (userId: string) => void;
+  onGenderChange: (gender: OnboardingForm['gender']) => void;
+  onDepartmentChange: (department: OnboardingForm['department']) => void;
+  onAttachFile: (files: File[]) => void;
+  onRemoveAttachment: (fileName: string) => void;
+  onRemoveExistingAttachment: (id: string) => void;
+  onDownloadAttachment: (file: AttachmentFile) => void;
+  onSave: (e: FormEvent) => Promise<void>;
+  onClose: () => void;
+};
+
+function EditUserModal({
+  editForm,
+  editErrors,
+  editBusy,
+  editAttachments,
+  editExistingAttachments,
+  editAttachLoading,
+  onEmailChange,
+  onFullNameChange,
+  onUserIdChange,
+  onGenderChange,
+  onDepartmentChange,
+  onAttachFile,
+  onRemoveAttachment,
+  onRemoveExistingAttachment,
+  onDownloadAttachment,
+  onSave,
+  onClose,
+}: EditUserModalProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.currentTarget.files;
+    if (!files) return;
+    const newFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file) newFiles.push(file);
+    }
+    onAttachFile(newFiles);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const onAttachFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const inputCls = `mt-1 ${enj.control}`;
+
+  return (
+    <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={onClose}>
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-100 bg-white p-5 shadow-xl" role="dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="enj-screen-subheader">Edit User</h3>
+          <button type="button" onClick={onClose} className="h-8 w-8 rounded-md hover:bg-gray-100 inline-flex items-center justify-center">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={onSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label>
+            <span className="text-xs text-gray-600">Email ID *</span>
+            <input className={inputCls} type="email" autoComplete="email" value={editForm.email} onChange={(e) => onEmailChange(e.target.value)} />
+            {editErrors.email && <p className={`mt-1 ${enj.fieldError}`}>{editErrors.email}</p>}
+          </label>
+          <label>
+            <span className="text-xs text-gray-600">Full Name *</span>
+            <input className={inputCls} value={editForm.fullName} onChange={(e) => onFullNameChange(e.target.value)} />
+            {editErrors.fullName && <p className={`mt-1 ${enj.fieldError}`}>{editErrors.fullName}</p>}
+          </label>
+          <label>
+            <span className="text-xs text-gray-600">Employee ID *</span>
+            <input className={inputCls} value={editForm.userId} onChange={(e) => onUserIdChange(e.target.value)} />
+            {editErrors.userId && <p className={`mt-1 ${enj.fieldError}`}>{editErrors.userId}</p>}
+          </label>
+          <label>
+            <span className="text-xs text-gray-600">Gender *</span>
+            <select className={inputCls} value={editForm.gender} onChange={(e) => onGenderChange(e.target.value as OnboardingForm['gender'])}>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+          <label className="md:col-span-2">
+            <span className="text-xs text-gray-600">Department *</span>
+            <select className={inputCls} value={editForm.department} onChange={(e) => onDepartmentChange(e.target.value as OnboardingForm['department'])}>
+              {Object.entries(roleLabel).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="md:col-span-2">
+            <label className="block text-xs text-gray-600 mb-2">Resume</label>
+            {editAttachLoading ? (
+              <p className="text-xs text-gray-500">Loading attachments...</p>
+            ) : (
+              <div className="space-y-3">
+                {editExistingAttachments.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-gray-700">Existing Files</p>
+                    {editExistingAttachments.map((file) => (
+                      <div key={file.id} className="flex items-center justify-between gap-2 rounded-md bg-blue-50 p-2 border border-blue-200">
+                        <span className="text-xs text-gray-700 truncate">{file.name}</span>
+                        <div className="flex gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => onDownloadAttachment(file)}
+                            className="text-blue-600 hover:text-blue-800"
+                            title="Download"
+                          >
+                            <Download size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveExistingAttachment(file.id)}
+                            className="text-gray-400 hover:text-gray-600"
+                            title="Remove"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={onAttachFileClick}
+                  className={`${enj.btnDefault} inline-flex items-center gap-1.5 text-xs`}
+                >
+                  <Paperclip size={14} />
+                  {editAttachments.length === 0 && editExistingAttachments.length === 0 ? 'Attach file' : 'Attach more'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.txt"
+                  onChange={onFileSelected}
+                  className="hidden"
+                  aria-hidden="true"
+                />
+                {editAttachments.length > 0 && (
+                  <div className="space-y-1.5 mt-2">
+                    <p className="text-xs font-medium text-gray-700">New Files</p>
+                    {editAttachments.map((file) => (
+                      <div key={file.name} className="flex items-center justify-between gap-2 rounded-md bg-gray-50 p-2 border border-gray-200">
+                        <span className="text-xs text-gray-700 truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveAttachment(file.name)}
+                          className="shrink-0 text-gray-400 hover:text-gray-600"
+                          title="Remove"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="md:col-span-2 flex justify-end gap-2 mt-1">
+            <button type="button" onClick={onClose} className={enj.btnOutline}>
+              Cancel
+            </button>
+            <button type="submit" disabled={editBusy} className={enj.btnPrimary}>
+              {editBusy ? 'Updating...' : 'Update User'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function UserOnboardFormContent({ onSuccess }: { onSuccess: () => Promise<void> }) {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<OnboardingForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<Partial<Record<keyof OnboardingForm, string>>>({});
   const [message, setMessage] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validate = useCallback(() => {
     const next = validateUserForm(form);
     setErrors(next);
     return Object.keys(next).length === 0;
   }, [form]);
+
+  const onEmailChange = useCallback((email: string) => {
+    setForm((f) => ({ ...f, email }));
+    setErrors((e) => ({ ...e, email: '' }));
+    const firstName = extractFirstNameFromEmail(email);
+    if (firstName) {
+      setForm((f) => ({ ...f, fullName: firstName }));
+    }
+  }, []);
+
+  const onAttachFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.currentTarget.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file) {
+        setAttachments((prev) => [...prev, file]);
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const onRemoveAttachment = (fileName: string) => {
+    setAttachments((prev) => prev.filter((a) => a.name !== fileName));
+  };
 
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -445,8 +703,9 @@ function UserOnboardFormContent({ onSuccess }: { onSuccess: () => Promise<void> 
       setSubmitting(true);
       try {
         const today = new Date().toISOString().slice(0, 10);
+        const userId = globalThis.crypto?.randomUUID?.() ?? fallbackGuid();
         const payload = {
-          new_usersid: globalThis.crypto?.randomUUID?.() ?? fallbackGuid(),
+          new_usersid: userId,
           new_name: form.fullName.trim(),
           new_userid: form.userId.trim(),
           new_role: Number(form.department),
@@ -456,8 +715,14 @@ function UserOnboardFormContent({ onSuccess }: { onSuccess: () => Promise<void> 
         };
         const res = await NewUsersService.create(payload);
         if (!res.success) throw new Error(res.error?.message ?? 'Failed to create user');
+
+        if (attachments.length > 0) {
+          await uploadAttachments(userId, attachments);
+        }
+
         setMessage('User created successfully.');
         setForm(EMPTY_FORM);
+        setAttachments([]);
         setErrors({});
         await onSuccess();
       } catch (error) {
@@ -466,7 +731,7 @@ function UserOnboardFormContent({ onSuccess }: { onSuccess: () => Promise<void> 
         setSubmitting(false);
       }
     },
-    [form, onSuccess, validate],
+    [form, attachments, onSuccess, validate],
   );
 
   const inputCls = `mt-1 ${enj.control}`;
@@ -474,14 +739,14 @@ function UserOnboardFormContent({ onSuccess }: { onSuccess: () => Promise<void> 
   return (
     <form onSubmit={onSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <label>
+        <span className="text-xs text-gray-600">Email ID *</span>
+        <input className={inputCls} type="email" autoComplete="email" value={form.email} onChange={(e) => onEmailChange(e.target.value)} />
+        {errors.email && <p className="text-[11px] text-red-600 mt-1">{errors.email}</p>}
+      </label>
+      <label>
         <span className="text-xs text-gray-600">Full Name *</span>
         <input className={inputCls} value={form.fullName} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} />
         {errors.fullName && <p className="text-[11px] text-red-600 mt-1">{errors.fullName}</p>}
-      </label>
-      <label>
-        <span className="text-xs text-gray-600">Email ID *</span>
-        <input className={inputCls} type="email" autoComplete="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-        {errors.email && <p className="text-[11px] text-red-600 mt-1">{errors.email}</p>}
       </label>
       <label>
         <span className="text-xs text-gray-600">Employee ID *</span>
@@ -506,10 +771,45 @@ function UserOnboardFormContent({ onSuccess }: { onSuccess: () => Promise<void> 
           ))}
         </select>
       </label>
-      <label className="md:col-span-2">
-        <span className="text-xs text-gray-600">Resume (File Upload)</span>
-        <input type="file" accept=".pdf,.doc,.docx" className={`${inputCls} py-1.5`} onChange={(e) => setForm((f) => ({ ...f, resume: e.target.files?.[0] ?? null }))} />
-      </label>
+      <div className="md:col-span-2">
+        <label className="block text-xs text-gray-600 mb-2">Resume</label>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={onAttachFile}
+            className={`${enj.btnDefault} inline-flex items-center gap-1.5 text-xs`}
+          >
+            <Paperclip size={14} />
+            {attachments.length === 0 ? 'Attach file' : 'Attach more'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.txt"
+            onChange={onFileSelected}
+            className="hidden"
+            aria-hidden="true"
+          />
+          {attachments.length > 0 && (
+            <div className="space-y-1.5 mt-2">
+              {attachments.map((file) => (
+                <div key={file.name} className="flex items-center justify-between gap-2 rounded-md bg-gray-50 p-2 border border-gray-200">
+                  <span className="text-xs text-gray-700 truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAttachment(file.name)}
+                    className="shrink-0 text-gray-400 hover:text-gray-600"
+                    title="Remove"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
       <p className="text-xs text-gray-500 md:col-span-2">Onboarded Date and Status are set on submit (Today, Active).</p>
       <div className="md:col-span-2 flex justify-end">
         <button type="submit" disabled={submitting} className={`${enj.btnPrimary} px-6`}>

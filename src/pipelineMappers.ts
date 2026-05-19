@@ -16,9 +16,9 @@ export type BusinessPipelineTableRow = {
   benefit: string;
   /** `new_potentialvalue` for display (e.g. 80, 100, 0.6). */
   potentialValue: string;
-  /** Raw value for `<input type="text">` (empty if unset). */
+  /** Raw value for `<input type=”text”>` (empty if unset). */
   potentialValueInput: string;
-  /** `YYYY-MM-DD` for `type="date"`; empty if unknown. */
+  /** `YYYY-MM-DD` for `type=”date”`; empty if unknown. */
   startDateYyyyMmDd: string;
   /** `YYYY-MM-DD` for tentative closure. */
   tentativeClosureYyyyMmDd: string;
@@ -29,6 +29,8 @@ export type BusinessPipelineTableRow = {
   categoryName: string;
   /** From start date; 0 = unknown. */
   year: number;
+  /** Attachment ID for storing attachments. */
+  crcf8_attachmentid?: string;
 };
 
 function parseApiDate(value: unknown): Date | null {
@@ -106,6 +108,7 @@ export function newPipelineToTableRow(r: New_pipelines, idx: number): BusinessPi
     stage: (r.new_stageofopportunity ?? '—').trim() || '—',
     categoryName: (r.new_clientname ?? '—').trim() || '—',
     year: start ? start.getFullYear() : 0,
+    crcf8_attachmentid: String((r as unknown as Record<string, unknown>).crcf8_attachmentid ?? '').trim() || undefined,
   };
 }
 

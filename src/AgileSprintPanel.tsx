@@ -4,6 +4,7 @@ import { New_sprintsService } from './generated/services/New_sprintsService';
 import { New_sprintissuesService } from './generated/services/New_sprintissuesService';
 import type { ToastType } from './NotificationToast';
 import { enj } from './ui/enjForm';
+import { PagerBar } from './PagerBar';
 
 type ProjectRow = Record<string, unknown>;
 type SprintRow = Record<string, unknown>;
@@ -145,8 +146,10 @@ export function AgileSprintPanel({
   const [issuePage, setIssuePage] = useState(1);
   const [backlogSprintName, setBacklogSprintName] = useState('');
   const [backlogSearch, setBacklogSearch] = useState('');
+  const [backlogPage, setBacklogPage] = useState(1);
   const SPRINT_PAGE_SIZE = 3;
   const ISSUE_PAGE_SIZE = 3;
+  const BACKLOG_PAGE_SIZE = 5;
   const [showCreateActivity, setShowCreateActivity] = useState(false);
   const [activityBusy, setActivityBusy] = useState(false);
   const [activityErr, setActivityErr] = useState<Record<string, string>>({});
@@ -174,8 +177,13 @@ export function AgileSprintPanel({
       const sprintRows = (sRes.data ?? []) as unknown as SprintRow[];
       setSprints(sprintRows);
       setIssues((iRes.data ?? []) as unknown as IssueRow[]);
-      if (!selectedSprintName && sprintRows.length > 0) {
-        setSelectedSprintName(String(sprintRows[0].new_sprintname ?? '').trim());
+      if (sprintRows.length > 0) {
+        if (!selectedSprintName) {
+          const firstSprintName = String(sprintRows[0].new_sprintname ?? '').trim();
+          setSelectedSprintName(firstSprintName);
+        }
+        setSprintPage(1);
+        setIssuePage(1);
       }
     } catch (e) {
       onNotify({ type: 'error', message: e instanceof Error ? e.message : 'Failed to load agile sprint data' });
@@ -385,14 +393,13 @@ export function AgileSprintPanel({
     setActivityErr({});
   }, [showCreateActivity, backlogSprintName, selectedSprintName]);
 
-  const sprintTotalPages = Math.max(1, Math.ceil(visibleSprints.length / SPRINT_PAGE_SIZE));
   const pagedSprints = visibleSprints.slice((sprintPage - 1) * SPRINT_PAGE_SIZE, sprintPage * SPRINT_PAGE_SIZE);
-
-  const issueTotalPages = Math.max(1, Math.ceil(visibleIssues.length / ISSUE_PAGE_SIZE));
   const pagedIssues = visibleIssues.slice((issuePage - 1) * ISSUE_PAGE_SIZE, issuePage * ISSUE_PAGE_SIZE);
+  const pagedBacklogIssues = backlogIssues.slice((backlogPage - 1) * BACKLOG_PAGE_SIZE, backlogPage * BACKLOG_PAGE_SIZE);
 
   useEffect(() => { setSprintPage(1); }, [searchSprint]);
   useEffect(() => { setIssuePage(1); }, [issueStatusFilter, issueTypeFilter, searchIssue, selectedSprintName]);
+  useEffect(() => { setBacklogPage(1); }, [backlogSearch, backlogSprintName]);
 
   const statusOptions = useMemo(
     () => ['All Status', ...Array.from(new Set(issues.map(issueStatusLabel).filter((s) => s && s !== '—')))],
@@ -403,10 +410,22 @@ export function AgileSprintPanel({
     [issues],
   );
 
+  const PRIORITY_MAP: Record<number, string> = { 100000000: 'Low', 100000001: 'Medium', 100000002: 'High' };
+  const OBJECTIVE_MAP: Record<number, string> = { 100000000: 'Strategic Plan', 100000001: 'Sustainability', 100000002: 'Cost Reduction', 100000003: 'Customer Satisfaction' };
+
+  const priorityRaw = String(project.new_projectpriorityname ?? project.new_projectpriority ?? '—').trim();
+  const priorityText = priorityRaw && priorityRaw !== '—' ? PRIORITY_MAP[Number(priorityRaw)] ?? priorityRaw : '—';
+
+  const objectiveRaw = String(project.new_projecttypename ?? project.new_projecttype ?? '—').trim();
+  const objectiveText = objectiveRaw && objectiveRaw !== '—' ? OBJECTIVE_MAP[Number(objectiveRaw)] ?? objectiveRaw : '—';
+
+  const sponsorEmail = String(project.crcf8_projectsponsor ?? project.new_projectsponsor ?? '').trim();
+  const sponsorName = String(project.new_projectsponsorname ?? sponsorEmail ?? 'IT');
+
   const rightMeta = {
-    sponsor: String(project.crcf8_projectsponsor ?? project.new_projectsponsorname ?? project.new_projectsponsor ?? 'IT'),
-    objective: String(project.new_projecttypename ?? project.new_projecttype ?? 'Time bound'),
-    priority: String(project.new_projectpriorityname ?? project.new_projectpriority ?? '—'),
+    sponsor: sponsorName,
+    objective: objectiveText,
+    priority: priorityText,
     type: String(project.new_methodologyname ?? project.new_methodology ?? 'Agile'),
     budget: String(project.new_budget ?? '—'),
     category: String(project.new_projectcategoryname ?? project.new_projectcategory ?? '—'),
@@ -464,7 +483,7 @@ export function AgileSprintPanel({
                     <td className="px-3 py-28 text-center text-sm text-primary bg-transparent" colSpan={7}>No Issues Created for this Sprint</td>
                   </tr>
                 ) : (
-                  backlogIssues.map((i, idx) => (
+                  pagedBacklogIssues.map((i, idx) => (
                     <tr key={`${String(i.new_sprintissueid ?? idx)}`} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
                       <td className="px-3 py-2 bg-white border-0 rounded-l-[11.9px]">{String(i.new_sprintname ?? '—')}</td>
                       <td className="px-3 py-2 bg-white border-0">{String(i.new_epic ?? '—')}</td>
@@ -479,6 +498,15 @@ export function AgileSprintPanel({
               </tbody>
             </table>
           </div>
+          <div className="border-t border-gray-100 px-3 py-2">
+            <PagerBar
+              page={backlogPage}
+              pageSize={BACKLOG_PAGE_SIZE}
+              total={backlogIssues.length}
+              onPrev={() => setBacklogPage((p) => Math.max(1, p - 1))}
+              onNext={() => setBacklogPage((p) => Math.min(Math.ceil(backlogIssues.length / BACKLOG_PAGE_SIZE), p + 1))}
+            />
+          </div>
         </div>
         {showCreateActivity && (
           <div className="fixed inset-0 z-[122] flex items-center justify-center bg-black/35 p-4">
@@ -487,11 +515,18 @@ export function AgileSprintPanel({
               <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs text-gray-600">Sprint Name</label>
-                  <input
+                  <select
                     className={`mt-1 ${enj.control}`}
                     value={activityForm.sprintName}
                     onChange={(e) => setActivityForm((f) => ({ ...f, sprintName: e.target.value }))}
-                  />
+                  >
+                    <option value="">Select a sprint</option>
+                    {sprints.map((s) => (
+                      <option key={String(s.new_sprintid ?? 'unknown')} value={String(s.new_sprintname ?? '')}>
+                        {String(s.new_sprintname ?? '—')}
+                      </option>
+                    ))}
+                  </select>
                   {activityErr.sprintName && <p className="mt-1 text-[11px] text-rose-600">{activityErr.sprintName}</p>}
                 </div>
                 <div>
@@ -573,7 +608,7 @@ export function AgileSprintPanel({
   return (
     <section className="rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
       <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_15rem] overflow-hidden">
-        <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-5 flex flex-col gap-4 overflow-y-auto">
+        <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-5 flex flex-col gap-3 overflow-y-auto">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">
               <button type="button" onClick={onBack} className="text-gray-700 underline">
@@ -609,8 +644,9 @@ export function AgileSprintPanel({
             </div>
           </div>
 
-          <div className="overflow-hidden bg-transparent">
-            <table className={`${enj.tableBrand} text-xs bg-transparent border-separate`}>
+          <div className="rounded-xl border border-[#dfe3f2] bg-white">
+            <div className="bg-transparent">
+              <table className={`${enj.tableBrand} text-xs bg-transparent border-separate w-full`}>
               <thead>
                 <tr className="bg-[rgba(225,227,236,1)]">
                   <th className="px-3 py-2 text-[11px] font-semibold text-[rgba(118,131,150,1)] border-0">Sprint Name</th>
@@ -689,29 +725,20 @@ export function AgileSprintPanel({
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <button
-              type="button"
-              className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-              disabled={sprintPage <= 1}
-              onClick={() => setSprintPage((p) => p - 1)}
-            >
-              &lsaquo;
-            </button>
-            <span className="text-[11px] text-gray-500">{(sprintPage - 1) * SPRINT_PAGE_SIZE + 1}-{Math.min(sprintPage * SPRINT_PAGE_SIZE, visibleSprints.length)}</span>
-            <button
-              type="button"
-              className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-              disabled={sprintPage >= sprintTotalPages}
-              onClick={() => setSprintPage((p) => p + 1)}
-            >
-              &rsaquo;
-            </button>
+            </div>
+            <div className="border-t border-gray-100 px-3 py-2">
+              <PagerBar
+                page={sprintPage}
+                pageSize={SPRINT_PAGE_SIZE}
+                total={visibleSprints.length}
+                onPrev={() => setSprintPage((p) => Math.max(1, p - 1))}
+                onNext={() => setSprintPage((p) => Math.min(Math.ceil(visibleSprints.length / SPRINT_PAGE_SIZE), p + 1))}
+              />
+            </div>
           </div>
 
-          <div className="rounded-xl border border-[#dfe3f2] p-3 flex flex-col">
-            <div className="mb-2 flex items-center justify-between gap-3 flex-shrink-0">
+          <div className="rounded-xl border border-[#dfe3f2] p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <h3 className="enj-screen-header">Activity</h3>
                 <select className="h-7 rounded border border-gray-200 bg-[#f5f6fb] px-2 text-xs" value={issueStatusFilter} onChange={(e) => setIssueStatusFilter(e.target.value)}>
@@ -731,8 +758,8 @@ export function AgileSprintPanel({
                 </div>
               </div>
             </div>
-            <div className="bg-transparent overflow-hidden">
-              <table className={`${enj.tableBrand} text-xs border-separate`}>
+            <div className="bg-transparent">
+              <table className={`${enj.tableBrand} text-xs border-separate w-full`}>
                   <thead>
                     <tr className="bg-[rgba(225,227,236,1)]">
                       <th className="px-3 py-2 text-[11px] font-semibold border-0 text-[rgba(118,131,150,1)]">Type</th>
@@ -767,24 +794,14 @@ export function AgileSprintPanel({
                   </tbody>
                 </table>
             </div>
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                disabled={issuePage <= 1}
-                onClick={() => setIssuePage((p) => p - 1)}
-              >
-                &lsaquo;
-              </button>
-              <span className="text-[11px] text-gray-500">{(issuePage - 1) * ISSUE_PAGE_SIZE + 1}-{Math.min(issuePage * ISSUE_PAGE_SIZE, visibleIssues.length)}</span>
-              <button
-                type="button"
-                className="h-6 rounded border border-gray-200 px-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-                disabled={issuePage >= issueTotalPages}
-                onClick={() => setIssuePage((p) => p + 1)}
-              >
-                &rsaquo;
-              </button>
+            <div className="border-t border-gray-100 px-3 py-2 shrink-0">
+              <PagerBar
+                page={issuePage}
+                pageSize={ISSUE_PAGE_SIZE}
+                total={visibleIssues.length}
+                onPrev={() => setIssuePage((p) => Math.max(1, p - 1))}
+                onNext={() => setIssuePage((p) => Math.min(Math.ceil(visibleIssues.length / ISSUE_PAGE_SIZE), p + 1))}
+              />
             </div>
           </div>
         </div>
@@ -792,8 +809,8 @@ export function AgileSprintPanel({
         <aside className="rounded-xl border border-gray-200 bg-white px-5 py-4 text-xs text-gray-700 overflow-y-auto min-h-0">
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
-              <span className="text-gray-500">Pro. Sponsor</span>
-              <span className="font-semibold text-right">{rightMeta.sponsor}</span>
+              <span className="text-gray-500 shrink-0">Pro. Sponsor</span>
+              <span className="font-semibold text-right break-words max-w-[150px]">{rightMeta.sponsor}</span>
             </div>
             <div className="flex items-start justify-between gap-3">
               <span className="text-gray-500">Starg. Obj</span>
