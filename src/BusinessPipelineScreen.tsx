@@ -1,10 +1,10 @@
 /**
  * Business role — dedicated “Business pipeline” view (separate from Business dashboard home).
- * Projects bar chart: pipeline rows grouped by start-date quarter; top two benefit types as series.
+ * Projects bar chart: pipeline rows grouped by start-date quarter; one series per benefit type.
  * Table is driven from `new_pipeline` in Dataverse.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, Eye, Paperclip, Pencil, Plus, X, Trash2, Download } from 'lucide-react';
 import { fetchAttachments, uploadAttachments, type AttachmentFile } from './services/attachmentService';
 import { PagerBar } from './PagerBar';
@@ -19,13 +19,55 @@ import { ScreenLoader } from './ScreenLoader';
 import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import { enj } from './ui/enjForm';
 import type { ToastType } from './NotificationToast';
+import { DatePickerField } from './EnjDatePicker';
+import { FormFieldLabel, FormPageActions, FormPageShell } from './FormPageShell';
+import { DonutChartCard } from './DonutChartCard';
 
 export type { BusinessPipelineTableRow } from './pipelineMappers';
 
-/** Grouped bar colors (benefit 1, benefit 2) — match pipeline UI reference. */
-const PIPELINE_BENEFIT_COLORS: readonly [string, string] = ['#9ca3af', '#22d3ee'];
+/** Grouped bar colors — cycles when there are many benefit types. */
+const PIPELINE_BENEFIT_PALETTE = [
+  '#9ca3af',
+  '#22d3ee',
+  '#7c6fcd',
+  '#f59e0b',
+  '#10b981',
+  '#e05d8a',
+  '#3b82f6',
+  '#ef4444',
+  '#8b5e34',
+  '#60a5fa',
+] as const;
 
 const YEAR_OPTIONS = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017];
+
+/** Matches Program screen table header (DM Sans, 12.81px, #E1E3EC bar). */
+const PIPELINE_TABLE_TH_STYLE: CSSProperties = {
+  fontFamily: 'DM Sans, ui-sans-serif, system-ui, sans-serif',
+  fontSize: '12.81px',
+  fontWeight: 600,
+  lineHeight: '1',
+  letterSpacing: '0px',
+  color: '#768396',
+  backgroundColor: '#E1E3EC',
+  borderRadius: '0',
+};
+
+const PIPELINE_TABLE_TD = 'px-4 py-3 bg-white border-0 align-middle text-[rgba(35,35,96,1)]';
+const PIPELINE_TABLE_ICON_BTN =
+  'inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E7EB] text-[#6B7280] shadow-sm transition-colors hover:bg-[#F9FAFB]';
+
+function PipelineTableTh({ label, center = false }: { label: string; center?: boolean }) {
+  return (
+    <th
+      scope="col"
+      style={PIPELINE_TABLE_TH_STYLE}
+      className={`whitespace-nowrap normal-case tracking-normal border-0 px-4 py-3 ${center ? 'text-center' : 'text-left'}`}
+    >
+      {label}
+    </th>
+  );
+}
 
 const STAGE_OF_OPPORTUNITY_OPTIONS = ['', 'Defense', 'Negotiation', 'Discovery', 'Proposal', 'Closed won', 'Closed lost'] as const;
 
@@ -49,14 +91,6 @@ function localDateInputValue(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-function ReqField({ label }: { label: string }) {
-  return (
-    <span className="text-[11px] font-medium text-gray-700">
-      {label} <span className="text-red-500">*</span>
-    </span>
-  );
 }
 
 export type BusinessPipelineScreenProps = {
@@ -353,26 +387,22 @@ export default function BusinessPipelineScreen({
       const k = normalizePipelineBenefit(r);
       benefCounts.set(k, (benefCounts.get(k) ?? 0) + 1);
     }
-    const top2 = [...benefCounts.entries()]
+    const benefitLabels = [...benefCounts.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 2)
       .map(([k]) => k);
-    const s0 = top2[0] ?? '—';
-    const s1 = top2[1] ?? '—';
-    const labelA = s0;
-    const labelB = s1;
-    const counts: [number, number][] = [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ];
+    const labels = benefitLabels.length > 0 ? benefitLabels : ['—'];
+    const series = labels.map((label, i) => ({
+      label,
+      color: PIPELINE_BENEFIT_PALETTE[i % PIPELINE_BENEFIT_PALETTE.length],
+    }));
+    const benefitIndex = new Map(labels.map((label, i) => [label, i]));
+    const counts: number[][] = Array.from({ length: 4 }, () => Array(series.length).fill(0));
     for (const r of filteredRows) {
       const q = rowStartQuarterInYear(r, year);
       if (q == null) continue;
       const b = normalizePipelineBenefit(r);
-      if (b === s0) counts[q]![0] += 1;
-      else if (s1 && b === s1) counts[q]![1] += 1;
+      const idx = benefitIndex.get(b);
+      if (idx !== undefined) counts[q]![idx] += 1;
     }
     const allVals = counts.flat();
     const maxData = allVals.length ? Math.max(0, ...allVals) : 0;
@@ -380,9 +410,7 @@ export default function BusinessPipelineScreen({
     const tickCount = 5;
     const yTicks = Array.from({ length: tickCount + 1 }, (_, i) => (i * yMax) / tickCount) as number[];
     return {
-      labelA,
-      labelB,
-      colors: PIPELINE_BENEFIT_COLORS,
+      series,
       quarterLabels: [0, 1, 2, 3].map((qi) => `Q${qi + 1}-${year}`) as [string, string, string, string],
       counts,
       yMax,
@@ -468,22 +496,261 @@ export default function BusinessPipelineScreen({
       counts.set(s, (counts.get(s) ?? 0) + 1);
     }
     const total = [...counts.values()].reduce((a, b) => a + b, 0);
+    const entries = [...counts.entries()];
+    const isSingleSlice = entries.length === 1 && total > 0;
     let startAngle = -Math.PI / 2;
-    return { total, slices: [...counts.entries()].map(([label, count]) => {
-      const angle = total > 0 ? (count / total) * 2 * Math.PI : 0;
+    return {
+      total,
+      slices: entries.map(([label, count]) => {
+      // Clamp full-circle slices slightly under 2π.
+      // Otherwise the SVG arc command can become degenerate when only one stage is present.
+      const rawAngle = total > 0 ? (count / total) * 2 * Math.PI : 0;
+      const angle = isSingleSlice ? 2 * Math.PI - 0.0001 : rawAngle;
       const slice = { label, count, angle, startAngle, color: DONUT_COLORS[label] ?? '#9ca3af' };
       startAngle += angle;
       return slice;
-    })};
+    }),
+    };
   }, [filteredRows]);
 
   const showPipelineActions = !hidePipelineCreation;
   const tableColSpan = 8;
+  const pipelineFieldClass = `enj-add-project-field mt-1 ${enj.control} border-[#ADACB4]`;
+
+  const clearPipelineForm = useCallback(() => {
+    if (attachInputRef.current) attachInputRef.current.value = '';
+    if (pipelineModal === 'edit' && editFormBaseline.current) {
+      setPipelineForm({ ...editFormBaseline.current });
+    } else {
+      resetAddForm();
+    }
+  }, [pipelineModal, resetAddForm]);
+
+  if (pipelineModal && showPipelineActions) {
+    return (
+      <FormPageShell
+        parentLabel={screenTitle}
+        onBack={closePipelineModal}
+        title={pipelineModal === 'add' ? 'Add Pipeline' : 'Edit Pipeline'}
+      >
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-3">
+          <div>
+            <FormFieldLabel label="Pipeline name" required />
+            <input
+              className={pipelineFieldClass}
+              value={pipelineForm.pipelineName}
+              onChange={(e) => updateFormAndClearError('pipelineName', (f) => ({ ...f, pipelineName: e.target.value }))}
+            />
+            {pipelineErrors.pipelineName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.pipelineName}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Opportunity Name" required />
+            <input
+              className={pipelineFieldClass}
+              value={pipelineForm.opportunityName}
+              onChange={(e) => updateFormAndClearError('opportunityName', (f) => ({ ...f, opportunityName: e.target.value }))}
+            />
+            {pipelineErrors.opportunityName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.opportunityName}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Potential Value" required />
+            <input
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              className={`${pipelineFieldClass} tabular-nums`}
+              value={pipelineForm.potentialValue}
+              onChange={(e) =>
+                updateFormAndClearError('potentialValue', (f) => ({ ...f, potentialValue: sanitizePotentialValueInput(e.target.value) }))
+              }
+            />
+            {pipelineErrors.potentialValue && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.potentialValue}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Tentative Closure" required />
+            <DatePickerField
+              className={pipelineFieldClass}
+              value={pipelineForm.tentativeClosure}
+              onChange={(v) => updateFormAndClearError('tentativeClosure', (f) => ({ ...f, tentativeClosure: v }))}
+            />
+            {pipelineErrors.tentativeClosure && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.tentativeClosure}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Client Name" required />
+            <select
+              className={pipelineFieldClass}
+              value={pipelineForm.clientId}
+              disabled={clientOptions.length === 0}
+              onChange={(e) => updateFormAndClearError('clientId', (f) => ({ ...f, clientId: e.target.value }))}
+            >
+              <option value="">
+                {clientOptions.length === 0 ? '— No clients available —' : '— Select a client —'}
+              </option>
+              {clientOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            {pipelineErrors.clientId && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.clientId}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Stage of Opportunity" required />
+            <select
+              className={pipelineFieldClass}
+              value={pipelineForm.stage}
+              onChange={(e) => updateFormAndClearError('stage', (f) => ({ ...f, stage: e.target.value }))}
+            >
+              <option value="">Select stage</option>
+              {STAGE_OF_OPPORTUNITY_OPTIONS.filter(Boolean).map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+              {pipelineForm.stage &&
+                !(STAGE_OF_OPPORTUNITY_OPTIONS as readonly string[]).includes(pipelineForm.stage) && (
+                  <option value={pipelineForm.stage}>{pipelineForm.stage}</option>
+                )}
+            </select>
+            {pipelineErrors.stage && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.stage}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Benefits" required />
+            <input
+              className={pipelineFieldClass}
+              value={pipelineForm.benefits}
+              onChange={(e) => updateFormAndClearError('benefits', (f) => ({ ...f, benefits: e.target.value }))}
+            />
+            {pipelineErrors.benefits && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.benefits}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Start Date" required />
+            <DatePickerField
+              className={pipelineFieldClass}
+              value={pipelineForm.startDate}
+              onChange={(v) => updateFormAndClearError('startDate', (f) => ({ ...f, startDate: v }))}
+            />
+            {pipelineErrors.startDate && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.startDate}</p>}
+          </div>
+          <div className="md:col-span-3">
+            <FormFieldLabel label="Add attachments" />
+            <input
+              ref={attachInputRef}
+              type="file"
+              className="sr-only"
+              multiple
+              onChange={(e) => {
+                const files = e.target.files;
+                if (files && files.length > 0) {
+                  const newFiles = Array.from(files);
+                  setPipelineForm((prev) => ({ ...prev, attachments: [...prev.attachments, ...newFiles] }));
+                  e.target.value = '';
+                }
+              }}
+            />
+            <div className="enj-add-project-attachments mt-1 rounded-lg border border-[#ADACB4] bg-white p-4">
+              {pipelineForm.existingAttachments.length === 0 && pipelineForm.attachments.length === 0 ? (
+                <div className="text-center">
+                  <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
+                  <button
+                    type="button"
+                    onClick={() => attachInputRef.current?.click()}
+                    disabled={submitting}
+                    className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+                    style={{ color: '#A08149' }}
+                  >
+                    <Paperclip size={16} />
+                    Attach file
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pipelineForm.existingAttachments.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-600 mb-2">Existing attachments</p>
+                      <ul className="space-y-1">
+                        {pipelineForm.existingAttachments.map((file) => (
+                          <li key={file.id} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                            <span className="truncate">{file.name}</span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <a
+                                href={file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#A08149] hover:opacity-80"
+                                title="Download"
+                              >
+                                <Download size={16} />
+                              </a>
+                              <button
+                                type="button"
+                                className="text-rose-600 hover:opacity-80"
+                                disabled={submitting}
+                                onClick={() => setPipelineForm((prev) => ({ ...prev, existingAttachments: prev.existingAttachments.filter((x) => x.id !== file.id) }))}
+                                title="Remove"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {pipelineForm.attachments.length > 0 && (
+                    <div className={pipelineForm.existingAttachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
+                      <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
+                      <ul className="space-y-1">
+                        {pipelineForm.attachments.map((file) => (
+                          <li key={file.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                            <span className="truncate">{file.name}</span>
+                            <button
+                              type="button"
+                              className="text-rose-600 shrink-0 hover:opacity-80"
+                              disabled={submitting}
+                              onClick={() => setPipelineForm((prev) => ({ ...prev, attachments: prev.attachments.filter((x) => x.name !== file.name) }))}
+                              title="Remove"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className={pipelineForm.existingAttachments.length > 0 || pipelineForm.attachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
+                    <button
+                      type="button"
+                      onClick={() => attachInputRef.current?.click()}
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
+                      style={{ color: '#A08149' }}
+                    >
+                      <Paperclip size={14} />
+                      Attach more
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <FormPageActions
+          onCancel={closePipelineModal}
+          onClear={clearPipelineForm}
+          showClear
+          onSave={() => void submitPipelineModal()}
+          busy={submitting}
+          saveLabel={pipelineModal === 'add' ? 'Submit' : 'Save changes'}
+        />
+      </FormPageShell>
+    );
+  }
 
   if (pipelineViewAll) {
     return (
       <div className="flex h-full flex-col overflow-hidden">
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-white px-5 py-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 py-2">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -511,55 +778,61 @@ export default function BusinessPipelineScreen({
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto px-5 py-4">
-          <table className={`${enj.table} min-w-[1000px] w-full bg-transparent text-[12px]`}>
-            <thead>
-              <tr className="bg-[rgba(225,227,236,1)]">
-                {(['Pipeline Name', 'Opportunity', 'Benefits', 'Potential Value', 'Client Name', 'Stage of Opportunity', 'Start Date', 'Tentative Closure', 'Action'] as const).map((h) => (
-                  <th key={h} className="whitespace-nowrap px-3 normal-case border-0 tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pagedViewAllRows.length === 0 ? (
-                <tr className="bg-transparent">
-                  <td colSpan={9} className="px-4 py-10 text-center text-xs text-gray-400 bg-transparent">
-                    No pipeline rows for this year and client. Adjust filters.
-                  </td>
+        <div className="flex-1 overflow-auto py-2">
+          <div className="min-w-0 overflow-x-auto bg-transparent">
+            <table className={`${enj.tableBrand} min-w-[1000px] w-full text-xs bg-transparent border-separate`}>
+              <thead>
+                <tr className="bg-[#E1E3EC]">
+                  <PipelineTableTh label="Pipeline Name" />
+                  <PipelineTableTh label="Opportunity" />
+                  <PipelineTableTh label="Benefits" />
+                  <PipelineTableTh label="Potential Value" />
+                  <PipelineTableTh label="Client Name" />
+                  <PipelineTableTh label="Stage of Opportunity" />
+                  <PipelineTableTh label="Start Date" />
+                  <PipelineTableTh label="Tentative Closure" />
+                  <PipelineTableTh label="Action" center />
                 </tr>
-              ) : (
-                pagedViewAllRows.map((row) => (
-                  <tr key={row.id} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0 rounded-l-[11.9px]">{row.pipelineName}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.name}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.benefit}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium tabular-nums text-[rgba(35,35,96,1)] border-0">{row.potentialValue}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.categoryName}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.stage}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.startDateLabel}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] font-medium text-[rgba(35,35,96,1)] border-0">{row.endDateLabel}</td>
-                    <td className="h-[46px] bg-white px-3 text-[12px] border-0 rounded-r-[11.9px]">
-                      <div className="flex items-center gap-2">
-                        <button type="button" title="View" onClick={() => setViewingRow(row)} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-primary">
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        {showPipelineActions && (
-                          <button type="button" title="Edit" onClick={() => openEditModal(row)} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-[#b28a44]">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
+              </thead>
+              <tbody>
+                {pagedViewAllRows.length === 0 ? (
+                  <tr className="bg-transparent">
+                    <td colSpan={9} className="bg-transparent px-4 py-6 text-center text-sm text-[#6B7280]">
+                      No pipeline rows for this year and client. Adjust filters.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  pagedViewAllRows.map((row) => (
+                    <tr key={row.id} className="border-0 bg-white rounded-[11.9px] transition-shadow hover:shadow-md">
+                      <td className={`${PIPELINE_TABLE_TD} rounded-l-[11.9px] font-medium`}>{row.pipelineName}</td>
+                      <td className={PIPELINE_TABLE_TD}>{row.name}</td>
+                      <td className={PIPELINE_TABLE_TD}>{row.benefit}</td>
+                      <td className={`${PIPELINE_TABLE_TD} tabular-nums`}>{row.potentialValue}</td>
+                      <td className={PIPELINE_TABLE_TD}>{row.categoryName}</td>
+                      <td className={PIPELINE_TABLE_TD}>{row.stage}</td>
+                      <td className={PIPELINE_TABLE_TD}>{row.startDateLabel}</td>
+                      <td className={PIPELINE_TABLE_TD}>{row.endDateLabel}</td>
+                      <td className={`${PIPELINE_TABLE_TD} rounded-r-[11.9px] text-center`}>
+                        <div className="flex items-center justify-center gap-2">
+                          <button type="button" title="View" onClick={() => setViewingRow(row)} className={PIPELINE_TABLE_ICON_BTN} aria-label="View pipeline">
+                            <Eye size={14} strokeWidth={2} aria-hidden />
+                          </button>
+                          {showPipelineActions && (
+                            <button type="button" title="Edit" onClick={() => openEditModal(row)} className={PIPELINE_TABLE_ICON_BTN} aria-label="Edit pipeline">
+                              <Pencil size={14} strokeWidth={2} aria-hidden />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="shrink-0 border-t border-gray-100 px-5 py-3">
+        <div className="shrink-0 py-2">
           <PagerBar
             page={viewAllPage}
             pageSize={VIEW_ALL_PAGE_SIZE}
@@ -629,283 +902,19 @@ export default function BusinessPipelineScreen({
           </div>
         )}
 
-        {/* Edit Modal (also accessible from View All screen) */}
-        {pipelineModal && showPipelineActions && (
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="pipeline-form-title"
-            onClick={() => closePipelineModal()}
-          >
-            <div
-              className="max-h-[min(100vh-2rem,720px)] w-full max-w-5xl overflow-y-auto rounded-xl bg-white shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-                <h2 id="pipeline-form-title" className="text-lg font-bold text-gray-900">
-                  {pipelineModal === 'add' ? 'Add Pipeline' : 'Edit Pipeline'}
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => closePipelineModal()}
-                  className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
-                  aria-label="Close"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="px-5 py-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <label className="flex min-w-0 flex-col gap-1">
-                    <ReqField label="Pipeline name" />
-                    <input
-                      className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
-                      value={pipelineForm.pipelineName}
-                      onChange={(e) => updateFormAndClearError('pipelineName', (f) => ({ ...f, pipelineName: e.target.value }))}
-                    />
-                    {pipelineErrors.pipelineName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.pipelineName}</p>}
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1">
-                    <ReqField label="Opportunity Name" />
-                    <input
-                      className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
-                      value={pipelineForm.opportunityName}
-                      onChange={(e) => updateFormAndClearError('opportunityName', (f) => ({ ...f, opportunityName: e.target.value }))}
-                    />
-                    {pipelineErrors.opportunityName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.opportunityName}</p>}
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1">
-                    <ReqField label="Potential Value" />
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm tabular-nums placeholder:text-gray-400"
-                      value={pipelineForm.potentialValue}
-                      onChange={(e) =>
-                        updateFormAndClearError('potentialValue', (f) => ({ ...f, potentialValue: sanitizePotentialValueInput(e.target.value) }))
-                      }
-                    />
-                    {pipelineErrors.potentialValue && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.potentialValue}</p>}
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1">
-                    <ReqField label="Tentative Closure" />
-                    <div className="relative">
-                      <input
-                        type="date"
-                        className="h-9 w-full rounded-md border border-gray-200 px-3 pr-9 text-sm [color-scheme:light]"
-                        value={pipelineForm.tentativeClosure}
-                        onChange={(e) => updateFormAndClearError('tentativeClosure', (f) => ({ ...f, tentativeClosure: e.target.value }))}
-                      />
-                    </div>
-                    {pipelineErrors.tentativeClosure && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.tentativeClosure}</p>}
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1">
-                    <ReqField label="Client Name" />
-                    <select
-                      className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-gray-100"
-                      value={pipelineForm.clientId}
-                      disabled={clientOptions.length === 0}
-                      onChange={(e) => updateFormAndClearError('clientId', (f) => ({ ...f, clientId: e.target.value }))}
-                    >
-                      <option value="">
-                        {clientOptions.length === 0 ? '— No clients available —' : '— Select a client —'}
-                      </option>
-                      {clientOptions.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    {pipelineErrors.clientId && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.clientId}</p>}
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1">
-                    <ReqField label="Stage of Opportunity" />
-                    <select
-                      className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800"
-                      value={pipelineForm.stage}
-                      onChange={(e) => updateFormAndClearError('stage', (f) => ({ ...f, stage: e.target.value }))}
-                    >
-                      <option value="">Select stage</option>
-                      {STAGE_OF_OPPORTUNITY_OPTIONS.filter(Boolean).map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                      {pipelineForm.stage &&
-                        !(STAGE_OF_OPPORTUNITY_OPTIONS as readonly string[]).includes(pipelineForm.stage) && (
-                          <option value={pipelineForm.stage}>{pipelineForm.stage}</option>
-                        )}
-                    </select>
-                    {pipelineErrors.stage && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.stage}</p>}
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1">
-                    <ReqField label="Benefits" />
-                    <input
-                      className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
-                      value={pipelineForm.benefits}
-                      onChange={(e) => updateFormAndClearError('benefits', (f) => ({ ...f, benefits: e.target.value }))}
-                    />
-                    {pipelineErrors.benefits && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.benefits}</p>}
-                  </label>
-                  <label className="flex min-w-0 flex-col gap-1">
-                    <ReqField label="Start Date" />
-                    <div className="relative">
-                      <input
-                        type="date"
-                        className="h-9 w-full rounded-md border border-gray-200 px-3 pr-9 text-sm [color-scheme:light]"
-                        value={pipelineForm.startDate}
-                        onChange={(e) => updateFormAndClearError('startDate', (f) => ({ ...f, startDate: e.target.value }))}
-                      />
-                    </div>
-                    {pipelineErrors.startDate && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.startDate}</p>}
-                  </label>
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <label className="text-[11px] font-medium text-secondary mb-1 block">Add attachments</label>
-                    <input
-                      ref={attachInputRef}
-                      type="file"
-                      className="sr-only"
-                      multiple
-                      onChange={(e) => {
-                        const files = e.target.files;
-                        if (files && files.length > 0) {
-                          const newFiles = Array.from(files);
-                          setPipelineForm((prev) => ({ ...prev, attachments: [...prev.attachments, ...newFiles] }));
-                          e.target.value = '';
-                        }
-                      }}
-                    />
-                    <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
-                      {pipelineForm.existingAttachments.length === 0 && pipelineForm.attachments.length === 0 ? (
-                        <div className="text-center">
-                          <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
-                          <button
-                            type="button"
-                            onClick={() => attachInputRef.current?.click()}
-                            disabled={submitting}
-                            className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
-                            style={{ color: '#A08149' }}
-                          >
-                            <Paperclip size={16} />
-                            Attach file
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {pipelineForm.existingAttachments.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-600 mb-2">Existing attachments</p>
-                              <ul className="space-y-1">
-                                {pipelineForm.existingAttachments.map((file) => (
-                                  <li key={file.id} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                                    <span className="truncate">{file.name}</span>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      <a
-                                        href={file.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-[#A08149] hover:opacity-80"
-                                        title="Download"
-                                      >
-                                        <Download size={16} />
-                                      </a>
-                                      <button
-                                        type="button"
-                                        className="text-rose-600 hover:opacity-80"
-                                        disabled={submitting}
-                                        onClick={() => setPipelineForm((prev) => ({ ...prev, existingAttachments: prev.existingAttachments.filter((x) => x.id !== file.id) }))}
-                                        title="Remove"
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
-                                    </div>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {pipelineForm.attachments.length > 0 && (
-                            <div className={pipelineForm.existingAttachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
-                              <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
-                              <ul className="space-y-1">
-                                {pipelineForm.attachments.map((file) => (
-                                  <li key={file.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                                    <span className="truncate">{file.name}</span>
-                                    <button
-                                      type="button"
-                                      className="text-rose-600 shrink-0 hover:opacity-80"
-                                      disabled={submitting}
-                                      onClick={() => setPipelineForm((prev) => ({ ...prev, attachments: prev.attachments.filter((x) => x.name !== file.name) }))}
-                                      title="Remove"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          <div className={pipelineForm.existingAttachments.length > 0 || pipelineForm.attachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
-                            <button
-                              type="button"
-                              onClick={() => attachInputRef.current?.click()}
-                              disabled={submitting}
-                              className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
-                              style={{ color: '#A08149' }}
-                            >
-                              <Paperclip size={14} />
-                              Attach more
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (attachInputRef.current) attachInputRef.current.value = '';
-                    if (pipelineModal === 'edit' && editFormBaseline.current) {
-                      setPipelineForm({ ...editFormBaseline.current });
-                    } else {
-                      resetAddForm();
-                    }
-                  }}
-                  disabled={submitting}
-                  className={`${enj.btnOutline} min-w-[5rem]`}
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void submitPipelineModal()}
-                  disabled={submitting}
-                  className={`${enj.btnPrimary} min-w-[5rem]`}
-                >
-                  {submitting ? 'Saving…' : pipelineModal === 'add' ? 'Submit' : 'Save changes'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
 
   return (
     <div className={enj.stack}>
-      <div className="flex items-center justify-between">
+      <div className={enj.screenToolbar}>
         <h1 className="enj-screen-header">{screenTitle}</h1>
         {showPipelineActions && (
           <button
             type="button"
             onClick={openAddModal}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#b28a44] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#9a7329]"
+            className={`${enj.btn} ${enj.btnPrimary} gap-1.5 px-3`}
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
             Add Pipeline
@@ -914,176 +923,200 @@ export default function BusinessPipelineScreen({
       </div>
 
       <section className={`chart-card ${enj.card} ${enj.cardPad}`}>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <h2 className="enj-screen-subheader">Projects</h2>
-            <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
-              <span>Year</span>
-              <select className={`${enj.control} h-8 !w-[5.5rem] text-sm text-gray-800`} value={year} onChange={(e) => setYear(Number(e.target.value))}>
-                {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </label>
-            <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
-              <span>Client</span>
-              <select className={`${enj.control} h-8 min-w-0 max-w-[10rem] text-sm text-gray-800`} value={category} onChange={(e) => setCategory(e.target.value)} title={category}>
-                {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-          </div>
-        </div>
         {loading ? <ScreenLoader className="min-h-[220px]" /> : null}
-        <div className={`grid grid-cols-1 gap-4 lg:grid-cols-[70%_30%] lg:items-start${loading ? ' hidden' : ''}`}>
+        <div className={`grid grid-cols-1 gap-3 lg:grid-cols-[70%_30%] lg:items-start${loading ? ' hidden' : ''}`}>
+          {/* Header row (both charts same height) */}
+          <div className="flex h-10 min-w-0 items-center justify-between gap-3 pr-4">
+            <h2 className="enj-screen-subheader">Projects</h2>
+            <div className="flex items-center gap-3 shrink-0">
+              <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
+                <span>Year</span>
+                <select
+                  className={`${enj.control} h-8 !w-[5.5rem] text-sm text-gray-800`}
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                >
+                  {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
+              <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
+                <span>Client</span>
+                <select
+                  className={`${enj.control} h-8 min-w-0 max-w-[10rem] text-sm text-gray-800`}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  title={category}
+                >
+                  {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+          <div className="flex h-10 min-w-0 items-center border-l border-gray-100 pl-4">
+            <h2 className="enj-screen-subheader">Pipeline Stage Of Opportunity</h2>
+          </div>
+
           {/* Bar chart with legends on the right */}
           <div className="flex items-center justify-center gap-4 min-w-0 pr-4">
-            <div className="flex-1 min-w-0">
-              {(() => {
-                const { yMax, yTicks, quarterLabels, counts, colors } = pipelineBarChart;
-                const plotLeft = 32, plotRight = 504, plotTop = 16, plotBottom = 140;
-                const plotH = plotBottom - plotTop;
-                const groupW = (plotRight - plotLeft) / 4;
-                const yScale = (v: number) => plotBottom - (v / yMax) * plotH;
-                return (
-                  <svg viewBox="0 0 544 175" className={enj.chartSvg} role="img">
-                    {yTicks.map((t) => {
-                      const y = yScale(t);
-                      return (
-                        <g key={t}>
-                          <line x1={plotLeft} x2={plotRight} y1={y} y2={y} stroke="#edf2f7" />
-                          <text x="26" y={y + 3} fontSize="8" fill="#94a3b8" textAnchor="end" className="tabular-nums">
-                            {Number.isInteger(t) ? t : t.toFixed(1).replace(/\.0$/, '')}
-                          </text>
-                        </g>
-                      );
-                    })}
-                    {quarterLabels.map((ql, g) => {
-                      const [v0, v1] = counts[g] ?? [0, 0];
-                      const cx0 = plotLeft + g * groupW;
-                      const pad = 0.10 * groupW;
-                      const inner = groupW - 2 * pad;
-                      const gap = 3;
-                      const barW = (inner - gap) / 2;
-                      const x0 = cx0 + pad;
-                      const x1 = x0 + barW + gap;
-                      return (
-                        <g key={ql}>
-                          <rect className="chart-bar" x={x0} y={yScale(v0)} width={barW} height={plotBottom - yScale(v0)} rx="2" fill={colors[0]} />
-                          <text x={x0 + barW / 2} y={yScale(v0) - 2} fontSize="7" textAnchor="middle" fill="#64748b" className="tabular-nums">{v0}</text>
-                          <rect className="chart-bar" x={x1} y={yScale(v1)} width={barW} height={plotBottom - yScale(v1)} rx="2" fill={colors[1]} />
-                          <text x={x1 + barW / 2} y={yScale(v1) - 2} fontSize="7" textAnchor="middle" fill="#64748b" className="tabular-nums">{v1}</text>
-                          <text x={cx0 + groupW / 2} y="160" fontSize="6.5" textAnchor="middle" fill="#94a3b8" transform={`rotate(-55 ${cx0 + groupW / 2} 160)`}>{ql}</text>
-                        </g>
-                      );
-                    })}
-                    <text x="530" y="88" fontSize="6.5" fill="#94a3b8" textAnchor="middle" transform="rotate(90,530,88)" className="uppercase tracking-wider">Timeline</text>
-                  </svg>
-                );
-              })()}
-            </div>
-            <div className="shrink-0 space-y-2 text-xs text-gray-600">
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: pipelineBarChart.colors[0] }} />
-                <span className="truncate max-w-[6rem]" title={pipelineBarChart.labelA}>{pipelineBarChart.labelA}</span>
+              <div className="flex-1 min-w-0">
+                {(() => {
+                  const { yMax, yTicks, quarterLabels, counts, series } = pipelineBarChart;
+                  const plotLeft = 32, plotRight = 504, plotTop = 16, plotBottom = 132;
+                  const plotH = plotBottom - plotTop;
+                  const groupW = (plotRight - plotLeft) / 4;
+                  const yScale = (v: number) => plotBottom - (v / yMax) * plotH;
+                  const axisLabelFs = 9;
+                  const valueLabelFs = 8;
+                  const quarterLabelFs = 7;
+                  const nSeries = Math.max(1, series.length);
+                  return (
+                    <svg viewBox="0 0 544 182" className={enj.chartSvg} role="img">
+                      {yTicks.map((t) => {
+                        const y = yScale(t);
+                        return (
+                          <g key={t}>
+                            <line x1={plotLeft} x2={plotRight} y1={y} y2={y} stroke="#edf2f7" />
+                            <text
+                              x="26"
+                              y={y + 3}
+                              fontSize={axisLabelFs}
+                              fontWeight="600"
+                              fill="#374151"
+                              textAnchor="end"
+                              className="tabular-nums"
+                            >
+                              {Number.isInteger(t) ? t : t.toFixed(1).replace(/\.0$/, '')}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      {quarterLabels.map((ql, g) => {
+                        const quarterVals = counts[g] ?? [];
+                        const cx0 = plotLeft + g * groupW;
+                        const pad = 0.08 * groupW;
+                        const inner = groupW - 2 * pad;
+                        const gap = Math.min(3, nSeries > 1 ? 2 : 0);
+                        const barW = Math.max(2, (inner - gap * (nSeries - 1)) / nSeries);
+                        const quarterShort = ql.replace(`-${year}`, '');
+                        return (
+                          <g key={ql}>
+                            {series.map((s, si) => {
+                              const v = quarterVals[si] ?? 0;
+                              const x = cx0 + pad + si * (barW + gap);
+                              const barH = plotBottom - yScale(v);
+                              return (
+                                <g key={`${ql}-${s.label}`}>
+                                  <rect
+                                    className="chart-bar"
+                                    x={x}
+                                    y={yScale(v)}
+                                    width={barW}
+                                    height={barH}
+                                    rx="2"
+                                    fill={s.color}
+                                  />
+                                  {v > 0 && barH >= 10 && (
+                                    <text
+                                      x={x + barW / 2}
+                                      y={yScale(v) - 3}
+                                      fontSize={valueLabelFs}
+                                      fontWeight="600"
+                                      textAnchor="middle"
+                                      fill="#1f2937"
+                                      className="tabular-nums"
+                                    >
+                                      {v}
+                                    </text>
+                                  )}
+                                </g>
+                              );
+                            })}
+                            <text x={cx0 + groupW / 2} y="168" fontSize={quarterLabelFs} fontWeight="600" textAnchor="middle" fill="#374151">{quarterShort}</text>
+                          </g>
+                        );
+                      })}
+                      <text x="530" y="88" fontSize={quarterLabelFs} fontWeight="600" fill="#374151" textAnchor="middle" transform="rotate(90,530,88)" className="uppercase tracking-wider">Timeline</text>
+                    </svg>
+                  );
+                })()}
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: pipelineBarChart.colors[1] }} />
-                <span className="truncate max-w-[6rem]" title={pipelineBarChart.labelB}>{pipelineBarChart.labelB}</span>
+              <div className="shrink-0 max-h-[168px] space-y-2 overflow-y-auto pr-1 text-[13px] font-semibold text-gray-700">
+                {pipelineBarChart.series.map((s) => (
+                  <div key={s.label} className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
+                    <span className="max-w-[7rem] truncate" title={s.label}>{s.label}</span>
+                  </div>
+                ))}
               </div>
-            </div>
           </div>
 
           {/* Donut chart */}
           <div className="flex flex-col min-w-0 pl-4 border-l border-gray-100">
-            <h2 className="enj-screen-subheader mb-2 self-start text-xs">Pipeline Stage of Opportunity</h2>
-            {donutData.total === 0 ? (
-              <p className="text-xs text-gray-400 mt-4">No data</p>
-            ) : (() => {
-              const cx = 55, cy = 55, R = 45, r = 35;
-              return (
-                <div className="flex flex-row items-center gap-3 w-full">
-                  <svg viewBox="0 0 110 110" className="w-[130px] shrink-0">
-                    {donutData.slices.map((slice) => {
-                      if (slice.angle === 0) return null;
-                      const x1 = cx + R * Math.cos(slice.startAngle);
-                      const y1 = cy + R * Math.sin(slice.startAngle);
-                      const x2 = cx + R * Math.cos(slice.startAngle + slice.angle);
-                      const y2 = cy + R * Math.sin(slice.startAngle + slice.angle);
-                      const ix1 = cx + r * Math.cos(slice.startAngle);
-                      const iy1 = cy + r * Math.sin(slice.startAngle);
-                      const ix2 = cx + r * Math.cos(slice.startAngle + slice.angle);
-                      const iy2 = cy + r * Math.sin(slice.startAngle + slice.angle);
-                      const large = slice.angle > Math.PI ? 1 : 0;
-                      const d = `M ${ix1} ${iy1} L ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${r} ${r} 0 ${large} 0 ${ix1} ${iy1} Z`;
-                      return (
-                        <g key={slice.label}>
-                          <path d={d} fill={slice.color} opacity={0.9} />
-                        </g>
-                      );
-                    })}
-                    <text x={cx} y={cy} fontSize="12" fontWeight="bold" fill="#1e2a4a" textAnchor="middle" dominantBaseline="central">{donutData.total}</text>
-                  </svg>
-                  <div className="min-w-0 space-y-2 text-xs text-gray-600">
-                    {donutData.slices.map((slice) => (
-                      <div key={`leg-${slice.label}`} className="flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: slice.color }} />
-                        <span className="truncate" title={slice.label}>{slice.label} ({slice.count})</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+            <div className="flex flex-1 items-center justify-center">
+              {donutData.total === 0 ? (
+                <p className="text-xs text-gray-400 mt-4">No data</p>
+              ) : (
+                <DonutChartCard
+                  slices={donutData.slices
+                    .filter((s) => s.count > 0)
+                    .map((s) => ({ label: s.label, value: s.count, color: s.color }))}
+                  chartSize="md"
+                  className="!rounded-lg !shadow-none !ring-0 w-full"
+                />
+              )}
+            </div>
           </div>
         </div>
       </section>
 
-      <section className={enj.card}>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100/90 px-4 py-3 sm:px-5">
-          <h2 className="enj-screen-subheader">Pipeline Details</h2>
+      <section className="bg-transparent">
+        <div className={`${enj.sectionToolbar} mb-4`}>
+          <h2 className={enj.sectionTitle}>Pipeline Details</h2>
           {filteredRows.length > 0 && (
-            <button type="button" onClick={() => setPipelineViewAll(true)} className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline">
+            <button type="button" onClick={() => setPipelineViewAll(true)} className={enj.sectionTextAction}>
               View All
             </button>
           )}
         </div>
-        <div className="overflow-x-auto">
-          <table className={`${enj.table} min-w-[900px] w-full text-[12px]`}>
+        <div className="min-w-0 overflow-x-auto bg-transparent">
+          <table className={`${enj.tableBrand} w-full min-w-[900px] text-xs bg-transparent border-separate`}>
             <thead>
-              <tr>
-                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Pipeline name</th>
-                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Benefits</th>
-                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Potential Value</th>
-                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Start Date</th>
-                <th className="min-w-[8rem] whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Client Name</th>
-                <th className="min-w-[7rem] whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Stage of Opportunity</th>
-                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Tentative Closure</th>
-                <th className="whitespace-nowrap normal-case tracking-normal" style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }}>Action</th>
+              <tr className="bg-[#E1E3EC]">
+                <PipelineTableTh label="Pipeline name" />
+                <PipelineTableTh label="Benefits" />
+                <PipelineTableTh label="Potential Value" />
+                <PipelineTableTh label="Start Date" />
+                <PipelineTableTh label="Client Name" />
+                <PipelineTableTh label="Stage of Opportunity" />
+                <PipelineTableTh label="Tentative Closure" />
+                <PipelineTableTh label="Action" center />
               </tr>
             </thead>
             <tbody>
               {pipelineDetailRows.length === 0 && !loading ? (
-                <tr>
-                  <td colSpan={tableColSpan} className={`px-4 py-10 text-center ${enj.caption}`}>
+                <tr className="bg-transparent">
+                  <td colSpan={tableColSpan} className="bg-transparent px-4 py-6 text-center text-sm text-[#6B7280]">
                     {showPipelineActions ? 'No pipeline rows for this year and client. Add a pipeline or adjust filters.' : 'No pipeline rows for this year and client. Adjust filters.'}
                   </td>
                 </tr>
               ) : (
                 pipelineDetailRows.map((row) => (
-                  <tr key={row.id} className="last:border-0">
-                    <td className="h-[52px] bg-white text-[12px] font-medium text-[rgba(35,35,96,1)] first:rounded-l-[10.44px]">{row.pipelineName}</td>
-                    <td className="h-[52px] bg-white text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.benefit}</td>
-                    <td className="h-[52px] bg-white text-[12px] font-medium tabular-nums text-[rgba(35,35,96,1)]">{row.potentialValue}</td>
-                    <td className="h-[52px] bg-white text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.startDateLabel}</td>
-                    <td className="h-[52px] bg-white text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.categoryName}</td>
-                    <td className="h-[52px] bg-white text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.stage}</td>
-                    <td className="h-[52px] bg-white text-[12px] font-medium text-[rgba(35,35,96,1)]">{row.endDateLabel}</td>
-                    <td className="h-[52px] bg-white text-[12px] last:rounded-r-[10.44px]">
-                      <div className="flex items-center gap-2">
-                        <button type="button" title="View" onClick={() => setViewingRow(row)} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-primary">
-                          <Eye className="h-3.5 w-3.5" />
+                  <tr key={row.id} className="border-0 bg-white rounded-[11.9px] transition-shadow hover:shadow-md">
+                    <td className={`${PIPELINE_TABLE_TD} rounded-l-[11.9px] font-medium`}>{row.pipelineName}</td>
+                    <td className={PIPELINE_TABLE_TD}>{row.benefit}</td>
+                    <td className={`${PIPELINE_TABLE_TD} tabular-nums`}>{row.potentialValue}</td>
+                    <td className={PIPELINE_TABLE_TD}>{row.startDateLabel}</td>
+                    <td className={PIPELINE_TABLE_TD}>{row.categoryName}</td>
+                    <td className={PIPELINE_TABLE_TD}>{row.stage}</td>
+                    <td className={PIPELINE_TABLE_TD}>{row.endDateLabel}</td>
+                    <td className={`${PIPELINE_TABLE_TD} rounded-r-[11.9px] text-center`}>
+                      <div className="flex items-center justify-center gap-2">
+                        <button type="button" title="View" onClick={() => setViewingRow(row)} className={PIPELINE_TABLE_ICON_BTN} aria-label="View pipeline">
+                          <Eye size={14} strokeWidth={2} aria-hidden />
                         </button>
                         {showPipelineActions && (
-                          <button type="button" title="Edit" onClick={() => openEditModal(row)} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-[#b28a44]">
-                            <Pencil className="h-3.5 w-3.5" />
+                          <button type="button" title="Edit" onClick={() => openEditModal(row)} className={PIPELINE_TABLE_ICON_BTN} aria-label="Edit pipeline">
+                            <Pencil size={14} strokeWidth={2} aria-hidden />
                           </button>
                         )}
                       </div>
@@ -1152,270 +1185,6 @@ export default function BusinessPipelineScreen({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {pipelineModal && showPipelineActions && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="pipeline-form-title"
-          onClick={() => closePipelineModal()}
-        >
-          <div
-            className="max-h-[min(100vh-2rem,720px)] w-full max-w-5xl overflow-y-auto rounded-xl bg-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-              <h2 id="pipeline-form-title" className="text-lg font-bold text-gray-900">
-                {pipelineModal === 'add' ? 'Add Pipeline' : 'Edit Pipeline'}
-              </h2>
-              <button
-                type="button"
-                onClick={() => closePipelineModal()}
-                className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
-                aria-label="Close"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="px-5 py-4">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <label className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Pipeline name" />
-                  <input
-                    className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
-                    value={pipelineForm.pipelineName}
-                    onChange={(e) => updateFormAndClearError('pipelineName', (f) => ({ ...f, pipelineName: e.target.value }))}
-                  />
-                  {pipelineErrors.pipelineName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.pipelineName}</p>}
-                </label>
-                <label className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Opportunity Name" />
-                  <input
-                    className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
-                    value={pipelineForm.opportunityName}
-                    onChange={(e) => updateFormAndClearError('opportunityName', (f) => ({ ...f, opportunityName: e.target.value }))}
-                  />
-                  {pipelineErrors.opportunityName && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.opportunityName}</p>}
-                </label>
-                <label className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Potential Value" />
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm tabular-nums placeholder:text-gray-400"
-                    value={pipelineForm.potentialValue}
-                    onChange={(e) =>
-                      updateFormAndClearError('potentialValue', (f) => ({ ...f, potentialValue: sanitizePotentialValueInput(e.target.value) }))
-                    }
-                  />
-                  {pipelineErrors.potentialValue && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.potentialValue}</p>}
-                </label>
-                <label className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Tentative Closure" />
-                  <div className="relative">
-                    <input
-                      type="date"
-                      className="h-9 w-full rounded-md border border-gray-200 px-3 pr-9 text-sm [color-scheme:light]"
-                      value={pipelineForm.tentativeClosure}
-                      onChange={(e) => updateFormAndClearError('tentativeClosure', (f) => ({ ...f, tentativeClosure: e.target.value }))}
-                    />
-                  </div>
-                  {pipelineErrors.tentativeClosure && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.tentativeClosure}</p>}
-                </label>
-                <label className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Client Name" />
-                  <select
-                    className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm disabled:cursor-not-allowed disabled:bg-gray-100"
-                    value={pipelineForm.clientId}
-                    disabled={clientOptions.length === 0}
-                    onChange={(e) => updateFormAndClearError('clientId', (f) => ({ ...f, clientId: e.target.value }))}
-                  >
-                    <option value="">
-                      {clientOptions.length === 0 ? '— No clients available —' : '— Select a client —'}
-                    </option>
-                    {clientOptions.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  {pipelineErrors.clientId && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.clientId}</p>}
-                </label>
-                <label className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Stage of Opportunity" />
-                  <select
-                    className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-800"
-                    value={pipelineForm.stage}
-                    onChange={(e) => updateFormAndClearError('stage', (f) => ({ ...f, stage: e.target.value }))}
-                  >
-                    <option value="">Select stage</option>
-                    {STAGE_OF_OPPORTUNITY_OPTIONS.filter(Boolean).map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                    {pipelineForm.stage &&
-                      !(STAGE_OF_OPPORTUNITY_OPTIONS as readonly string[]).includes(pipelineForm.stage) && (
-                        <option value={pipelineForm.stage}>{pipelineForm.stage}</option>
-                      )}
-                  </select>
-                  {pipelineErrors.stage && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.stage}</p>}
-                </label>
-                <label className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Benefits" />
-                  <input
-                    className="h-9 w-full rounded-md border border-gray-200 px-3 text-sm placeholder:text-gray-400"
-                    value={pipelineForm.benefits}
-                    onChange={(e) => updateFormAndClearError('benefits', (f) => ({ ...f, benefits: e.target.value }))}
-                  />
-                  {pipelineErrors.benefits && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.benefits}</p>}
-                </label>
-                <label className="flex min-w-0 flex-col gap-1">
-                  <ReqField label="Start Date" />
-                  <div className="relative">
-                    <input
-                      type="date"
-                      className="h-9 w-full rounded-md border border-gray-200 px-3 pr-9 text-sm [color-scheme:light]"
-                      value={pipelineForm.startDate}
-                      onChange={(e) => updateFormAndClearError('startDate', (f) => ({ ...f, startDate: e.target.value }))}
-                    />
-                  </div>
-                  {pipelineErrors.startDate && <p className="mt-1 text-[11px] text-rose-600">{pipelineErrors.startDate}</p>}
-                </label>
-                <div className="flex min-w-0 flex-col gap-1">
-                  <label className="text-[11px] font-medium text-secondary mb-1 block">Add attachments</label>
-                  <input
-                    ref={attachInputRef}
-                    type="file"
-                    className="sr-only"
-                    multiple
-                    onChange={(e) => {
-                      const files = e.target.files;
-                      if (files && files.length > 0) {
-                        const newFiles = Array.from(files);
-                        setPipelineForm((prev) => ({ ...prev, attachments: [...prev.attachments, ...newFiles] }));
-                        e.target.value = '';
-                      }
-                    }}
-                  />
-                  <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
-                    {pipelineForm.existingAttachments.length === 0 && pipelineForm.attachments.length === 0 ? (
-                      <div className="text-center">
-                        <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
-                        <button
-                          type="button"
-                          onClick={() => attachInputRef.current?.click()}
-                          disabled={submitting}
-                          className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
-                          style={{ color: '#A08149' }}
-                        >
-                          <Paperclip size={16} />
-                          Attach file
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {pipelineForm.existingAttachments.length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-gray-600 mb-2">Existing attachments</p>
-                            <ul className="space-y-1">
-                              {pipelineForm.existingAttachments.map((file) => (
-                                <li key={file.id} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                                  <span className="truncate">{file.name}</span>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <a
-                                      href={file.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-[#A08149] hover:opacity-80"
-                                      title="Download"
-                                    >
-                                      <Download size={16} />
-                                    </a>
-                                    <button
-                                      type="button"
-                                      className="text-rose-600 hover:opacity-80"
-                                      disabled={submitting}
-                                      onClick={() => setPipelineForm((prev) => ({ ...prev, existingAttachments: prev.existingAttachments.filter((x) => x.id !== file.id) }))}
-                                      title="Remove"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {pipelineForm.attachments.length > 0 && (
-                          <div className={pipelineForm.existingAttachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
-                            <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
-                            <ul className="space-y-1">
-                              {pipelineForm.attachments.map((file) => (
-                                <li key={file.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                                  <span className="truncate">{file.name}</span>
-                                  <button
-                                    type="button"
-                                    className="text-rose-600 shrink-0 hover:opacity-80"
-                                    disabled={submitting}
-                                    onClick={() => setPipelineForm((prev) => ({ ...prev, attachments: prev.attachments.filter((x) => x.name !== file.name) }))}
-                                    title="Remove"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        <div className={pipelineForm.existingAttachments.length > 0 || pipelineForm.attachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
-                          <button
-                            type="button"
-                            onClick={() => attachInputRef.current?.click()}
-                            disabled={submitting}
-                            className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
-                            style={{ color: '#A08149' }}
-                          >
-                            <Paperclip size={14} />
-                            Attach more
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (attachInputRef.current) attachInputRef.current.value = '';
-                  if (pipelineModal === 'edit' && editFormBaseline.current) {
-                    setPipelineForm({ ...editFormBaseline.current });
-                  } else {
-                    resetAddForm();
-                  }
-                }}
-                disabled={submitting}
-                className={`${enj.btnOutline} min-w-[5rem]`}
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={() => void submitPipelineModal()}
-                disabled={submitting}
-                className={`${enj.btnPrimary} min-w-[5rem]`}
-              >
-                {submitting ? 'Saving…' : pipelineModal === 'add' ? 'Submit' : 'Save changes'}
-              </button>
-            </div>
           </div>
         </div>
       )}

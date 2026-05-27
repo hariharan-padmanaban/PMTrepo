@@ -7,6 +7,7 @@ import type { New_tasksnew_taskstatus } from './generated/models/New_tasksModel'
 import type { ToastType } from './NotificationToast';
 import { ScreenLoader } from './ScreenLoader';
 import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
+import { DatePickerField } from './EnjDatePicker';
 import { enj } from './ui/enjForm';
 
 const TASK_STATUS_OPTIONS = ['To Do', 'In Progress', 'Delayed', 'Done'] as const;
@@ -708,14 +709,13 @@ export function ProjectTaskDetailView({
                       <span className="mb-1 block text-[11px] text-gray-500">
                         Sub Task Duration <span className="text-rose-500">*</span>
                       </span>
-                      <input
-                        type="date"
+                      <DatePickerField
                         className={`${enj.control} px-2 ${
                           subTaskErrors.duration ? 'border-rose-500 ring-1 ring-rose-200' : ''
                         }`}
                         value={subTaskDurationYmd}
-                        onChange={(e) => {
-                          setSubTaskDurationYmd(e.target.value);
+                        onChange={(v) => {
+                          setSubTaskDurationYmd(v);
                           setSubTaskErrors((o) => ({ ...o, duration: undefined }));
                         }}
                         disabled={subTaskSaving}
@@ -826,14 +826,13 @@ export function ProjectTaskDetailView({
                     </label>
                     <label className="block min-w-0">
                       <span className="mb-1 block text-[11px] text-gray-500">Sub Task Duration</span>
-                      <input
-                        type="date"
+                      <DatePickerField
                         className={`${enj.control} px-2 ${
                           editStErrors.duration ? 'border-rose-500 ring-1 ring-rose-200' : ''
                         }`}
                         value={editStDurationYmd}
-                        onChange={(e) => {
-                          setEditStDurationYmd(e.target.value);
+                        onChange={(v) => {
+                          setEditStDurationYmd(v);
                           setEditStErrors((o) => ({ ...o, duration: undefined }));
                         }}
                         disabled={editStSaving}

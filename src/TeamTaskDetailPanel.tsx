@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Paperclip, RefreshCw } from 'lucide-react';
+import { DatePickerField } from './EnjDatePicker';
 import { enj } from './ui/enjForm';
 import { New_tasksnew_taskstatus } from './generated/models/New_tasksModel';
 import { New_tasksService } from './generated/services/New_tasksService';
@@ -297,12 +298,11 @@ export function TeamTaskDetailPanel({ task, onBack, onRefreshWorkspace, onOpenSu
               <label className={labelGold}>
                 End Date <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="date"
-                className={`${inputBase} [color-scheme:light]`}
+              <DatePickerField
+                className={inputBase}
                 value={form.endDate}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, endDate: e.target.value }));
+                onChange={(v) => {
+                  setForm((f) => ({ ...f, endDate: v }));
                   setErrors((e0) => ({ ...e0, endDate: '' }));
                 }}
                 disabled={saving}

@@ -4,6 +4,7 @@
  */
 
 import { Calendar, Clock, List, Pencil, Trash2 } from 'lucide-react';
+import { enj } from './ui/enjForm';
 
 export type TaskBoardRow = Record<string, unknown>;
 
@@ -137,7 +138,7 @@ export function TasksScreenBoard({
         const colTasks = byBucket(col.bucket);
         return (
           <div key={col.name} className="flex w-full min-w-0 flex-col gap-3">
-            <div className="shrink-0 rounded-xl border border-gray-100 bg-white px-3 py-2 flex items-center justify-between">
+            <div className={`${enj.sectionToolbar} shrink-0 rounded-xl border border-gray-100 bg-white px-3 py-2`}>
               <p className="text-sm font-semibold text-primary">
                 {col.name}
                 <span className="ml-1 text-[10px] font-normal text-gray-400">({colTasks.length})</span>
@@ -145,7 +146,7 @@ export function TasksScreenBoard({
               {variant === 'team' && colTasks.length > 0 && (
                 <button
                   type="button"
-                  className="text-[10px] font-semibold text-blue-600 hover:underline"
+                  className={enj.sectionTextAction}
                   onClick={() => onViewAllStatus?.(col.name)}
                 >
                   View All

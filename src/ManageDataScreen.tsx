@@ -34,10 +34,13 @@ export default function ManageDataScreen({
   };
 
   return (
-    <section className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-      <h2 className="enj-screen-header shrink-0">Manage Data</h2>
-      <p className="mb-2 shrink-0 text-xs text-gray-600">Users, clients, vendors, sponsors, and master data in one place.</p>
-      <div className="mb-2 flex shrink-0 flex-wrap gap-1">
+    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+      <div className="mb-3 shrink-0 space-y-2.5">
+        <h2 className="enj-screen-header">Manage Data</h2>
+        <p className="text-xs leading-relaxed text-gray-600">
+          Users, clients, vendors, sponsors, and master data in one place.
+        </p>
+        <div className="flex flex-wrap gap-2.5">
         {(
           [
             { id: 'user' as const, label: 'Users' },
@@ -58,11 +61,12 @@ export default function ManageDataScreen({
             {label}
           </button>
         ))}
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {dataSection === 'user' && (
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col">
             <ManageUsersScreen
               rows={userRows}
               loading={userLoading}
@@ -73,7 +77,7 @@ export default function ManageDataScreen({
           </div>
         )}
         {dataSection === 'client' && (
-          <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col">
             {referenceSub === 'manage' ? (
               <ManageClientScreen onAddNew={() => setReferenceSub('add')} />
             ) : (
@@ -94,7 +98,7 @@ export default function ManageDataScreen({
           </div>
         )}
         {dataSection === 'vendor' && (
-          <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col">
             {referenceSub === 'manage' ? (
               <ManageVendorScreen onAddNew={() => setReferenceSub('add')} />
             ) : (
@@ -115,7 +119,7 @@ export default function ManageDataScreen({
           </div>
         )}
         {dataSection === 'sponsor' && (
-          <div className="min-h-0 flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col">
             {referenceSub === 'manage' ? (
               <ManageSponsorScreen onAddNew={() => setReferenceSub('add')} />
             ) : (
@@ -136,7 +140,7 @@ export default function ManageDataScreen({
           </div>
         )}
         {dataSection === 'master' && (
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col">
             <ManageMasterDataScreen embeddedInManageData />
           </div>
         )}

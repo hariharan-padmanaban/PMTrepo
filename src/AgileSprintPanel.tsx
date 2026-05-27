@@ -3,6 +3,7 @@ import { CalendarDays, ListFilter, Pencil, Plus, RefreshCw, Search, Share2, X } 
 import { New_sprintsService } from './generated/services/New_sprintsService';
 import { New_sprintissuesService } from './generated/services/New_sprintissuesService';
 import type { ToastType } from './NotificationToast';
+import { DatePickerField } from './EnjDatePicker';
 import { enj } from './ui/enjForm';
 import { PagerBar } from './PagerBar';
 
@@ -434,7 +435,7 @@ export function AgileSprintPanel({
 
   if (backlogSprintName) {
     return (
-      <section className="rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      <section className="rounded-xl bg-[#f5f6fb] p-0 flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-5 flex flex-1 flex-col">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">
@@ -443,7 +444,7 @@ export function AgileSprintPanel({
             </p>
             <button type="button" onClick={() => void loadData()} className="h-7 rounded border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-50">Refresh</button>
           </div>
-          <div className="mb-3 flex items-center justify-between">
+          <div className={`${enj.screenToolbar} mb-3`}>
             <div className="flex items-center gap-3">
               <p className="enj-screen-header">Backlog</p>
               <div className="relative">
@@ -458,7 +459,7 @@ export function AgileSprintPanel({
             </div>
             <button
               type="button"
-              className={`${enj.btnPrimary} !h-8 px-3 text-xs`}
+              className={`${enj.btn} ${enj.btnPrimary} px-3`}
               onClick={() => setShowCreateActivity(true)}
             >
               + Create Activity
@@ -560,21 +561,19 @@ export function AgileSprintPanel({
                 </div>
                 <div>
                   <label className="text-xs text-gray-600">Start Date</label>
-                  <input
-                    type="date"
+                  <DatePickerField
                     className={`mt-1 ${enj.control}`}
                     value={activityForm.startDate}
-                    onChange={(e) => setActivityForm((f) => ({ ...f, startDate: e.target.value }))}
+                    onChange={(v) => setActivityForm((f) => ({ ...f, startDate: v }))}
                   />
                   {activityErr.startDate && <p className="mt-1 text-[11px] text-rose-600">{activityErr.startDate}</p>}
                 </div>
                 <div>
                   <label className="text-xs text-gray-600">End Date</label>
-                  <input
-                    type="date"
+                  <DatePickerField
                     className={`mt-1 ${enj.control}`}
                     value={activityForm.endDate}
-                    onChange={(e) => setActivityForm((f) => ({ ...f, endDate: e.target.value }))}
+                    onChange={(v) => setActivityForm((f) => ({ ...f, endDate: v }))}
                   />
                   {activityErr.endDate && <p className="mt-1 text-[11px] text-rose-600">{activityErr.endDate}</p>}
                 </div>
@@ -606,7 +605,7 @@ export function AgileSprintPanel({
   }
 
   return (
-    <section className="rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
+    <section className="rounded-xl bg-[#f5f6fb] p-0 flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
       <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_15rem] overflow-hidden">
         <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-5 flex flex-col gap-3 overflow-y-auto">
           <div className="flex items-center justify-between">
@@ -622,7 +621,7 @@ export function AgileSprintPanel({
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className={enj.screenToolbar}>
             <p className="enj-screen-header">Agile</p>
             <div className="flex items-center gap-2">
               <div className="relative">
@@ -636,7 +635,7 @@ export function AgileSprintPanel({
               </div>
               <button
                 type="button"
-                className={`${enj.btnPrimary} !h-8 px-3 text-xs`}
+                className={`${enj.btn} ${enj.btnPrimary} px-3`}
                 onClick={() => setShowCreateSprint(true)}
               >
                 Create Sprint
@@ -878,21 +877,19 @@ export function AgileSprintPanel({
               </div>
               <div>
                 <label className="text-xs text-gray-600">Start Date</label>
-                <input
-                  type="date"
+                <DatePickerField
                   className={`mt-1 ${enj.control}`}
                   value={editForm.startDate}
-                  onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))}
+                  onChange={(v) => setEditForm((f) => ({ ...f, startDate: v }))}
                 />
                 {editErr.startDate && <p className="mt-1 text-[11px] text-rose-600">{editErr.startDate}</p>}
               </div>
               <div>
                 <label className="text-xs text-gray-600">End Date</label>
-                <input
-                  type="date"
+                <DatePickerField
                   className={`mt-1 ${enj.control}`}
                   value={editForm.endDate}
-                  onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))}
+                  onChange={(v) => setEditForm((f) => ({ ...f, endDate: v }))}
                 />
                 {editErr.endDate && <p className="mt-1 text-[11px] text-rose-600">{editErr.endDate}</p>}
               </div>
@@ -966,21 +963,19 @@ export function AgileSprintPanel({
               </div>
               <div>
                 <label className="text-xs text-gray-600">Start Date</label>
-                <input
-                  type="date"
+                <DatePickerField
                   className={`mt-1 ${enj.control}`}
                   value={createForm.startDate}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, startDate: e.target.value }))}
+                  onChange={(v) => setCreateForm((f) => ({ ...f, startDate: v }))}
                 />
                 {createErr.startDate && <p className="mt-1 text-[11px] text-rose-600">{createErr.startDate}</p>}
               </div>
               <div>
                 <label className="text-xs text-gray-600">End Date</label>
-                <input
-                  type="date"
+                <DatePickerField
                   className={`mt-1 ${enj.control}`}
                   value={createForm.endDate}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, endDate: e.target.value }))}
+                  onChange={(v) => setCreateForm((f) => ({ ...f, endDate: v }))}
                 />
                 {createErr.endDate && <p className="mt-1 text-[11px] text-rose-600">{createErr.endDate}</p>}
               </div>

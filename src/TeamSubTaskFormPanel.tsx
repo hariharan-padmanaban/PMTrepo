@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, Paperclip, X } from 'lucide-react';
 import type { ToastType } from './NotificationToast';
+import { DatePickerField } from './EnjDatePicker';
 import { ScreenLoader } from './ScreenLoader';
 import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
 import { New_subtasksService } from './generated/services/New_subtasksService';
@@ -398,12 +399,11 @@ export function TeamSubTaskFormPanel({ parentTask, onBack, onRefresh, onNotify, 
                     Due Date <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
-                    <input
-                      type="date"
+                    <DatePickerField
                       className={fieldDateCls}
                       value={dueDate}
-                      onChange={(e) => {
-                        setDueDate(e.target.value);
+                      onChange={(v) => {
+                        setDueDate(v);
                         setErrors((e0) => ({ ...e0, dueDate: '' }));
                       }}
                       disabled={saving}

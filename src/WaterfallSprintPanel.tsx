@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarDays, ListFilter, Pencil, RefreshCw, Search, Users } from 'lucide-react';
 import type { ToastType } from './NotificationToast';
 import { New_classicwaterfallsService } from './generated/services/New_classicwaterfallsService';
+import { DatePickerField } from './EnjDatePicker';
 import { enj } from './ui/enjForm';
 
 type ProjectRow = Record<string, unknown>;
@@ -266,7 +267,7 @@ export function WaterfallSprintPanel({
   };
 
   return (
-    <section className="rounded-xl p-3 sm:p-4 bg-[#f5f6fb] flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
+    <section className="rounded-xl bg-[#f5f6fb] p-0 flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden">
       <div className="grid h-full min-h-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_15rem]">
         <div className="min-h-0 rounded-xl border border-[#e4e7f1] bg-white p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -287,7 +288,7 @@ export function WaterfallSprintPanel({
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className={enj.screenToolbar}>
             <p className="text-xl font-semibold text-primary">Classic project</p>
             <div className="flex items-center gap-2">
               <div className="relative">
@@ -479,21 +480,19 @@ export function WaterfallSprintPanel({
               </div>
               <div>
                 <label className="text-xs text-primary">Start Date <span className="text-rose-600">*</span></label>
-                <input
-                  type="date"
+                <DatePickerField
                   className={`${enj.control} mt-1`}
                   value={taskForm.startDate}
-                  onChange={(e) => setTaskForm((f) => ({ ...f, startDate: e.target.value }))}
+                  onChange={(v) => setTaskForm((f) => ({ ...f, startDate: v }))}
                 />
                 {taskErr.startDate && <p className="mt-1 text-[11px] text-rose-600">{taskErr.startDate}</p>}
               </div>
               <div>
                 <label className="text-xs text-primary">End Date <span className="text-rose-600">*</span></label>
-                <input
-                  type="date"
+                <DatePickerField
                   className={`${enj.control} mt-1`}
                   value={taskForm.endDate}
-                  onChange={(e) => setTaskForm((f) => ({ ...f, endDate: e.target.value }))}
+                  onChange={(v) => setTaskForm((f) => ({ ...f, endDate: v }))}
                 />
                 {taskErr.endDate && <p className="mt-1 text-[11px] text-rose-600">{taskErr.endDate}</p>}
               </div>
@@ -559,12 +558,12 @@ export function WaterfallSprintPanel({
               </div>
               <div>
                 <label className="text-xs text-primary">Start Date <span className="text-rose-600">*</span></label>
-                <input type="date" className={`${enj.control} mt-1`} value={editForm.startDate} onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))} />
+                <DatePickerField className={`${enj.control} mt-1`} value={editForm.startDate} onChange={(v) => setEditForm((f) => ({ ...f, startDate: v }))} />
                 {editErr.startDate && <p className="mt-1 text-[11px] text-rose-600">{editErr.startDate}</p>}
               </div>
               <div>
                 <label className="text-xs text-primary">End Date <span className="text-rose-600">*</span></label>
-                <input type="date" className={`${enj.control} mt-1`} value={editForm.endDate} onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))} />
+                <DatePickerField className={`${enj.control} mt-1`} value={editForm.endDate} onChange={(v) => setEditForm((f) => ({ ...f, endDate: v }))} />
                 {editErr.endDate && <p className="mt-1 text-[11px] text-rose-600">{editErr.endDate}</p>}
               </div>
               <div>

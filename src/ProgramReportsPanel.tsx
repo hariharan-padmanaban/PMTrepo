@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Calendar, Paperclip, Pencil, Trash2, X, Download } from 'lucide-react';
+import { ArrowLeft, Calendar, Paperclip, Pencil, Trash2, Download } from 'lucide-react';
 import { PagerBar } from './PagerBar';
 import { enj } from './ui/enjForm';
 import { TABLE_STYLES } from './tableStyles';
@@ -20,6 +20,7 @@ import { uploadFilesForReport } from './services/reportFileUpload';
 import { fetchAttachments, type AttachmentFile } from './services/attachmentService';
 import type { ToastType } from './NotificationToast';
 import { AddReportFormPanel } from './AddReportFormPanel';
+import { FormFieldLabel, FormPageActions, FormPageShell } from './FormPageShell';
 import { buildProgramIdToNameMap, resolveProjectProgramName } from './programNameResolve';
 
 /** Dataverse `new_role` = Business (Users) — same as AddReportFormPanel assign list. */
@@ -36,14 +37,52 @@ function formatListNumber(n: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.round(n));
 }
 
+/** Fit axis/category labels in bar slot; append … when truncated. */
+function truncateChartLabel(text: string, maxWidthPx: number, fontSize = 9): string {
+  const avgCharPx = fontSize * 0.58;
+  const maxChars = Math.max(3, Math.floor(maxWidthPx / avgCharPx));
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(1, maxChars - 1))}…`;
+}
+
+function darkenHex(hex: string, factor = 0.82): string {
+  const h = hex.replace('#', '');
+  const r = Math.round(parseInt(h.slice(0, 2), 16) * factor);
+  const g = Math.round(parseInt(h.slice(2, 4), 16) * factor);
+  const b = Math.round(parseInt(h.slice(4, 6), 16) * factor);
+  return `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function ReportStatCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div
+      className="flex min-h-[4.5rem] min-w-0 flex-col items-center justify-center rounded-lg border-2 bg-white px-2 py-3 text-center shadow-sm"
+      style={{ borderColor: darkenHex(color) }}
+    >
+      <p className="text-[0.8rem] leading-tight text-gray-600">{label}</p>
+      <p className="mt-1 text-[1.8rem] font-semibold leading-none tabular-nums text-gray-900">
+        {formatListNumber(value)}
+      </p>
+    </div>
+  );
+}
+
 const FILTER_STATUS_OPTIONS = ['All', 'To Start', 'On Track', 'Completed', 'Delayed'] as const;
 const FILTER_TYPE_OPTIONS = ['All', 'Enhancement', 'New'] as const;
 
-function getProjectManagerDisplayFromProjectRow(p: Record<string, unknown> | undefined): string {
+function getProgramManagerDisplayFromProjectRow(p: Record<string, unknown> | undefined): string {
   if (!p) return '';
-  return String(
-    p.crcf8_projectmanager ?? p.new_programmanager ?? p.crcf8_projectmanagername ?? p.new_projectmanagername ?? p.new_programmanagername ?? '',
-  ).trim();
+  return String(p.new_programmanagername ?? p.new_programmanager ?? '').trim();
+}
+
+function getProjectManagerOnlyDisplayFromProjectRow(p: Record<string, unknown> | undefined): string {
+  if (!p) return '';
+  return String(p.new_projectmanagername ?? p.crcf8_projectmanagername ?? '').trim();
+}
+
+function getKpiDisplayFromProjectRow(p: Record<string, unknown> | undefined): string {
+  if (!p) return '';
+  return String(p.new_kpiname ?? p.new_kpi ?? '').trim();
 }
 
 /** Maps a project row to the fixed status labels used in the top filter. */
@@ -142,6 +181,9 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
   const [reportProjectFilter, setReportProjectFilter] = useState('All');
   const [reportTypeFilter, setReportTypeFilter] = useState('All');
   const [reportPmFilter, setReportPmFilter] = useState('All');
+  const [reportProjectMgrFilter, setReportProjectMgrFilter] = useState('All');
+  const [reportKpiFilter, setReportKpiFilter] = useState('All');
+  const [reportBudgetFilter, setReportBudgetFilter] = useState('All');
   const [reportStatusFilter, setReportStatusFilter] = useState('All');
   const [reportDurationFilter, setReportDurationFilter] = useState('All Dates');
   const [showReportViewAll, setShowReportViewAll] = useState(false);
@@ -237,7 +279,14 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         programs,
         projects: uniq(reportProjectsRows.map((r) => String(r.new_projectname ?? r.new_name ?? '').trim())),
         types: [...FILTER_TYPE_OPTIONS],
-        pms: uniq(reportProjectsRows.map((r) => getProjectManagerDisplayFromProjectRow(r)).filter((s) => s.length > 0)),
+        kpis: uniq(reportProjectsRows.map((r) => getKpiDisplayFromProjectRow(r)).filter((s) => s.length > 0)),
+        budgets: ['All', 'Has Budget', 'No Budget'],
+        programManagers: uniq(
+          reportProjectsRows.map((r) => getProgramManagerDisplayFromProjectRow(r)).filter((s) => s.length > 0),
+        ),
+        projectManagers: uniq(
+          reportProjectsRows.map((r) => getProjectManagerOnlyDisplayFromProjectRow(r)).filter((s) => s.length > 0),
+        ),
         statuses: [...FILTER_STATUS_OPTIONS],
       };
     } catch {
@@ -246,7 +295,10 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         programs: ['All'],
         projects: ['All'],
         types: [...FILTER_TYPE_OPTIONS],
-        pms: ['All'],
+        kpis: ['All'],
+        budgets: ['All', 'Has Budget', 'No Budget'],
+        programManagers: ['All'],
+        projectManagers: ['All'],
         statuses: [...FILTER_STATUS_OPTIONS],
       };
     }
@@ -273,13 +325,20 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         const program = resolveProjectProgramName(r, programIdToName);
         const project = String(r.new_projectname ?? r.new_name ?? '').trim();
         const type = canonicalTypeForFilter(r);
-        const pm = getProjectManagerDisplayFromProjectRow(r);
+        const programMgr = getProgramManagerDisplayFromProjectRow(r);
+        const projectMgr = getProjectManagerOnlyDisplayFromProjectRow(r);
+        const kpi = getKpiDisplayFromProjectRow(r);
+        const budget = Number(r.new_budget ?? 0);
         const status = canonicalStatusForFilter(r);
         if (reportSectorFilter !== 'All' && sector !== reportSectorFilter) return false;
         if (reportProgramFilter !== 'All' && program !== reportProgramFilter) return false;
         if (reportProjectFilter !== 'All' && project !== reportProjectFilter) return false;
+        if (reportKpiFilter !== 'All' && kpi !== reportKpiFilter) return false;
         if (reportTypeFilter !== 'All' && type !== reportTypeFilter) return false;
-        if (reportPmFilter !== 'All' && pm !== reportPmFilter) return false;
+        if (reportBudgetFilter === 'Has Budget' && !(Number.isFinite(budget) && budget > 0)) return false;
+        if (reportBudgetFilter === 'No Budget' && Number.isFinite(budget) && budget > 0) return false;
+        if (reportPmFilter !== 'All' && programMgr !== reportPmFilter) return false;
+        if (reportProjectMgrFilter !== 'All' && projectMgr !== reportProjectMgrFilter) return false;
         if (reportStatusFilter !== 'All' && status !== reportStatusFilter) return false;
         return inDuration(r);
       });
@@ -292,7 +351,10 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     reportProgramFilter,
     reportProjectFilter,
     reportTypeFilter,
+    reportKpiFilter,
+    reportBudgetFilter,
     reportPmFilter,
+    reportProjectMgrFilter,
     reportStatusFilter,
     reportDurationFilter,
     programIdToName,
@@ -304,7 +366,12 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
       const sectors = new Set(projects.map((p) => String(p.new_sectorname ?? p.new_sector ?? '').trim()).filter(Boolean)).size;
       const programs = new Set(projects.map((p) => resolveProjectProgramName(p, programIdToName)).filter((s) => s && s !== 'Unassigned')).size;
       const delayed = projects.filter((p) => String(p.new_projectstatusname ?? '').toLowerCase().includes('delay')).length;
-      const completed = projects.filter((p) => String(p.new_projectstatusname ?? '').toLowerCase().includes('complet')).length;
+      const completedPrograms = new Set(
+        projects
+          .filter((p) => String(p.new_projectstatusname ?? '').toLowerCase().includes('complet'))
+          .map((p) => resolveProjectProgramName(p, programIdToName))
+          .filter((s) => s && s !== 'Unassigned'),
+      ).size;
       /** `new_status` 100000002 = OnHold in Dataverse option set. */
       const onHold = projects.filter((p) => {
         const n = Number(p.new_status ?? NaN);
@@ -342,12 +409,12 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
       const totalBudget = Array.from(budgetBySector.values()).reduce((a, b) => a + b, 0);
       return {
         cards: [
-          { label: 'Sectors', value: sectors, color: '#b28a44' },
-          { label: 'Programs', value: programs, color: '#d65257' },
-          { label: 'Projects', value: projects.length, color: '#3b82f6' },
-          { label: 'Completed Projects', value: completed, color: '#7c2d12' },
-          { label: 'On Hold', value: onHold, color: '#e5a008' },
-          { label: 'Delayed Projects', value: delayed, color: '#0d9488' },
+          { label: 'Sectors', value: sectors, color: '#22c55e' },
+          { label: 'Delayed Projects', value: delayed, color: '#ef4444' },
+          { label: 'Programs', value: programs, color: '#3b82f6' },
+          { label: 'Projects', value: projects.length, color: '#eab308' },
+          { label: 'On Hold', value: onHold, color: '#ef4444' },
+          { label: 'Completed Programs', value: completedPrograms, color: '#3b82f6' },
         ],
         categorySlices: toSlices(categoryCounts),
         typeBars: Array.from(typeCounts.entries())
@@ -364,12 +431,12 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     } catch {
       return {
         cards: [
-          { label: 'Sectors', value: 0, color: '#b28a44' },
-          { label: 'Programs', value: 0, color: '#d65257' },
-          { label: 'Projects', value: 0, color: '#3b82f6' },
-          { label: 'Completed Projects', value: 0, color: '#7c2d12' },
-          { label: 'On Hold', value: 0, color: '#e5a008' },
-          { label: 'Delayed Projects', value: 0, color: '#0d9488' },
+          { label: 'Sectors', value: 0, color: '#22c55e' },
+          { label: 'Delayed Projects', value: 0, color: '#ef4444' },
+          { label: 'Programs', value: 0, color: '#3b82f6' },
+          { label: 'Projects', value: 0, color: '#eab308' },
+          { label: 'On Hold', value: 0, color: '#ef4444' },
+          { label: 'Completed Programs', value: 0, color: '#3b82f6' },
         ],
         categorySlices: [{ label: 'No Data', value: 1, color: '#cbd5e1' }],
         typeBars: [] as Array<[string, number]>,
@@ -679,156 +746,77 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
     void loadReportData();
   };
 
+  const closeEditReport = () => {
+    setShowEditReportModal(false);
+    setReportEditAttachmentFiles([]);
+    setReportEditExistingFiles([]);
+    setReportEditExistingAttachmentId('');
+  };
+
   if (!isActive) return null;
 
   if (showAddReportForm) {
     return <AddReportFormPanel onClose={handleCloseAdd} onNotify={onNotify} />;
   }
 
-  const reportViewAllTotalPages = Math.max(1, Math.ceil(filteredReportTableRows.length / REPORT_VIEW_ALL_PAGE_SIZE));
-  const pagedReportViewAllRows = filteredReportTableRows.slice(
-    (reportViewAllPage - 1) * REPORT_VIEW_ALL_PAGE_SIZE,
-    reportViewAllPage * REPORT_VIEW_ALL_PAGE_SIZE,
-  );
-
-  const reportTableRow = (row: (typeof filteredReportTableRows)[0], idx: number) => (
-    <tr key={`${row.reportTitle}-${idx}`} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
-      <td className={`${TABLE_STYLES.dataCell} rounded-l-[11.9px]`}>{row.reportTitle}</td>
-      <td className={TABLE_STYLES.dataCell}>{row.projectName}</td>
-      <td className={TABLE_STYLES.dataCell}>{row.reportType}</td>
-      <td className={TABLE_STYLES.dataCell}>{row.sector}</td>
-      <td className={TABLE_STYLES.dataCell}>
-        <div className="flex items-center gap-3">
+  if (showTableEdit && showEditReportModal) {
+    const reportFieldClass = `enj-add-project-field mt-1 ${enj.control}`;
+    return (
+      <FormPageShell parentLabel="Reports" onBack={closeEditReport} title="Edit Report">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-3">
           <div>
-            <p className="text-[10px] font-normal text-gray-500">Start Date</p>
-            <p className="flex items-center gap-1 text-[10px] font-medium text-gray-900">
-              <Calendar size={12} className="text-gray-400" />
-              {safeDateLabel(row.start)}
-            </p>
-          </div>
-          <div className="h-8 w-px bg-gray-200" />
-          <div>
-            <p className="text-[10px] font-normal text-gray-500">End Date</p>
-            <p className="flex items-center gap-1 text-[10px] font-medium text-gray-900">
-              <Calendar size={12} className="text-gray-400" />
-              {safeDateLabel(row.end)}
-            </p>
-          </div>
-        </div>
-      </td>
-      <td className={TABLE_STYLES.dataCell}>
-        <div className="w-[150px]">
-          <p className="mb-1 text-right text-[11px] text-gray-600">{row.progress}%</p>
-          <div className="enj-table-progress-track w-full max-w-[150px]">
-            <div className="enj-table-progress-fill" style={{ width: `${row.progress}%` }} />
-          </div>
-        </div>
-      </td>
-      <td className={TABLE_STYLES.dataCell}>
-        <span className={`inline-block min-w-[90px] text-center text-[11px] ${reportStatusBadge(String(row.status))}`}>
-          {row.status}
-        </span>
-      </td>
-      {showTableEdit && (
-        <td className={`${TABLE_STYLES.dataCell} sticky right-0 z-10 w-[1%] min-w-[3rem] whitespace-nowrap rounded-r-[11.9px]`}>
-          <button
-            type="button"
-            className={TABLE_STYLES.actionButton}
-            onClick={() => void openEditReport(row)}
-            title="Edit"
-          >
-            <Pencil size={14} className="shrink-0" />
-          </button>
-        </td>
-      )}
-    </tr>
-  );
-
-  const reportTableHead = (
-    <thead>
-      <tr style={{ backgroundColor: '#E1E3EC' }}>
-        <th style={reportHeaderStyle}>Report Title</th>
-        <th style={reportHeaderStyle}>Project Name</th>
-        <th style={reportHeaderStyle}>Report Type</th>
-        <th style={reportHeaderStyle}>Sector</th>
-        <th style={reportHeaderStyle}>Schedule</th>
-        <th style={reportHeaderStyle}>Progress Level</th>
-        <th style={reportHeaderStyle}>Status</th>
-        {showTableEdit && (
-          <th style={reportHeaderStyle} className="sticky right-0 z-20 w-[1%] min-w-[3rem] whitespace-nowrap" />
-        )}
-      </tr>
-    </thead>
-  );
-
-  const editReportModal = showTableEdit && showEditReportModal ? (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/35 px-4">
-      <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <h3 className="enj-screen-subheader">Edit Report</h3>
-          <button
-            type="button"
-            className="rounded-md p-1 text-2xl leading-none text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-            onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); setReportEditExistingAttachmentId(''); }}
-            aria-label="Close"
-          >
-            <X size={20} strokeWidth={2} />
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-3">
-          <label>
-            <span className="text-[11px] text-gray-500">Program Name *</span>
-            <select className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm" value={reportEditForm.programName} onChange={(e) => setReportEditForm((f) => ({ ...f, programName: e.target.value }))}>
+            <FormFieldLabel label="Program Name" required />
+            <select className={reportFieldClass} value={reportEditForm.programName} onChange={(e) => setReportEditForm((f) => ({ ...f, programName: e.target.value }))}>
               <option value="">Select Program</option>
               {reportEditProgramOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
             </select>
-          </label>
-          <label>
-            <span className="text-[11px] text-gray-500">Report Title *</span>
-            <input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={reportEditForm.reportTitle} onChange={(e) => setReportEditForm((f) => ({ ...f, reportTitle: e.target.value }))} />
-          </label>
-          <label>
-            <span className="text-[11px] text-gray-500">Project Name *</span>
-            <select className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm" value={reportEditForm.projectName} onChange={(e) => setReportEditForm((f) => ({ ...f, projectName: e.target.value }))}>
+          </div>
+          <div>
+            <FormFieldLabel label="Report Title" required />
+            <input className={reportFieldClass} value={reportEditForm.reportTitle} onChange={(e) => setReportEditForm((f) => ({ ...f, reportTitle: e.target.value }))} />
+          </div>
+          <div>
+            <FormFieldLabel label="Project Name" required />
+            <select className={reportFieldClass} value={reportEditForm.projectName} onChange={(e) => setReportEditForm((f) => ({ ...f, projectName: e.target.value }))}>
               <option value="">Select Project</option>
               {reportEditProjectOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
             </select>
-          </label>
-          <label>
-            <span className="text-[11px] text-gray-500">Sector *</span>
-            <input className="mt-1 h-9 w-full rounded-md border border-gray-200 px-3 text-sm" value={reportEditForm.sector} onChange={(e) => setReportEditForm((f) => ({ ...f, sector: e.target.value }))} />
-          </label>
-          <label>
-            <span className="text-[11px] text-gray-500">Report Type *</span>
-            <select className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm" value={reportEditForm.reportType} onChange={(e) => setReportEditForm((f) => ({ ...f, reportType: e.target.value }))}>
+          </div>
+          <div>
+            <FormFieldLabel label="Sector" required />
+            <input className={reportFieldClass} value={reportEditForm.sector} onChange={(e) => setReportEditForm((f) => ({ ...f, sector: e.target.value }))} />
+          </div>
+          <div>
+            <FormFieldLabel label="Report Type" required />
+            <select className={reportFieldClass} value={reportEditForm.reportType} onChange={(e) => setReportEditForm((f) => ({ ...f, reportType: e.target.value }))}>
               <option value="">Select Report Type</option>
               {Array.from(new Set([...reportTypeMasterOptions, reportEditForm.reportType].filter(Boolean))).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
             </select>
-          </label>
-          <label>
-            <span className="text-[11px] text-gray-500">Program Status *</span>
-            <select className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm" value={reportEditForm.programStatus} onChange={(e) => setReportEditForm((f) => ({ ...f, programStatus: e.target.value }))}>
+          </div>
+          <div>
+            <FormFieldLabel label="Program Status" required />
+            <select className={reportFieldClass} value={reportEditForm.programStatus} onChange={(e) => setReportEditForm((f) => ({ ...f, programStatus: e.target.value }))}>
               <option value="">Select Program Status</option>
               {reportEditProgramStatusOptions.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
             </select>
-          </label>
-          <label>
-            <span className="text-[11px] text-gray-500">Assign to Manager/Member *</span>
-            <select className="mt-1 h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-sm" value={reportEditForm.assigneeEmail} onChange={(e) => setReportEditForm((f) => ({ ...f, assigneeEmail: e.target.value }))}>
+          </div>
+          <div>
+            <FormFieldLabel label="Assign to Manager/Member" required />
+            <select className={reportFieldClass} value={reportEditForm.assigneeEmail} onChange={(e) => setReportEditForm((f) => ({ ...f, assigneeEmail: e.target.value }))}>
               <option value="">Select Team Member Email</option>
               {Array.from(new Set([...reportAssigneeEmailOptions, reportEditForm.assigneeEmail].filter(Boolean))).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
             </select>
-          </label>
-          <label className="md:col-span-1">
-            <span className="text-[11px] text-gray-500">Summary *</span>
-            <textarea className="mt-1 h-20 w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-sm" value={reportEditForm.summary} onChange={(e) => setReportEditForm((f) => ({ ...f, summary: e.target.value }))} />
-          </label>
-          <label className="md:col-span-1">
-            <span className="text-[11px] text-gray-500">Remark *</span>
-            <textarea className="mt-1 h-20 w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-sm" value={reportEditForm.remark} onChange={(e) => setReportEditForm((f) => ({ ...f, remark: e.target.value }))} />
-          </label>
-          <label className="md:col-span-3">
-            <span className="text-[11px] font-medium text-secondary mb-1 block">Add attachments</span>
+          </div>
+          <div>
+            <FormFieldLabel label="Summary" required />
+            <textarea className={`${reportFieldClass} h-20 resize-none`} value={reportEditForm.summary} onChange={(e) => setReportEditForm((f) => ({ ...f, summary: e.target.value }))} />
+          </div>
+          <div>
+            <FormFieldLabel label="Remark" required />
+            <textarea className={`${reportFieldClass} h-20 resize-none`} value={reportEditForm.remark} onChange={(e) => setReportEditForm((f) => ({ ...f, remark: e.target.value }))} />
+          </div>
+          <div className="md:col-span-3">
+            <FormFieldLabel label="Add attachments" />
             <input
               ref={reportEditFileInputRef}
               type="file"
@@ -840,7 +828,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                 e.target.value = '';
               }}
             />
-            <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
+            <div className="enj-add-project-attachments mt-1 rounded-lg border border-[#ADACB4] bg-white p-4">
               {reportEditExistingFiles.length === 0 && reportEditAttachmentFiles.length === 0 ? (
                 <div className="text-center">
                   <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
@@ -925,16 +913,95 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                 </div>
               )}
             </div>
-          </label>
+          </div>
         </div>
-        {reportEditError && <p className="px-5 pb-2 text-xs text-rose-600">{reportEditError}</p>}
-        <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-4">
-          <button type="button" onClick={() => { setShowEditReportModal(false); setReportEditAttachmentFiles([]); setReportEditExistingFiles([]); setReportEditExistingAttachmentId(''); }} className={enj.btnOutline} disabled={reportEditBusy}>Cancel</button>
-          <button type="button" onClick={() => void saveEditedReport()} className={enj.btnPrimary} disabled={reportEditBusy}>{reportEditBusy ? 'Saving...' : 'Save'}</button>
+        {reportEditError && <p className="mt-2 text-xs text-rose-600">{reportEditError}</p>}
+        <FormPageActions
+          onCancel={closeEditReport}
+          onSave={() => void saveEditedReport()}
+          busy={reportEditBusy}
+          saveLabel="Save"
+        />
+      </FormPageShell>
+    );
+  }
+
+  const reportViewAllTotalPages = Math.max(1, Math.ceil(filteredReportTableRows.length / REPORT_VIEW_ALL_PAGE_SIZE));
+  const pagedReportViewAllRows = filteredReportTableRows.slice(
+    (reportViewAllPage - 1) * REPORT_VIEW_ALL_PAGE_SIZE,
+    reportViewAllPage * REPORT_VIEW_ALL_PAGE_SIZE,
+  );
+
+  const reportTableRow = (row: (typeof filteredReportTableRows)[0], idx: number) => (
+    <tr key={`${row.reportTitle}-${idx}`} className="bg-white rounded-[11.9px] hover:shadow-md transition-shadow border-0">
+      <td className={`${TABLE_STYLES.dataCell} rounded-l-[11.9px]`}>{row.reportTitle}</td>
+      <td className={TABLE_STYLES.dataCell}>{row.projectName}</td>
+      <td className={TABLE_STYLES.dataCell}>{row.reportType}</td>
+      <td className={TABLE_STYLES.dataCell}>{row.sector}</td>
+      <td className={TABLE_STYLES.dataCell}>
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="text-[10px] font-normal text-gray-500">Start Date</p>
+            <p className="flex items-center gap-1 text-[10px] font-medium text-gray-900">
+              <Calendar size={12} className="text-gray-400" />
+              {safeDateLabel(row.start)}
+            </p>
+          </div>
+          <div className="h-8 w-px bg-gray-200" />
+          <div>
+            <p className="text-[10px] font-normal text-gray-500">End Date</p>
+            <p className="flex items-center gap-1 text-[10px] font-medium text-gray-900">
+              <Calendar size={12} className="text-gray-400" />
+              {safeDateLabel(row.end)}
+            </p>
+          </div>
         </div>
-      </div>
-    </div>
-  ) : null;
+      </td>
+      <td className={TABLE_STYLES.dataCell}>
+        <div className="w-[150px]">
+          <p className="mb-1 text-right text-[11px] text-gray-600">{row.progress}%</p>
+          <div className="enj-table-progress-track w-full max-w-[150px]">
+            <div className="enj-table-progress-fill" style={{ width: `${row.progress}%` }} />
+          </div>
+        </div>
+      </td>
+      <td className={TABLE_STYLES.dataCell}>
+        <span className={`inline-block min-w-[90px] text-center text-[11px] ${reportStatusBadge(String(row.status))}`}>
+          {row.status}
+        </span>
+      </td>
+      {showTableEdit && (
+        <td className={`${TABLE_STYLES.dataCell} sticky right-0 z-10 w-[1%] min-w-[3rem] whitespace-nowrap rounded-r-[11.9px]`}>
+          <button
+            type="button"
+            className={TABLE_STYLES.actionButton}
+            onClick={() => void openEditReport(row)}
+            title="Edit"
+          >
+            <Pencil size={14} className="shrink-0" />
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+
+  const reportTableHead = (
+    <thead>
+      <tr style={{ backgroundColor: '#E1E3EC' }}>
+        <th style={reportHeaderStyle}>Report Title</th>
+        <th style={reportHeaderStyle}>Project Name</th>
+        <th style={reportHeaderStyle}>Report Type</th>
+        <th style={reportHeaderStyle}>Sector</th>
+        <th style={reportHeaderStyle}>Schedule</th>
+        <th style={reportHeaderStyle}>Progress Level</th>
+        <th style={reportHeaderStyle}>Status</th>
+        {showTableEdit && (
+          <th style={reportHeaderStyle} className="sticky right-0 z-20 w-[1%] min-w-[3rem] whitespace-nowrap" />
+        )}
+      </tr>
+    </thead>
+  );
+
 
   if (showReportViewAll) {
     return (
@@ -975,27 +1042,29 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
             onNext={() => setReportViewAllPage((p) => Math.min(reportViewAllTotalPages, p + 1))}
           />
         </div>
-        {editReportModal}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className="flex items-center justify-between shrink-0">
+    <div className="flex w-full flex-col gap-4 pb-4">
+      <section className={enj.screenToolbar}>
         <h2 className="enj-screen-header">Reports</h2>
-        <div className="flex items-center gap-2">
+        <div className={enj.screenToolbarActions}>
           {showTableEdit && (
             <>
               <button
                 type="button"
-                className="h-8 rounded-md border border-gray-200 bg-white px-4 text-xs text-gray-600"
+                className={`${enj.btn} ${enj.btnDefault} px-3`}
                 onClick={() => {
                   setReportSectorFilter('All');
                   setReportProgramFilter('All');
                   setReportProjectFilter('All');
+                  setReportKpiFilter('All');
                   setReportTypeFilter('All');
+                  setReportBudgetFilter('All');
                   setReportPmFilter('All');
+                  setReportProjectMgrFilter('All');
                   setReportStatusFilter('All');
                   setReportDurationFilter('All Dates');
                   void loadReportData();
@@ -1005,7 +1074,7 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
               </button>
               <button
                 type="button"
-                className={`${enj.btnPrimary} !h-8`}
+                className={enj.btnPrimary}
                 onClick={() => setShowAddReportForm(true)}
               >
                 Create a Report
@@ -1014,171 +1083,80 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
           )}
         </div>
       </section>
-      <section className="rounded-xl bg-white p-3 shadow-sm">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
-          <div>
-            <p className="mb-1 text-[10px] text-gray-400">Sector</p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-10">
+        {(
+          [
+            { label: 'Sector', value: reportSectorFilter, onChange: setReportSectorFilter, options: reportFilterOptions.sectors },
+            { label: 'Program', value: reportProgramFilter, onChange: setReportProgramFilter, options: reportFilterOptions.programs },
+            { label: 'Project', value: reportProjectFilter, onChange: setReportProjectFilter, options: reportFilterOptions.projects },
+            { label: 'KPI', value: reportKpiFilter, onChange: setReportKpiFilter, options: reportFilterOptions.kpis },
+            { label: 'Type', value: reportTypeFilter, onChange: setReportTypeFilter, options: reportFilterOptions.types },
+            { label: 'Budget', value: reportBudgetFilter, onChange: setReportBudgetFilter, options: reportFilterOptions.budgets },
+            {
+              label: 'Program Manager',
+              value: reportPmFilter,
+              onChange: setReportPmFilter,
+              options: reportFilterOptions.programManagers,
+            },
+            {
+              label: 'Project Manager',
+              value: reportProjectMgrFilter,
+              onChange: setReportProjectMgrFilter,
+              options: reportFilterOptions.projectManagers,
+            },
+            {
+              label: 'Duration',
+              value: reportDurationFilter,
+              onChange: setReportDurationFilter,
+              options: ['All Dates', 'This Month', 'This Quarter', 'This Year'],
+            },
+            { label: 'Status', value: reportStatusFilter, onChange: setReportStatusFilter, options: reportFilterOptions.statuses },
+          ] as const
+        ).map(({ label, value, onChange, options }) => (
+          <div key={label} className="min-w-0">
+            <p className="mb-1 text-[10px] font-normal text-gray-500">{label}</p>
             <select
-              value={reportSectorFilter}
-              onChange={(e) => setReportSectorFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              className={`${enj.control} !h-8 !min-h-8 !max-h-8 !bg-white !px-2 !text-[10px] !text-gray-600`}
             >
-              {reportFilterOptions.sectors.map((v) => (
+              {options.map((v) => (
                 <option key={v} value={v}>
                   {v}
                 </option>
               ))}
             </select>
           </div>
-          <div>
-            <p className="mb-1 text-[10px] text-gray-400">Program</p>
-            <select
-              value={reportProgramFilter}
-              onChange={(e) => setReportProgramFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
-            >
-              {reportFilterOptions.programs.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <p className="mb-1 text-[10px] text-gray-400">Project</p>
-            <select
-              value={reportProjectFilter}
-              onChange={(e) => setReportProjectFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
-            >
-              {reportFilterOptions.projects.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <p className="mb-1 text-[10px] text-gray-400">Type</p>
-            <select
-              value={reportTypeFilter}
-              onChange={(e) => setReportTypeFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
-            >
-              {reportFilterOptions.types.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <p className="mb-1 text-[10px] text-gray-400">Program Manager</p>
-            <select
-              value={reportPmFilter}
-              onChange={(e) => setReportPmFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
-            >
-              {reportFilterOptions.pms.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <p className="mb-1 text-[10px] text-gray-400">Status</p>
-            <select
-              value={reportStatusFilter}
-              onChange={(e) => setReportStatusFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
-            >
-              {reportFilterOptions.statuses.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <p className="mb-1 text-[10px] text-gray-400">Duration</p>
-            <select
-              value={reportDurationFilter}
-              onChange={(e) => setReportDurationFilter(e.target.value)}
-              className="h-8 w-full rounded-md border border-gray-200 bg-gray-50 pl-2 pr-6 text-[10px] text-gray-600 truncate overflow-hidden"
-            >
-              <option>All Dates</option>
-              <option>This Month</option>
-              <option>This Quarter</option>
-              <option>This Year</option>
-            </select>
-          </div>
-        </div>
-      </section>
-      <section className="flex flex-wrap gap-3">
+        ))}
+      </div>
+      <section className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {reportDashboardStats.cards.map((card) => (
-          <div
-            key={card.label}
-            className="min-w-[140px] flex-1 rounded-xl border bg-white p-4 text-center shadow-sm"
-            style={{ borderColor: card.color, borderWidth: 1, borderStyle: 'solid' }}
-          >
-            <p className="text-sm font-medium text-gray-900">{card.label}</p>
-            <p className="mt-2 text-3xl font-bold tabular-nums text-gray-900">{card.value}</p>
-          </div>
+          <ReportStatCard key={card.label} label={card.label} value={card.value} color={card.color} />
         ))}
       </section>
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div className="chart-card flex min-h-[280px] flex-col rounded-xl bg-white p-3 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-800">Project category</h3>
-          <div className="mt-2 flex min-h-0 flex-1 flex-col items-stretch gap-2 sm:flex-row sm:items-start">
-            <div className="mx-auto flex shrink-0 justify-center">
+      <section className="grid w-full grid-cols-1 items-stretch gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="chart-card flex h-full min-h-[248px] flex-col rounded-xl bg-white p-3 shadow-sm">
+          <h3 className="shrink-0 text-sm font-semibold text-gray-800">Project category</h3>
+          <div className="mt-2 flex min-h-0 flex-1 items-center justify-center overflow-visible">
               <DonutChart
-                className="chart-svg h-48 w-48"
-                showOuterLabels={false}
+                className="chart-svg h-44 w-44 shrink-0"
+                showOuterLabels
                 ringWidth={40}
                 slices={reportDashboardStats.categorySlices}
                 centerText={String(reportDashboardStats.filterMeta.projectCount)}
                 centerSubtext={reportDashboardStats.filterMeta.projectCount === 1 ? 'project' : 'projects'}
                 labelColor="#64748b"
+                fontScale={0.82}
               />
-            </div>
-            <ul className="w-full min-w-0 space-y-1.5 sm:max-h-44 sm:overflow-y-auto sm:pt-0.5">
-              {reportDashboardStats.filterMeta.projectCount === 0 ? (
-                <li className="rounded-md border border-amber-200 bg-amber-50/80 px-2 py-1.5 text-[10px] text-amber-900">
-                  No projects match the filters — set filters to <span className="font-semibold">All</span> or adjust
-                  duration to see category split.
-                </li>
-              ) : (
-                reportDashboardStats.categorySlices
-                  .filter((s) => s.label !== 'No Data')
-                  .map((slice) => (
-                    <li
-                      key={slice.label}
-                      className="flex items-center justify-between gap-2 text-[10px] text-gray-600"
-                    >
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <span
-                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                          style={{ backgroundColor: slice.color }}
-                          aria-hidden
-                        />
-                        <span className="truncate text-gray-700">{slice.label}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums font-semibold text-gray-800">
-                        {formatListNumber(slice.value)}
-                      </span>
-                    </li>
-                  ))
-              )}
-            </ul>
           </div>
         </div>
-        <div className="chart-card flex min-h-[280px] flex-col rounded-xl bg-white p-3 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-800">Project type</h3>
-          <div className="mt-1 min-w-0 flex-1">
-            <svg viewBox="0 0 240 188" className="chart-svg h-44 w-full" role="img" aria-label="Project type counts">
+        <div className="chart-card flex h-full min-h-[248px] flex-col rounded-xl bg-white p-3 shadow-sm">
+          <h3 className="shrink-0 text-sm font-semibold text-gray-800">Project type</h3>
+          <div className="mt-2 flex min-h-0 flex-1 items-center justify-center min-w-0">
+            <svg viewBox="0 0 260 200" className="chart-svg h-full min-h-[200px] w-full max-h-[220px]" role="img" aria-label="Project type counts">
               {(() => {
+                const labelFs = 9;
                 const bars: Array<[string, number]> =
                   reportDashboardStats.typeBars.length > 0
                     ? reportDashboardStats.typeBars
@@ -1187,11 +1165,14 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                   reportDashboardStats.filterMeta.projectCount === 0 || reportDashboardStats.typeBars.length === 0;
                 const max = isEmpty ? 1 : Math.max(1, ...bars.map(([, v]) => v));
                 const total = bars.filter(([n]) => n !== 'No data').reduce((s, [, v]) => s + v, 0) || 0;
-                const y0 = 148;
-                const hMax = 100;
+                const y0 = 168;
+                const hMax = 128;
                 const x0 = 40;
-                const barW = 14;
-                const gap = 22;
+                const plotRight = 240;
+                const n = bars.length;
+                const innerW = plotRight - x0 - 16;
+                const gap = Math.min(24, n > 1 ? innerW / (n * 4) : 0);
+                const barW = Math.max(16, Math.min(28, (innerW - gap * (n - 1)) / Math.max(1, n)));
                 const tickVals = [0, 0.25, 0.5, 0.75, 1].map((p) => Math.round(max * p));
                 return (
                   <>
@@ -1199,12 +1180,19 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                       <g key={`g-${i}`}>
                         <line
                           x1={x0}
-                          x2={220}
+                          x2={plotRight}
                           y1={y0 - (i / 4) * hMax}
                           y2={y0 - (i / 4) * hMax}
                           stroke="#f1f5f9"
                         />
-                        <text x="28" y={4 + y0 - (i / 4) * hMax} fontSize="7" textAnchor="end" fill="#94a3b8">
+                        <text
+                          x="28"
+                          y={4 + y0 - (i / 4) * hMax}
+                          fontSize={labelFs}
+                          fontWeight="600"
+                          textAnchor="end"
+                          fill="#374151"
+                        >
                           {tv}
                         </text>
                       </g>
@@ -1212,9 +1200,16 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                     {bars.map(([name, v], i) => {
                       const nh = isEmpty || name === 'No data' ? 0 : (v / max) * hMax;
                       const bx = x0 + 8 + i * (barW + gap);
+                      const slotW = barW + (i < n - 1 ? gap * 0.85 : 0);
                       const pct = !isEmpty && total > 0 && name !== 'No data' ? Math.round((v / total) * 100) : 0;
+                      const displayName = truncateChartLabel(name, slotW, labelFs);
+                      const tooltip =
+                        isEmpty || name === 'No data'
+                          ? 'No data'
+                          : `${name}: ${formatListNumber(v)} (${pct}% of total)`;
                       return (
-                        <g key={`${name}-${i}`}>
+                        <g key={`${name}-${i}`} className="cursor-default">
+                          <title>{tooltip}</title>
                           <rect
                             x={bx}
                             y={y0 - nh}
@@ -1223,82 +1218,57 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                             rx="3"
                             className="chart-bar"
                             fill={['#59628a', '#d4a759', '#b28a44', '#60a5fa', '#d65257'][i % 5]}
-                          >
-                            <title>
-                              {isEmpty || name === 'No data' ? 'No data' : `${name}: ${v} (${pct}% of bar total)`}
-                            </title>
-                          </rect>
+                          />
                           {nh > 0 && (
                             <text
                               x={bx + barW / 2}
-                              y={y0 - nh - 4}
+                              y={y0 - nh - 5}
                               textAnchor="middle"
-                              fontSize="8.5"
+                              fontSize={labelFs}
                               fontWeight="600"
-                              fill="#334155"
+                              fill="#1f2937"
+                              pointerEvents="none"
                             >
                               {v}
                             </text>
                           )}
                           <text
                             x={bx + barW / 2}
-                            y="178"
+                            y={y0 + 20}
                             textAnchor="middle"
-                            fontSize="7.5"
-                            fill="#64748b"
-                            transform={`rotate(-42 ${bx + barW / 2} 178)`}
+                            fontSize={labelFs}
+                            fontWeight="600"
+                            fill="#374151"
+                            pointerEvents="none"
                           >
-                            {name.length > 11 ? `${name.slice(0, 10)}…` : name}
+                            {displayName}
                           </text>
+                          <rect
+                            x={bx - 2}
+                            y={y0 - nh}
+                            width={barW + 4}
+                            height={Math.max(nh, 0) + 32}
+                            fill="transparent"
+                            pointerEvents="all"
+                          />
                         </g>
                       );
                     })}
-                    <text x="120" y="14" textAnchor="middle" fontSize="8" fill="#94a3b8">
+                    <text x="130" y="16" textAnchor="middle" fontSize={labelFs} fontWeight="600" fill="#374151">
                       Count (max {formatListNumber(max)})
                     </text>
                   </>
                 );
               })()}
             </svg>
-            <ul className="mt-1 space-y-1 border-t border-gray-100 pt-2">
-              {reportDashboardStats.filterMeta.projectCount === 0 || reportDashboardStats.typeBars.length === 0 ? (
-                <li className="text-[10px] text-amber-800/90">
-                  No projects in view — relax filters to see how types are distributed.
-                </li>
-              ) : (
-                reportDashboardStats.typeBars.map(([name, v], i) => {
-                  const tot = reportDashboardStats.typeBars.reduce((s, [, c]) => s + c, 0);
-                  const pct = tot > 0 ? Math.round((v / tot) * 100) : 0;
-                  return (
-                    <li
-                      key={name}
-                      className="flex items-center justify-between gap-2 text-[10px] text-gray-600"
-                    >
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        <span
-                          className="h-2 w-2 shrink-0 rounded-sm"
-                          style={{ backgroundColor: ['#59628a', '#d4a759', '#b28a44', '#60a5fa', '#d65257'][i % 5] }}
-                          aria-hidden
-                        />
-                        <span className="truncate text-gray-700">{name}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums font-semibold text-gray-800">
-                        {formatListNumber(v)} <span className="font-normal text-gray-500">({pct}% of total)</span>
-                      </span>
-                    </li>
-                  );
-                })
-              )}
-            </ul>
           </div>
         </div>
-        <div className="chart-card flex min-h-[320px] flex-col rounded-xl bg-white p-3 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-800">Budget by sector</h3>
-          <div className="mt-2 flex min-h-0 flex-1 flex-col items-stretch gap-2 sm:flex-row sm:items-start">
-            <div className="mx-auto flex shrink-0 justify-center">
+        <div className="chart-card flex h-full min-h-[248px] flex-col rounded-xl bg-white p-3 shadow-sm">
+          <h3 className="shrink-0 text-sm font-semibold text-gray-800">Budget by sector</h3>
+          <div className="mt-2 flex min-h-0 flex-1 items-center justify-center overflow-visible">
               <DonutChart
-                className="chart-svg h-48 w-48"
-                showOuterLabels={false}
+                className="chart-svg h-44 w-44 shrink-0"
+                showOuterLabels
                 ringWidth={42}
                 slices={reportDashboardStats.budgetSlices}
                 centerText={
@@ -1308,73 +1278,34 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
                 }
                 centerSubtext="total (sum)"
                 labelColor="#64748b"
+                fontScale={0.82}
               />
-            </div>
-            <ul className="w-full min-w-0 space-y-1.5 sm:max-h-56 sm:overflow-y-auto sm:pt-0.5">
-              {reportDashboardStats.filterMeta.projectCount === 0 ? (
-                <li className="rounded-md border border-amber-200 bg-amber-50/80 px-2 py-1.5 text-[10px] text-amber-900">
-                  No projects in filter — there is no budget to aggregate.
-                </li>
-              ) : !reportDashboardStats.filterMeta.hasBudgetData ? (
-                <li className="text-[10px] text-gray-500">
-                  No budget data on the filtered projects, or sector is missing.
-                </li>
-              ) : (
-                reportDashboardStats.budgetSlices
-                  .filter((s) => s.label !== 'No Data')
-                  .map((slice) => (
-                    <li
-                      key={slice.label}
-                      className="flex items-center gap-1.5 text-[10px] text-gray-600"
-                    >
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                        style={{ backgroundColor: slice.color }}
-                        aria-hidden
-                      />
-                      <span className="min-w-0 truncate text-gray-700">
-                        <span className="font-medium">{slice.label}</span>
-                        <span className="text-gray-600"> — </span>
-                        <span className="font-semibold text-gray-800">{formatListNumber(slice.value)}</span>
-                      </span>
-                    </li>
-                  ))
-              )}
-            </ul>
           </div>
         </div>
-        <div className="chart-card flex min-h-[260px] flex-col rounded-xl bg-white p-3 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-800">Projects by progress</h3>
-          <div className="mt-1 flex items-center justify-center">
-            <DonutChart
-              className="chart-svg h-48 w-48"
-              showOuterLabels
-              ringWidth={42}
-              slices={reportDashboardStats.progressSlices}
-              labelColor="#64748b"
-            />
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-gray-600">
-            {reportDashboardStats.progressSlices.map((slice) => (
-              <span key={slice.label} className="inline-flex max-w-full items-center gap-1">
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: slice.color }} />
-                <span className="min-w-0">
-                  <span className="font-medium text-gray-700">{slice.label}</span>
-                  <span className="text-gray-500"> — {formatListNumber(slice.value)} projects</span>
-                </span>
-              </span>
-            ))}
+        <div className="chart-card flex h-full min-h-[248px] flex-col rounded-xl bg-white p-3 shadow-sm">
+          <h3 className="shrink-0 text-sm font-semibold text-gray-800">Projects by progress</h3>
+          <div className="mt-1 flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <DonutChart
+                className="chart-svg h-44 w-44 shrink-0"
+                showOuterLabels
+                ringWidth={42}
+                slices={reportDashboardStats.progressSlices}
+                labelColor="#64748b"
+                fontScale={0.82}
+              />
+            </div>
           </div>
         </div>
       </section>
-      <section className="bg-transparent">
-        <div className="flex items-center justify-between px-0 py-3">
-          <h3 className="enj-screen-header">Project Reports</h3>
+      <section className="shrink-0 bg-transparent pt-1">
+        <div className={`${enj.sectionToolbar} px-0 pb-2 pt-3`}>
+          <h3 className={enj.sectionTitle}>Project Reports</h3>
           {filteredReportTableRows.length > 0 && (
             <button
               type="button"
               onClick={() => { setShowReportViewAll(true); setReportViewAllPage(1); }}
-              className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
+              className={enj.sectionTextAction}
             >
               View All
             </button>
@@ -1400,7 +1331,6 @@ export function ProgramReportsPanel({ isActive, onNotify, showTableEdit = true }
         </div>
         <div className="px-0 py-2 text-right text-[10px] text-gray-400">Showing {Math.min(10, filteredReportTableRows.length)} of {filteredReportTableRows.length} rows</div>
       </section>
-      {editReportModal}
     </div>
   );
 }

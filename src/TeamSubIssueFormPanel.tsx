@@ -5,6 +5,7 @@ import type { New_subissues } from './generated/models/New_subissuesModel';
 import { New_subissuesnew_subissuestatus } from './generated/models/New_subissuesModel';
 import { New_subissuesService } from './generated/services/New_subissuesService';
 import type { ToastType } from './NotificationToast';
+import { DatePickerField } from './EnjDatePicker';
 import { ScreenLoader } from './ScreenLoader';
 import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
 
@@ -526,12 +527,11 @@ export function TeamSubIssueFormPanel({ parentIssue, onBack, onRefresh, onNotify
                     Issue Duration Date <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
-                    <input
-                      type="date"
+                    <DatePickerField
                       className={fieldDateCls}
                       value={durationDate}
-                      onChange={(e) => {
-                        setDurationDate(e.target.value);
+                      onChange={(v) => {
+                        setDurationDate(v);
                         setErrors((e0) => ({ ...e0, durationDate: '' }));
                       }}
                       disabled={saving}

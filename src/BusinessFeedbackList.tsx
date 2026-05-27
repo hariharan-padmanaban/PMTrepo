@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ChevronDown, Pencil, RefreshCw } from 'lucide-react';
 import { getDisplayName } from './emailNameUtils';
 import { DonutChart } from './DonutChart';
+import { DatePickerField } from './EnjDatePicker';
+import { FormFieldLabel, FormPageActions, FormPageShell } from './FormPageShell';
 import { PagerBar } from './PagerBar';
 import { New_feedbacksService } from './generated/services/New_feedbacksService';
 import { New_projectsService } from './generated/services/New_projectsService';
@@ -14,6 +16,7 @@ import { NewUsersService } from './services/NewUsersService';
 import type { New_feedbacks } from './generated/models/New_feedbacksModel';
 import { ScreenLoader } from './ScreenLoader';
 import { displayNameFromXrmString } from './sessionUser';
+import { feedbackPhaseStatusClass, feedbackSatisfactionStatusClass } from './tableDesign';
 import { enj } from './ui/enjForm';
 
 type Satisfaction = 'Very Satisfied' | 'Satisfied' | 'Unsatisfied';
@@ -138,16 +141,6 @@ type FeedbackFormState = {
 
 type FeedbackScreen = 'list' | 'add' | 'edit';
 
-function satisfactionClass(s: Satisfaction): string {
-  if (s === 'Very Satisfied') return `${enj.badge} ${enj.badgeWarning}`;
-  if (s === 'Unsatisfied') return `${enj.badge} ${enj.badgeDanger}`;
-  return `${enj.badge} ${enj.badgeSuccess}`;
-}
-
-function phaseClass(p: Phase): string {
-  return p === 'Live' ? `${enj.badge} ${enj.badgeSuccess}` : `${enj.badge} ${enj.badgeWarning}`;
-}
-
 function initialsFromEmailOrName(s: string): string {
   if (!s) return 'PM';
   if (s.includes('@')) {
@@ -178,21 +171,11 @@ function isValidEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
 
-/** Shared enj form tokens — see `index.css` / `ui/enjForm`. */
-const fieldInputReadonlyCls = `w-full ${enj.control} cursor-default bg-slate-50/90 text-sm text-gray-700`;
-const fieldSelectCls = `w-full ${enj.control} text-sm`;
-const fieldTextareaShortCls = `w-full ${enj.textarea} min-h-[72px] resize-y text-xs leading-snug`;
-const fieldTextareaFeedbackCls = `w-full ${enj.textarea} min-h-[120px] text-xs leading-relaxed`;
+const fieldCls = `enj-add-project-field mt-1 ${enj.control} border-[#ADACB4]`;
+const fieldReadonlyCls = `${fieldCls} cursor-default bg-slate-50/90 text-gray-700`;
+const fieldTextareaShortCls = `enj-add-project-field mt-1 ${enj.textarea} min-h-[72px] resize-y border-[#ADACB4]`;
+const fieldTextareaFeedbackCls = `enj-add-project-field mt-1 ${enj.textarea} min-h-[120px] border-[#ADACB4]`;
 const fieldErrorCls = enj.fieldError;
-
-function RequiredLabel({ children }: { children: ReactNode }) {
-  return (
-    <span className="text-[11px] font-medium text-gray-600">
-      {children}
-      <span className="text-red-500"> *</span>
-    </span>
-  );
-}
 
 function dataverseRowToFeedbackRow(
   r: New_feedbacks & Record<string, unknown>,
@@ -359,6 +342,7 @@ export default function BusinessFeedbackList() {
     setEditRowId(null);
     setFormErrors({});
     setForm(EMPTY_FORM);
+    setBanner(null);
   }, []);
 
   const openAddFeedback = useCallback(() => {
@@ -455,10 +439,7 @@ export default function BusinessFeedbackList() {
   const submitFeedback = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (!runValidation(form)) {
-        setBanner({ type: 'error', message: 'Fix the highlighted fields and try again.' });
-        return;
-      }
+      if (!runValidation(form)) return;
 
       setSaveBusy(true);
       setBanner(null);
@@ -485,10 +466,7 @@ export default function BusinessFeedbackList() {
       e.preventDefault();
       if (editRowId == null) return;
       const f = form;
-      if (!runValidation(f)) {
-        setBanner({ type: 'error', message: 'Fix the highlighted fields and try again.' });
-        return;
-      }
+      if (!runValidation(f)) return;
 
       setSaveBusy(true);
       setBanner(null);
@@ -548,23 +526,14 @@ export default function BusinessFeedbackList() {
 
   const formFields = (
     <>
-      {banner && !isFormScreen && (
-        <div
-          className={`mb-3 rounded-md px-2.5 py-1.5 text-xs ${
-            banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
-          }`}
-        >
-          {banner.message}
-        </div>
-      )}
-      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-        <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Project</RequiredLabel>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+        <div className="min-w-0">
+          <FormFieldLabel label="Project" required />
           <div className="relative">
             <select
               value={form.projectName}
               onChange={(e) => applyProjectLookup(e.target.value)}
-              className={`${fieldSelectCls} text-gray-800 ${formErrors.projectName ? 'border-rose-400' : ''}`}
+              className={`${fieldCls} text-gray-800 ${formErrors.projectName ? 'border-rose-400' : ''}`}
               disabled={saveBusy}
             >
               <option value="" disabled>
@@ -582,45 +551,44 @@ export default function BusinessFeedbackList() {
             <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
           {formErrors.projectName && <p className={fieldErrorCls}>{formErrors.projectName}</p>}
-        </label>
-        <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Project Sponsor</RequiredLabel>
+        </div>
+        <div className="min-w-0">
+          <FormFieldLabel label="Project Sponsor" required />
           <input
             readOnly
             type="text"
             value={form.sponsor}
-            className={`${fieldInputReadonlyCls} ${formErrors.sponsor ? 'border-rose-400' : ''}`}
+            className={`${fieldReadonlyCls} ${formErrors.sponsor ? 'border-rose-400' : ''}`}
             title="LookUp(Project, ProjectSponsor) for the selected project"
           />
           {formErrors.sponsor && <p className={fieldErrorCls}>{formErrors.sponsor}</p>}
-        </label>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
-        <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Project Manager</RequiredLabel>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-3">
+        <div className="min-w-0">
+          <FormFieldLabel label="Project Manager" required />
           <input
             readOnly
             type="text"
             value={form.projectManager}
-            className={`${fieldInputReadonlyCls} ${formErrors.projectManager ? 'border-rose-400' : ''}`}
+            className={`${fieldReadonlyCls} ${formErrors.projectManager ? 'border-rose-400' : ''}`}
             title="AssignToProjectManager from selected project"
           />
           {formErrors.projectManager && <p className={fieldErrorCls}>{formErrors.projectManager}</p>}
-        </label>
-        <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Start Date</RequiredLabel>
-          <input
+        </div>
+        <div className="min-w-0">
+          <FormFieldLabel label="Start Date" required />
+          <DatePickerField
             readOnly
-            type="date"
             value={form.startDate}
-            className={`${fieldInputReadonlyCls} ${formErrors.startDate ? 'border-rose-400' : ''}`}
+            className={`${fieldReadonlyCls} ${formErrors.startDate ? 'border-rose-400' : ''}`}
             title="Project start date from selected project"
           />
           {formErrors.startDate && <p className={fieldErrorCls}>{formErrors.startDate}</p>}
-        </label>
-        <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Business Owner Name</RequiredLabel>
+        </div>
+        <div className="min-w-0">
+          <FormFieldLabel label="Business Owner Name" required />
           <input
             type="text"
             value={form.businessOwnerName}
@@ -635,17 +603,17 @@ export default function BusinessFeedbackList() {
             maxLength={100}
             autoComplete="name"
             placeholder="Enter name"
-            className={`w-full ${enj.control} text-sm text-gray-800 ${formErrors.businessOwnerName ? 'border-rose-400' : ''}`}
+            className={`${fieldCls} text-gray-800 ${formErrors.businessOwnerName ? 'border-rose-400' : ''}`}
             title="Saved on the feedback record as Name (new_name)"
             disabled={saveBusy}
           />
           {formErrors.businessOwnerName && <p className={fieldErrorCls}>{formErrors.businessOwnerName}</p>}
-        </label>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-        <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Satisfaction Level</RequiredLabel>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+        <div className="min-w-0">
+          <FormFieldLabel label="Satisfaction Level" required />
           <div className="relative">
             <select
               value={form.satisfaction}
@@ -660,7 +628,7 @@ export default function BusinessFeedbackList() {
                   return n;
                 });
               }}
-              className={`${fieldSelectCls} text-gray-800 ${formErrors.satisfaction ? 'border-rose-400' : ''}`}
+              className={`${fieldCls} text-gray-800 ${formErrors.satisfaction ? 'border-rose-400' : ''}`}
               disabled={saveBusy}
             >
               <option value="" disabled>
@@ -673,9 +641,9 @@ export default function BusinessFeedbackList() {
             <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
           {formErrors.satisfaction && <p className={fieldErrorCls}>{formErrors.satisfaction}</p>}
-        </label>
-        <label className="block min-w-0 space-y-1.5">
-          <RequiredLabel>Project Phase</RequiredLabel>
+        </div>
+        <div className="min-w-0">
+          <FormFieldLabel label="Project Phase" required />
           <div className="relative">
             <select
               value={form.phase}
@@ -687,7 +655,7 @@ export default function BusinessFeedbackList() {
                   return n;
                 });
               }}
-              className={`${fieldSelectCls} ${formErrors.phase ? 'border-rose-400' : ''}`}
+              className={`${fieldCls} ${formErrors.phase ? 'border-rose-400' : ''}`}
               disabled={saveBusy}
             >
               <option value="" disabled>
@@ -699,11 +667,11 @@ export default function BusinessFeedbackList() {
             <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           </div>
           {formErrors.phase && <p className={fieldErrorCls}>{formErrors.phase}</p>}
-        </label>
+        </div>
       </div>
 
-      <label className="block min-w-0 space-y-1.5">
-        <RequiredLabel>Feedback</RequiredLabel>
+      <div className="min-w-0">
+        <FormFieldLabel label="Feedback" required />
         <textarea
           rows={5}
           value={form.feedback}
@@ -719,11 +687,11 @@ export default function BusinessFeedbackList() {
           disabled={saveBusy}
         />
         {formErrors.feedback && <p className={fieldErrorCls}>{formErrors.feedback}</p>}
-      </label>
+      </div>
 
-      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-        <label className="block min-w-0 space-y-1.5">
-          <span className="text-[11px] font-medium text-gray-600">Challenges</span>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
+        <div className="min-w-0">
+          <FormFieldLabel label="Challenges" />
           <textarea
             rows={4}
             value={form.challenges}
@@ -731,9 +699,9 @@ export default function BusinessFeedbackList() {
             className={fieldTextareaShortCls}
             disabled={saveBusy}
           />
-        </label>
-        <label className="block min-w-0 space-y-1.5">
-          <span className="text-[11px] font-medium text-gray-600">Recommendations</span>
+        </div>
+        <div className="min-w-0">
+          <FormFieldLabel label="Recommendations" />
           <textarea
             rows={4}
             value={form.recommendations}
@@ -741,86 +709,42 @@ export default function BusinessFeedbackList() {
             className={fieldTextareaShortCls}
             disabled={saveBusy}
           />
-        </label>
+        </div>
       </div>
     </>
   );
 
   if (isFormScreen) {
-    const title = screen === 'edit' ? 'Edit Feedback' : 'Feedback';
+    const title = screen === 'edit' ? 'Edit Feedback' : 'Add Feedback';
+    const isAdd = screen === 'add';
 
     return (
-      <div className="min-w-0 max-w-full xl:col-span-3 relative text-[12px] leading-normal text-gray-700">
-        {(isBusy || saveBusy) && <ScreenLoader overlay />}
-        <div className="mb-3">
-          <h2 className="enj-screen-subheader">{title}</h2>
-        </div>
-
-        {banner && (
-          <div
-            className={`mb-3 rounded-md px-2.5 py-1.5 text-xs ${
-              banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
-            }`}
-          >
-            {banner.message}
-          </div>
-        )}
-
-        <div className={`${enj.card} ${enj.cardPad}`}>
-          <form onSubmit={screen === 'add' ? submitFeedback : submitEditFeedback} className="space-y-4">
-            {formFields}
-
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-3">
-              {screen === 'add' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={clearFormAdd}
-                    className={`${enj.btn} ${enj.btnOutline} min-w-[4.5rem] px-3 text-xs font-medium`}
-                    disabled={saveBusy}
-                  >
-                    Clear
-                  </button>
-                  <button
-                    type="button"
-                    onClick={goToList}
-                    className={`${enj.btn} ${enj.btnOutline} min-w-[4.5rem] px-3 text-xs font-medium`}
-                    disabled={saveBusy}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className={`${enj.btn} ${enj.btnPrimary} min-w-[7.5rem] px-3 text-xs font-medium shadow-sm hover:bg-[#9a7638] disabled:opacity-60`}
-                    disabled={saveBusy}
-                  >
-                    Submit Feedback
-                  </button>
-                </>
-              )}
-              {screen === 'edit' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={goToList}
-                    className={`${enj.btn} ${enj.btnOutline} min-w-[4.5rem] px-3 text-xs font-medium`}
-                    disabled={saveBusy}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className={`${enj.btn} ${enj.btnPrimary} min-w-[4.5rem] px-3 text-xs font-medium shadow-sm hover:bg-[#9a7638] disabled:opacity-60`}
-                    disabled={saveBusy}
-                  >
-                    Update
-                  </button>
-                </>
-              )}
+      <FormPageShell parentLabel="Feedback" onBack={goToList} title={title}>
+        <div className="relative">
+          {(isBusy || saveBusy) && <ScreenLoader overlay />}
+          {banner && (
+            <div
+              className={`mb-4 rounded-md px-2.5 py-1.5 text-xs ${
+                banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
+              }`}
+            >
+              {banner.message}
             </div>
+          )}
+          <form onSubmit={isAdd ? submitFeedback : submitEditFeedback} className="space-y-4">
+            {formFields}
+            <FormPageActions
+              onCancel={goToList}
+              onClear={isAdd ? clearFormAdd : undefined}
+              showClear={isAdd}
+              onSave={() => {}}
+              saveType="submit"
+              busy={saveBusy}
+              saveLabel={isAdd ? 'Submit Feedback' : 'Update'}
+            />
           </form>
         </div>
-      </div>
+      </FormPageShell>
     );
   }
 
@@ -829,13 +753,13 @@ export default function BusinessFeedbackList() {
       {isBusy && <ScreenLoader overlay className="min-h-[200px] rounded-xl" />}
 
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className={enj.screenToolbar}>
         <h2 className="enj-screen-header">Feedback list</h2>
-        <div className="flex flex-shrink-0 items-center gap-1.5">
+        <div className={enj.screenToolbarActions}>
           <button
             type="button"
             onClick={openAddFeedback}
-            className={`${enj.btn} ${enj.btnPrimary} px-3 text-xs font-medium shadow-sm transition-colors hover:bg-[#9a7638]`}
+            className={`${enj.btn} ${enj.btnPrimary} px-3 shadow-sm transition-colors hover:bg-[#9a7638]`}
             disabled={listLoading}
           >
             Add New Feedback
@@ -851,12 +775,6 @@ export default function BusinessFeedbackList() {
           </button>
         </div>
       </div>
-
-      {banner && (
-        <div className={`rounded-md px-2.5 py-1.5 text-xs ${banner.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
-          {banner.message}
-        </div>
-      )}
 
       {/* Main Layout: Table left (75%), Charts right (25%) */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-8">
@@ -895,11 +813,13 @@ export default function BusinessFeedbackList() {
                 </td>
                 <td className="min-w-0 break-words px-2.5 py-3 align-top text-gray-700 bg-white border-0">{getDisplayName(row.businessOwnerName, nameByEmail)}</td>
                 <td className="min-w-0 px-2.5 py-3 align-top bg-white border-0">
-                  <span className={`${satisfactionClass(row.satisfaction)} max-w-full`}>{row.satisfaction}</span>
+                  <span className={`enj-table-status ${feedbackSatisfactionStatusClass(row.satisfaction)}`}>
+                    {row.satisfaction}
+                  </span>
                 </td>
                 <td className="min-w-0 break-words px-2.5 py-3 align-top text-gray-600 bg-white border-0">{row.date}</td>
                 <td className="min-w-0 px-2.5 py-3 align-top bg-white border-0">
-                  <span className={phaseClass(row.phase)}>{row.phase}</span>
+                  <span className={`enj-table-status ${feedbackPhaseStatusClass(row.phase)}`}>{row.phase}</span>
                 </td>
                 <td className="px-2.5 py-3 text-center align-top bg-white border-0 rounded-r-[11.9px]">
                   <button type="button" onClick={() => openEditFeedback(row)} className="inline-flex rounded-md p-0.5 text-gray-400 hover:bg-gray-100 hover:text-primary" aria-label="Edit">

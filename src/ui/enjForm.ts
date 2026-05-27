@@ -19,6 +19,12 @@ export const enj = {
   main: 'enj-app-main',
   /** Vertical section rhythm (stacks of cards/sections). */
   stack: 'enj-stack',
+  /** Standard role page toolbar: title left, actions right. */
+  screenToolbar: 'enj-screen-toolbar',
+  screenToolbarActions: 'enj-screen-toolbar-actions',
+  /** Standard section toolbar: section title left, text actions right. */
+  sectionToolbar: 'enj-section-toolbar',
+  sectionTextAction: 'enj-section-text-action',
   /** Page title (H1) — Manrope, brand navy. */
   pageTitle: 'enj-page-title',
   /** Section / card title (H2). */

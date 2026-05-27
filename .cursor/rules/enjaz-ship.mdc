@@ -1,0 +1,21 @@
+---
+description: Mandatory — after code edits run npm run ship (publish). Never skip unless CLI/auth impossible. PowerShell use semicolons not &&.
+alwaysApply: true
+---
+
+# ENJAX — build and publish workflow
+
+## After code changes
+
+- **Do not skip publish.** After any task that changes source code, you **must** run **`npm run ship`** before ending the response (alias for **`npm run publish:app`**: `npm run build` then **`npx power-apps push`**). Treat the task as incomplete until **`npm run ship` exits 0**. Only skip if the environment truly cannot run the Power Apps CLI or authenticate; if it fails, fix or retry—do not stop at `npm run verify` / build alone.
+- Do not ask the user whether to publish unless they have asked to opt out for that session.
+- For a **local check only** (no Power Apps upload), you may run **`npm run verify`** — but that does **not** replace **`npm run ship`** when you have edited code.
+
+## Deploy / publish
+
+- **`npm run ship`** is the normal end of a coding task in this repo. Also run it when the user explicitly asks to **publish**, **deploy**, or **ship**.
+- **`npm run lint`** is separate and currently reports many pre-existing issues across the repo. Do not require a clean full-repo lint to consider publish successful unless the user explicitly asks for lint to pass.
+
+## Windows shell
+
+- Use PowerShell-safe command chaining (`;` not `&&` when needed for one-liners in this environment).

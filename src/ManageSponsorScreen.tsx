@@ -6,7 +6,7 @@ import { PagerBar } from './PagerBar';
 import { isSponsorRowActive, sponsorAuditLines, sponsorDisplayId } from './sponsorRecordHelpers';
 import { enj } from './ui/enjForm';
 
-const PAGE_SIZE = 9;
+const PAGE_SIZE = 6;
 
 type EditForm = { sponsorName: string; email: string };
 
@@ -81,7 +81,6 @@ export function ManageSponsorScreen({ onAddNew }: ManageSponsorScreenProps = {})
     const start = (pageSafe - 1) * PAGE_SIZE;
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, pageSafe]);
-  const fill3x3Page = pagedRows.length === PAGE_SIZE;
 
   useEffect(() => {
     setPage(1);
@@ -143,17 +142,17 @@ export function ManageSponsorScreen({ onAddNew }: ManageSponsorScreenProps = {})
   const inputBase = `mt-1 ${enj.control}`;
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col">
       {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
 
       <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="enj-screen-subheader">Sponsors</h1>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5 sm:max-w-md sm:flex-1 md:max-w-lg">
-          <div className="relative min-w-0 flex-1 sm:min-w-[160px]">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <div className="relative w-full sm:w-[200px]">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
-              className={`${enj.control} pl-8 text-sm`}
-              placeholder="Search name, email, id…"
+              className={`${enj.control} pl-8 text-xs`}
+              placeholder="Search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -162,7 +161,7 @@ export function ManageSponsorScreen({ onAddNew }: ManageSponsorScreenProps = {})
             <button
               type="button"
               onClick={onAddNew}
-              className={`${enj.btnPrimary} shrink-0 px-3 text-xs`}
+              className={`${enj.btnPrimary} shrink-0 px-3`}
             >
               Add new
             </button>
@@ -175,13 +174,8 @@ export function ManageSponsorScreen({ onAddNew }: ManageSponsorScreenProps = {})
       ) : filtered.length === 0 ? (
         <p className="mt-2 text-xs text-gray-500">No sponsors found.</p>
       ) : (
-        <div className="mt-1.5 flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
-          <div className="min-h-0 flex-1 max-md:overflow-y-auto max-md:overflow-x-hidden md:overflow-hidden pr-0.5 [scrollbar-gutter:stable]">
-            <div
-              className={`grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 ${
-                fill3x3Page ? 'md:h-full md:min-h-0 md:grid-rows-3' : ''
-              }`}
-            >
+        <div className="mt-1.5 flex min-h-0 flex-1 flex-col gap-3">
+          <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 md:grid-rows-2 md:gap-3">
               {pagedRows.map((r) => {
                 const id = String(r.new_sponsorid ?? '');
                 const active = isSponsorRowActive(r);
@@ -189,13 +183,11 @@ export function ManageSponsorScreen({ onAddNew }: ManageSponsorScreenProps = {})
                 return (
                   <article
                     key={id}
-                    className={`flex min-h-0 min-w-0 flex-col rounded-md border border-gray-100 bg-white p-2 shadow-sm ${
-                      fill3x3Page ? 'md:h-full md:min-h-0' : ''
-                    }`}
+                    className="flex h-full min-h-0 flex-col rounded-md border border-gray-100 bg-white p-2.5 shadow-sm"
                   >
                     <div className="flex items-start justify-between gap-1">
                       <div className="min-w-0">
-                        <p className="line-clamp-2 text-xs font-semibold leading-snug text-primary">
+                        <p className="text-xs font-semibold leading-snug text-primary">
                           {r.new_sponsorname ?? '—'}
                         </p>
                         <p className="mt-0.5 line-clamp-2 break-all text-[10px] leading-tight text-gray-500">
@@ -225,26 +217,24 @@ export function ManageSponsorScreen({ onAddNew }: ManageSponsorScreenProps = {})
                         </button>
                       </div>
                     </div>
-                    <div className="flex-1 border-t border-gray-100 py-1 text-[10px] leading-snug text-gray-800">
-                      <p className="line-clamp-1">
+                    <div className="mt-1.5 border-t border-gray-100 pt-1.5 text-[10px] leading-relaxed text-gray-800">
+                      <p>
                         <span className="font-semibold">Sponsor ID :</span> <span className="text-gray-700 font-mono text-[9px]">{code}</span>
                       </p>
                     </div>
                   </article>
                 );
               })}
-            </div>
           </div>
-          <div className="shrink-0 rounded-md border border-gray-200 bg-white px-3 py-2 shadow-sm">
-            <PagerBar
-              page={pageSafe}
-              pageSize={PAGE_SIZE}
-              total={filtered.length}
-              onPrev={() => setPage((p) => Math.max(1, p - 1))}
-              onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={loading}
-            />
-          </div>
+          <PagerBar
+            className="shrink-0 border-t border-gray-100 pt-3"
+            page={pageSafe}
+            pageSize={PAGE_SIZE}
+            total={filtered.length}
+            onPrev={() => setPage((p) => Math.max(1, p - 1))}
+            onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={loading}
+          />
         </div>
       )}
 

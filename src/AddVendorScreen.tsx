@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { VendorsService } from './services/VendorsService';
 import { NotificationToast, type ToastType } from './NotificationToast';
+import { DatePickerField } from './EnjDatePicker';
 import { enj } from './ui/enjForm';
 
 export const VENDOR_FORM_ACCENT = '#A08149';
@@ -250,11 +251,10 @@ export function AddVendorScreen({ onCreated }: AddVendorScreenProps = {}) {
 
             <label className="block">
               {label('Date', false)}
-              <input
+              <DatePickerField
                 className={inputBase}
-                type="date"
                 value={form.date}
-                onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, date: v }))}
               />
             </label>
           </div>

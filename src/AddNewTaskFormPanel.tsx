@@ -5,6 +5,8 @@ import { New_tasksService } from './generated/services/New_tasksService';
 import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import type { ToastType } from './NotificationToast';
 import { ScreenLoader } from './ScreenLoader';
+import { DatePickerField } from './EnjDatePicker';
+import { FormFieldLabel, FormPageActions, FormPageShell } from './FormPageShell';
 import { enj } from './ui/enjForm';
 import { getSessionUserEmail } from './sessionUser';
 
@@ -154,7 +156,6 @@ type Props = {
   onClose: () => void;
   onNotify?: (type: ToastType, message: string) => void;
   onSaved?: () => void;
-  sectionClassName?: string;
   /** When set, form loads this row and save performs an update. */
   editingTask?: Record<string, unknown> | null;
 };
@@ -163,7 +164,6 @@ export function AddNewTaskFormPanel({
   onClose,
   onNotify,
   onSaved,
-  sectionClassName = 'bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto w-full',
   editingTask = null,
 }: Props) {
   const [taskTitle, setTaskTitle] = useState('');
@@ -462,219 +462,190 @@ export function AddNewTaskFormPanel({
     onSaved,
   ]);
 
-  const labelReq = (text: string) => (
-    <span className="text-[11px] text-gray-500 mb-1 block">
-      {text} <span className="text-rose-500">*</span>
-    </span>
-  );
-
-  const labelOpt = (text: string) => <span className="text-[11px] text-gray-500 mb-1 block">{text}</span>;
-  const controlCls = enj.control;
-  const inputCls = enj.control;
+  const title = editingId ? 'Edit Task' : 'Add New Task';
+  const fieldCls = `enj-add-project-field mt-1 ${enj.control}`;
 
   return (
-    <section className={`${sectionClassName} relative`}>
-      {loading && <ScreenLoader overlay />}
-      <p className="text-[16px] font-bold text-primary mb-4">
-        <button type="button" className="underline text-primary font-semibold" onClick={onClose}>
-          Tasks
-        </button>
-        {' > '}
-        {editingId ? 'Edit Task' : 'Add New Task'}
-      </p>
-      {loadError && <p className="text-sm text-rose-600 mb-3">{loadError}</p>}
+    <FormPageShell parentLabel="Tasks" onBack={onClose} title={title}>
+      <div className="relative">
+        {loading && <ScreenLoader overlay />}
+        {loadError && <p className="text-sm text-rose-600 mb-3">{loadError}</p>}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-3">
-        <label>
-          {labelReq('Task Title')}
-          <input
-            className={inputCls}
-            placeholder="Enter Task Title"
-            value={taskTitle}
-            onChange={(e) => { setTaskTitle(e.target.value); setErrors((prev) => ({ ...prev, taskTitle: '' })); }}
-            disabled={loading || saveBusy}
-          />
-          {errors.taskTitle && <p className="mt-1 text-[11px] text-rose-600">{errors.taskTitle}</p>}
-        </label>
-        <label>
-          {labelReq('Project Name')}
-          <select
-            className={controlCls}
-            value={projectName}
-            onChange={(e) => {
-              setProjectName(e.target.value);
-              setAssignEmail('');
-              setErrors((prev) => ({ ...prev, projectName: '' }));
-            }}
-            disabled={loading || saveBusy}
-          >
-            <option value="">Select project</option>
-            {projectNameOptions.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
-        </label>
-        <label>
-          {labelOpt('Project ID')}
-          <input
-            className={`${enj.control} cursor-default bg-gray-50 text-gray-700`}
-            readOnly
-            value={projectIdText}
-            placeholder="—"
-            title="LookUp(Project, ProjectName = selected project).ProjectID (Dataverse new_name)"
-          />
-          {errors.projectId && <p className="mt-1 text-[11px] text-rose-600">{errors.projectId}</p>}
-        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+          <div>
+            <FormFieldLabel label="Task Title" required />
+            <input
+              className={fieldCls}
+              placeholder="Enter Task Title"
+              value={taskTitle}
+              onChange={(e) => { setTaskTitle(e.target.value); setErrors((prev) => ({ ...prev, taskTitle: '' })); }}
+              disabled={loading || saveBusy}
+            />
+            {errors.taskTitle && <p className={`mt-1 ${enj.fieldError}`}>{errors.taskTitle}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Project Name" required />
+            <select
+              className={fieldCls}
+              value={projectName}
+              onChange={(e) => {
+                setProjectName(e.target.value);
+                setAssignEmail('');
+                setErrors((prev) => ({ ...prev, projectName: '' }));
+              }}
+              disabled={loading || saveBusy}
+            >
+              <option value="">Select project</option>
+              {projectNameOptions.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            {errors.projectName && <p className={`mt-1 ${enj.fieldError}`}>{errors.projectName}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Project ID" />
+            <input
+              className={`enj-add-project-field mt-1 ${enj.control} cursor-default bg-gray-50 text-gray-700`}
+              readOnly
+              value={projectIdText}
+              placeholder="—"
+              title="LookUp(Project, ProjectName = selected project).ProjectID (Dataverse new_name)"
+            />
+            {errors.projectId && <p className={`mt-1 ${enj.fieldError}`}>{errors.projectId}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Link to" required />
+            <select
+              className={fieldCls}
+              value={linkTo}
+              onChange={(e) => { setLinkTo(e.target.value); setErrors((prev) => ({ ...prev, linkTo: '' })); }}
+              disabled={loading || saveBusy || linkToOptions.length === 0}
+            >
+              <option value="">{linkToOptions.length ? 'Select milestone' : 'Select project first'}</option>
+              {linkToOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            {errors.linkTo && <p className={`mt-1 ${enj.fieldError}`}>{errors.linkTo}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Task Start Date" required />
+            <DatePickerField
+              className={fieldCls}
+              value={startDate}
+              onChange={(v) => { setStartDate(v); setErrors((prev) => ({ ...prev, startDate: '' })); }}
+              disabled={loading || saveBusy}
+            />
+            {errors.startDate && <p className={`mt-1 ${enj.fieldError}`}>{errors.startDate}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Task End Date" required />
+            <DatePickerField
+              className={fieldCls}
+              value={endDate}
+              onChange={(v) => { setEndDate(v); setErrors((prev) => ({ ...prev, endDate: '' })); }}
+              disabled={loading || saveBusy}
+            />
+            {errors.endDate && <p className={`mt-1 ${enj.fieldError}`}>{errors.endDate}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Priority" required />
+            <select
+              className={fieldCls}
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as (typeof PRIORITY_OPTIONS)[number])}
+              disabled={loading || saveBusy}
+            >
+              {PRIORITY_OPTIONS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <FormFieldLabel label="Task Status" required />
+            <select
+              className={fieldCls}
+              value={taskStatus}
+              onChange={(e) => setTaskStatus(e.target.value as (typeof TASK_STATUS_OPTIONS)[number])}
+              disabled={loading || saveBusy}
+            >
+              {TASK_STATUS_OPTIONS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <FormFieldLabel label="Assign to team member" required />
+            <select
+              className={fieldCls}
+              value={assignEmail}
+              onChange={(e) => { setAssignEmail(e.target.value); setErrors((prev) => ({ ...prev, assignEmail: '' })); }}
+              disabled={loading || saveBusy || !selectedProjectRow}
+            >
+              <option value="">{selectedProjectRow ? 'Select team member' : 'Select project first'}</option>
+              {assignEmailOptions.map((em) => (
+                <option key={em} value={em}>
+                  {em}
+                </option>
+              ))}
+            </select>
+            {errors.assignEmail && <p className={`mt-1 ${enj.fieldError}`}>{errors.assignEmail}</p>}
+          </div>
+          <div>
+            <FormFieldLabel label="Predecessor" />
+            <select
+              className={fieldCls}
+              value={predecessor}
+              onChange={(e) => setPredecessor(e.target.value)}
+              disabled={loading || saveBusy || !projectName.trim()}
+              title="Filter(Task, ProjectName = selected) → Task Title"
+            >
+              <option value="">{projectName.trim() ? '—' : 'Select project first'}</option>
+              {predecessorOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <FormFieldLabel label="Successor" />
+            <input
+              className={fieldCls}
+              placeholder="Successor"
+              value={successor}
+              onChange={(e) => setSuccessor(e.target.value)}
+              disabled={loading || saveBusy}
+            />
+          </div>
+          <div className="md:col-span-2">
+            <FormFieldLabel label="Description" required />
+            <textarea
+              className={`enj-add-project-field mt-1 ${enj.textarea} min-h-[4.5rem] resize-none`}
+              placeholder="Description…"
+              value={description}
+              onChange={(e) => { setDescription(e.target.value); setErrors((prev) => ({ ...prev, description: '' })); }}
+              disabled={loading || saveBusy}
+            />
+            {errors.description && <p className={`mt-1 ${enj.fieldError}`}>{errors.description}</p>}
+          </div>
+        </div>
 
-        <label>
-          {labelReq('Link to')}
-          <select
-            className={controlCls}
-            value={linkTo}
-            onChange={(e) => { setLinkTo(e.target.value); setErrors((prev) => ({ ...prev, linkTo: '' })); }}
-            disabled={loading || saveBusy || linkToOptions.length === 0}
-          >
-            <option value="">{linkToOptions.length ? 'Select milestone' : 'Select project first'}</option>
-            {linkToOptions.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          {errors.linkTo && <p className="mt-1 text-[11px] text-rose-600">{errors.linkTo}</p>}
-        </label>
-        <label>
-          {labelReq('Task Start Date')}
-          <input
-            type="date"
-            className={inputCls}
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setErrors((prev) => ({ ...prev, startDate: '' })); }}
-            disabled={loading || saveBusy}
-          />
-          {errors.startDate && <p className="mt-1 text-[11px] text-rose-600">{errors.startDate}</p>}
-        </label>
-        <label>
-          {labelReq('Task End Date')}
-          <input
-            type="date"
-            className={inputCls}
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setErrors((prev) => ({ ...prev, endDate: '' })); }}
-            disabled={loading || saveBusy}
-          />
-          {errors.endDate && <p className="mt-1 text-[11px] text-rose-600">{errors.endDate}</p>}
-        </label>
-
-        <label>
-          {labelReq('Priority')}
-          <select
-            className={controlCls}
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as (typeof PRIORITY_OPTIONS)[number])}
-            disabled={loading || saveBusy}
-          >
-            {PRIORITY_OPTIONS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {labelReq('Task Status')}
-          <select
-            className={controlCls}
-            value={taskStatus}
-            onChange={(e) => setTaskStatus(e.target.value as (typeof TASK_STATUS_OPTIONS)[number])}
-            disabled={loading || saveBusy}
-          >
-            {TASK_STATUS_OPTIONS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {labelReq('Assign to team member')}
-          <select
-            className={controlCls}
-            value={assignEmail}
-            onChange={(e) => { setAssignEmail(e.target.value); setErrors((prev) => ({ ...prev, assignEmail: '' })); }}
-            disabled={loading || saveBusy || !selectedProjectRow}
-          >
-            <option value="">{selectedProjectRow ? 'Select team member' : 'Select project first'}</option>
-            {assignEmailOptions.map((em) => (
-              <option key={em} value={em}>
-                {em}
-              </option>
-            ))}
-          </select>
-          {errors.assignEmail && <p className="mt-1 text-[11px] text-rose-600">{errors.assignEmail}</p>}
-        </label>
-
-        <label>
-          {labelOpt('Predecessor')}
-          <select
-            className={controlCls}
-            value={predecessor}
-            onChange={(e) => setPredecessor(e.target.value)}
-            disabled={loading || saveBusy || !projectName.trim()}
-            title="Filter(Task, ProjectName = selected) → Task Title"
-          >
-            <option value="">{projectName.trim() ? '—' : 'Select project first'}</option>
-            {predecessorOptions.map((title) => (
-              <option key={title} value={title}>
-                {title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {labelOpt('Successor')}
-          <input
-            className={inputCls}
-            placeholder="Successor"
-            value={successor}
-            onChange={(e) => setSuccessor(e.target.value)}
-            disabled={loading || saveBusy}
-          />
-        </label>
-        <label>
-          {labelReq('Description')}
-          <textarea
-            className={`${enj.textarea} min-h-[4.5rem] resize-none`}
-            placeholder="Description…"
-            value={description}
-            onChange={(e) => { setDescription(e.target.value); setErrors((prev) => ({ ...prev, description: '' })); }}
-            disabled={loading || saveBusy}
-          />
-          {errors.description && <p className="mt-1 text-[11px] text-rose-600">{errors.description}</p>}
-        </label>
+        <FormPageActions
+          onCancel={onClose}
+          onSave={() => void handleSave()}
+          busy={saveBusy || loading}
+          saveLabel={editingId ? 'Save' : '+ Save'}
+        />
       </div>
-
-      <div className="mt-4 flex justify-end gap-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className={`${enj.btnOutline} min-w-[6.5rem] px-8 font-semibold`}
-          disabled={saveBusy}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          className={`${enj.btnPrimary} min-w-[6.5rem] px-8 font-semibold`}
-          disabled={loading || saveBusy}
-        >
-          {saveBusy ? 'Saving…' : editingId ? 'Save changes' : 'Assign Task'}
-        </button>
-      </div>
-    </section>
+    </FormPageShell>
   );
 }

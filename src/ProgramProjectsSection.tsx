@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Calendar, Coins, Paperclip, SquareArrowUpRight, Users, Download, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Coins, Paperclip, SquareArrowUpRight, Users, X } from 'lucide-react';
 import { New_programsService } from './generated/services/New_programsService';
 import { New_projectsService } from './generated/services/New_projectsService';
 import {
@@ -12,12 +12,14 @@ import { New_vendorsService } from './generated/services/New_vendorsService';
 import { EnjazMasterDataService, type EnjazMasterDataRow } from './services/EnjazMasterDataService';
 import { NewUsersService } from './services/NewUsersService';
 import { SponsorsService, type SponsorRow } from './services/SponsorsService';
+import { DatePickerField } from './EnjDatePicker';
 import { type ToastType } from './NotificationToast';
 import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import { AllocateTeamMemberModal } from './AllocateTeamMemberModal';
 import { AgileSprintPanel } from './AgileSprintPanel';
 import { WaterfallSprintPanel } from './WaterfallSprintPanel';
 import { fetchAttachments, uploadAttachments, downloadFile, type AttachmentFile } from './services/attachmentService';
+import { ProjectEditFormPanel, createEmptyEditProjectForm, type EditProjectFormState } from './ProjectEditFormPanel';
 import { enj } from './ui/enjForm';
 import { PagerBar } from './PagerBar';
 
@@ -73,11 +75,13 @@ const isMasterActive = (row: EnjazMasterDataRow) => {
 
 const normalizeCategory = (value: string) => value.toLowerCase().replace(/[\s_&-]+/g, '');
 
-function ReqField({ label }: { label: string }) {
+/** Add-project form labels â€” 13px normal (no ReqField wrapper). */
+function AddProjectFieldLabel({ label, required = false }: { label: string; required?: boolean }) {
   return (
-    <span className="text-[11px] font-medium text-gray-500">
-      {label} <span className="text-rose-500">*</span>
-    </span>
+    <label className="mb-1 block text-[13px] font-normal leading-normal text-gray-600">
+      {label}
+      {required ? <span className="text-rose-500"> *</span> : null}
+    </label>
   );
 }
 
@@ -159,9 +163,74 @@ const distinctSortedValues = (values: string[]) =>
     a.localeCompare(b, undefined, { sensitivity: 'base' }),
   );
 
+/** Map stored project text to the master-data display string (exact / case / normalized spacing). */
+function canonicalMasterOptionLabel(stored: string, options: string[]): string | undefined {
+  const t = stored.trim();
+  if (!t || options.length === 0) return undefined;
+  if (options.includes(t)) return t;
+  const byCi = options.find((o) => o.toLowerCase() === t.toLowerCase());
+  if (byCi) return byCi;
+  const nk = normalizeCategory(t);
+  return options.find((o) => normalizeCategory(o) === nk);
+}
+
+const PROGRAM_BUDGET_EXCEEDED_MSG = 'Given Budget is more than the Program Budget';
+
+function readNumericBudget(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function normalizeProgramKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function readProgramNameFromProject(row: Record<string, unknown>): string {
+  return String(row.crcf8_programname ?? row.new_programname ?? '').trim();
+}
+
+function readProjectBudget(row: Record<string, unknown>): number {
+  return readNumericBudget(row.new_budget ?? row.crcf8_budget);
+}
+
+function sumProjectBudgetsForProgram(
+  rows: Array<Record<string, unknown>>,
+  programName: string,
+  excludeProjectId?: string,
+): number {
+  const key = normalizeProgramKey(programName);
+  if (!key) return 0;
+  return rows.reduce((sum, row) => {
+    if (excludeProjectId && String(row.new_projectid ?? '').trim() === excludeProjectId) return sum;
+    if (normalizeProgramKey(readProgramNameFromProject(row)) !== key) return sum;
+    return sum + readProjectBudget(row);
+  }, 0);
+}
+
+function validateProjectBudgetAgainstProgram(args: {
+  programName: string;
+  proposedBudget: string;
+  programBudgetByName: Map<string, number>;
+  projectRows: Array<Record<string, unknown>>;
+  excludeProjectId?: string;
+}): string | undefined {
+  const { programName, proposedBudget, programBudgetByName, projectRows, excludeProjectId } = args;
+  if (!programName.trim()) return undefined;
+  if (!/^\d+(\.\d+)?$/.test(proposedBudget.trim())) return undefined;
+
+  const proposed = Number(proposedBudget.trim());
+  const programBudget = programBudgetByName.get(normalizeProgramKey(programName));
+  if (programBudget === undefined || !Number.isFinite(programBudget)) return undefined;
+
+  const usedByOthers = sumProjectBudgetsForProgram(projectRows, programName, excludeProjectId);
+  const remaining = programBudget - usedByOthers;
+  if (proposed > remaining + 1e-9) return PROGRAM_BUDGET_EXCEEDED_MSG;
+  return undefined;
+}
+
 function formatProjectDisplayDate(v: unknown): string {
   const s = String(v ?? '').trim();
-  if (!s) return '—';
+  if (!s) return 'â€”';
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
     const d = new Date(s);
     if (!Number.isNaN(d.getTime())) return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -229,7 +298,7 @@ function formatProjectBudgetShort(row: Record<string, unknown>): string {
     return String(Math.round(n));
   }
   const s = String(raw ?? '').trim();
-  return s || '—';
+  return s || 'â€”';
 }
 
 function isAgileProject(row: Record<string, unknown>): boolean {
@@ -239,61 +308,6 @@ function isAgileProject(row: Record<string, unknown>): boolean {
   if (methodologyRaw === '100000000') return true;
   if (methodologyRaw.includes('agile')) return true;
   return false;
-}
-
-/** Edit modal: same field set as “Add New Project” plus progress % and description. */
-type EditProjectFormState = {
-  projectName: string;
-  programName: string;
-  vendorName: string;
-  projectPriority: string;
-  projectCategory: string;
-  projectType: string;
-  strategicGoal: string;
-  budget: string;
-  assignToProjectManager: string;
-  risks: string;
-  kpi: string;
-  methodology: string;
-  startDate: string;
-  endDate: string;
-  department: string;
-  projectStatus: string;
-  milestone: string[];
-  projectSponsor: string;
-  note: string;
-  attachments: File[];
-  existingAttachments: AttachmentFile[];
-  description: string;
-  progress: string;
-};
-
-function createEmptyEditProjectForm(): EditProjectFormState {
-  return {
-    projectName: '',
-    programName: '',
-    vendorName: '',
-    projectPriority: '',
-    projectCategory: '',
-    projectType: '',
-    strategicGoal: '',
-    budget: '',
-    assignToProjectManager: '',
-    risks: '',
-    kpi: '',
-    methodology: '',
-    startDate: '',
-    endDate: '',
-    department: '',
-    projectStatus: '',
-    milestone: [],
-    projectSponsor: '',
-    note: '',
-    attachments: [],
-    existingAttachments: [],
-    description: '',
-    progress: '',
-  };
 }
 
 export function ProgramProjectsSection({
@@ -338,7 +352,7 @@ export function ProgramProjectsSection({
   const [editMilestoneMenuOpen, setEditMilestoneMenuOpen] = useState(false);
   const [viewAllStatus, setViewAllStatus] = useState<string | null>(null);
   const [viewAllPage, setViewAllPage] = useState(1);
-  const VIEW_ALL_PAGE_SIZE = 12;
+  const VIEW_ALL_PAGE_SIZE = 6;
   const [projectForm, setProjectForm] = useState({
     projectName: '',
     programName: '',
@@ -453,6 +467,31 @@ export function ProgramProjectsSection({
   const [projectAvailableColumns, setProjectAvailableColumns] = useState<string[]>([]);
   const [projectRows, setProjectRows] = useState<Array<Record<string, unknown>>>([]);
   const [projectRowsLoading, setProjectRowsLoading] = useState(false);
+  /** Program name (normalized) â†’ total program budget for project budget cap validation. */
+  const [programBudgetByName, setProgramBudgetByName] = useState<Map<string, number>>(() => new Map());
+
+  const createProjectBudgetProgramError = useMemo(
+    () =>
+      validateProjectBudgetAgainstProgram({
+        programName: projectForm.programName,
+        proposedBudget: projectForm.budget,
+        programBudgetByName,
+        projectRows,
+      }),
+    [projectForm.programName, projectForm.budget, programBudgetByName, projectRows],
+  );
+
+  const editProjectBudgetProgramError = useMemo(
+    () =>
+      validateProjectBudgetAgainstProgram({
+        programName: editProjectForm.programName,
+        proposedBudget: editProjectForm.budget,
+        programBudgetByName,
+        projectRows,
+        excludeProjectId: editProjectRow ? String(editProjectRow.new_projectid ?? '').trim() : undefined,
+      }),
+    [editProjectForm.programName, editProjectForm.budget, programBudgetByName, projectRows, editProjectRow],
+  );
 
   useEffect(() => {
     if (Object.keys(projectFormErrors).length === 0) return;
@@ -483,6 +522,12 @@ export function ProgramProjectsSection({
       return Object.keys(next).length === Object.keys(prev).length ? prev : next;
     });
   }, [projectForm, projectFormErrors, todayIso]);
+
+  /** Edit: include active master milestones plus any values saved on the project (e.g. inactive master or label drift). */
+  const editMilestoneSelectOptions = useMemo(
+    () => distinctSortedValues([...projectMasterOptions.milestone, ...editProjectForm.milestone]),
+    [projectMasterOptions.milestone, editProjectForm.milestone],
+  );
 
   const loadProjectFormData = async () => {
     setProjectMetaLoading(true);
@@ -639,18 +684,18 @@ export function ProgramProjectsSection({
         allowPrefixFallback = false,
       ) => {
         const targetCats = categoryCandidates.map((c) => normalizeCategory(c));
-        console.log(`🔍 getByCategory called with: ${categoryCandidates.join(', ')} → normalized: ${targetCats.join(', ')}`);
+        console.log(`ðŸ” getByCategory called with: ${categoryCandidates.join(', ')} â†’ normalized: ${targetCats.join(', ')}`);
         const typedRows = masterRows.filter((r) => {
           const explicitType = String(r.new_categorytype ?? '').trim();
           if (!explicitType) return false;
           const matches = targetCats.includes(normalizeCategory(explicitType));
-          if (matches) console.log(`✅ Matched row: ${explicitType} → ${r.new_enjazmasterdata1}`);
+          if (matches) console.log(`âœ… Matched row: ${explicitType} â†’ ${r.new_enjazmasterdata1}`);
           return matches;
         });
-        console.log(`📊 Found ${typedRows.length} typed rows for ${categoryCandidates.join(', ')}`);
+        console.log(`ðŸ“Š Found ${typedRows.length} typed rows for ${categoryCandidates.join(', ')}`);
         if (typedRows.length > 0) {
           const result = distinctSortedValues(typedRows.map((r) => String(r.new_enjazmasterdata1 ?? '').trim()));
-          console.log(`✅ Returning from typed rows: ${result.join(', ')}`);
+          console.log(`âœ… Returning from typed rows: ${result.join(', ')}`);
           return result;
         }
 
@@ -680,10 +725,21 @@ export function ProgramProjectsSection({
             .map((r) => String(r.new_enjazmasterdata1 ?? '').trim()),
         );
       };
+      const programRows = programsRes.success ? (programsRes.data ?? []) : [];
+      const budgetByProgram = new Map<string, number>();
+      programRows.forEach((p) => {
+        const name = String(p.new_name ?? '').trim();
+        if (!name) return;
+        budgetByProgram.set(
+          normalizeProgramKey(name),
+          readNumericBudget(p.crcf8_budget ?? (p as unknown as Record<string, unknown>).new_budget),
+        );
+      });
+      setProgramBudgetByName(budgetByProgram);
       setProjectMasterOptions({
         program: programsRes.success
           ? distinctSortedValues(
-            (programsRes.data ?? [])
+            programRows
               .filter((p) => {
                 const stateCode = Number(p.statecode ?? NaN);
                 if (Number.isFinite(stateCode) && stateCode === 1) return false;
@@ -837,16 +893,6 @@ export function ProgramProjectsSection({
     }
   }, [projectForm.milestone, projectMasterOptions.milestone]);
 
-  useEffect(() => {
-    if (!editProjectRow) return;
-    if (editProjectForm.milestone.length === 0) return;
-    const allowed = new Set(projectMasterOptions.milestone);
-    const filtered = editProjectForm.milestone.filter((m) => allowed.has(m));
-    if (filtered.length !== editProjectForm.milestone.length) {
-      setEditProjectForm((f) => ({ ...f, milestone: filtered }));
-    }
-  }, [editProjectForm.milestone, projectMasterOptions.milestone, editProjectRow]);
-
   const loadProjectRows = async () => {
     if (isExternal) return;
     setProjectRowsLoading(true);
@@ -893,6 +939,22 @@ export function ProgramProjectsSection({
     setProjectFormErrors(req);
     if (Object.keys(req).length > 0) return;
 
+    const latestProjectsRes = await New_projectsService.getAll({ top: 5000, orderBy: ['createdon desc'] });
+    const latestRows = latestProjectsRes.success
+      ? ((latestProjectsRes.data ?? []) as unknown as Array<Record<string, unknown>>)
+      : projectRows;
+
+    const budgetProgramErr = validateProjectBudgetAgainstProgram({
+      programName: projectForm.programName,
+      proposedBudget: projectForm.budget,
+      programBudgetByName,
+      projectRows: latestRows,
+    });
+    if (budgetProgramErr) {
+      setProjectFormErrors({ budget: budgetProgramErr });
+      return;
+    }
+
     const normalizeChoiceLabel = (value: string) => value.toLowerCase().replace(/[\s_\-]+/g, '');
     const toChoice = (options: Array<{ label: string; value: number }>, label: string) =>
       options.find((o) => normalizeChoiceLabel(o.label) === normalizeChoiceLabel(label))?.value;
@@ -911,10 +973,6 @@ export function ProgramProjectsSection({
 
     const effectiveNote = (projectForm.note || '').trim();
 
-    const latestProjectsRes = await New_projectsService.getAll({ top: 5000, orderBy: ['createdon desc'] });
-    const latestRows = latestProjectsRes.success
-      ? ((latestProjectsRes.data ?? []) as unknown as Array<Record<string, unknown>>)
-      : projectRows;
     const generatedProjectId = computeNextProjectId(latestRows);
     const generatedRowGuid = globalThis.crypto?.randomUUID?.() ?? `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`;
 
@@ -1011,13 +1069,28 @@ export function ProgramProjectsSection({
   };
 
   useEffect(() => {
-    if (showAddProjectForm) void loadProjectFormData();
-  }, [showAddProjectForm]);
-
-  useEffect(() => {
-    if (isExternal) return;
-    if (!showAddProjectForm) void loadProjectRows();
+    if (showAddProjectForm) {
+      void loadProjectFormData();
+      if (!isExternal) void loadProjectRows();
+    }
   }, [showAddProjectForm, isExternal]);
+
+  /** Lock document scroll â€” only the add/edit project panel scrolls; full-bleed gray canvas. */
+  useEffect(() => {
+    const fullPageFormOpen = showAddProjectForm || Boolean(editProjectRow);
+    if (!fullPageFormOpen) return;
+    const html = document.documentElement;
+    const { body } = document;
+    const main = document.querySelector('main');
+    html.classList.add('enj-add-project-active');
+    body.classList.add('enj-add-project-active');
+    main?.classList.add('enj-add-project-main');
+    return () => {
+      html.classList.remove('enj-add-project-active');
+      body.classList.remove('enj-add-project-active');
+      main?.classList.remove('enj-add-project-main');
+    };
+  }, [showAddProjectForm, editProjectRow]);
 
   const projectStatusCol = projectChoiceColumns.projectStatus;
 
@@ -1107,10 +1180,12 @@ export function ProgramProjectsSection({
         .split(/[,;]/)
         .map((s) => s.trim())
         .filter(Boolean);
-      const allowedM = new Set(projectMasterOptions.milestone);
+      const opts = projectMasterOptions.milestone;
       const milestone =
-        projectMasterOptions.milestone.length > 0
-          ? milestoneParts.filter((m) => allowedM.has(m))
+        opts.length > 0
+          ? distinctSortedValues(
+            milestoneParts.map((m) => canonicalMasterOptionLabel(m, opts) ?? m),
+          )
           : milestoneParts;
 
       const programNameRaw = String(row.crcf8_programname ?? row.new_programname ?? '').trim();
@@ -1278,6 +1353,22 @@ export function ProgramProjectsSection({
     setEditProjectErrors(err);
     if (Object.keys(err).length > 0) return;
 
+    const latestProjectsRes = await New_projectsService.getAll({ top: 5000, orderBy: ['createdon desc'] });
+    const latestRows = latestProjectsRes.success
+      ? ((latestProjectsRes.data ?? []) as unknown as Array<Record<string, unknown>>)
+      : projectRows;
+    const budgetProgramErr = validateProjectBudgetAgainstProgram({
+      programName: editProjectForm.programName,
+      proposedBudget: editProjectForm.budget,
+      programBudgetByName,
+      projectRows: latestRows,
+      excludeProjectId: id,
+    });
+    if (budgetProgramErr) {
+      setEditProjectErrors({ budget: budgetProgramErr });
+      return;
+    }
+
     const effectiveNote = (editProjectForm.note || '').trim();
     const normalizeChoiceLabel = (value: string) => value.toLowerCase().replace(/[\s_\-]+/g, '');
     const toChoice = (options: Array<{ label: string; value: number }>, label: string) =>
@@ -1387,152 +1478,186 @@ export function ProgramProjectsSection({
       onBack={() => setWaterfallSprintProject(null)}
       onNotify={onToast}
     />
+  ) : editProjectRow ? (
+    <ProjectEditFormPanel
+      form={editProjectForm}
+      setForm={setEditProjectForm}
+      errors={editProjectErrors}
+      budgetProgramError={editProjectBudgetProgramError}
+      metaLoading={projectMetaLoading}
+      busy={editProjectBusy}
+      onCancel={closeProjectQuickEdit}
+      onSave={() => void saveProjectQuickEdit()}
+      milestoneOpen={editMilestoneMenuOpen}
+      setMilestoneOpen={setEditMilestoneMenuOpen}
+      milestoneOptions={editMilestoneSelectOptions}
+      programOptions={projectMasterOptions.program}
+      vendorOptions={vendorOptions}
+      projectPriorityOptions={projectChoiceOptions.projectPriority}
+      projectCategoryOptions={projectMasterOptions.projectCategory}
+      projectTypeOptions={projectChoiceOptions.projectType}
+      strategicGoalOptions={projectChoiceOptions.strategicGoal}
+      projectStatusOptions={projectChoiceOptions.projectStatus}
+      kpiOptions={projectMasterOptions.kpi}
+      methodologyOptions={projectMasterOptions.methodology}
+      departmentOptions={projectMasterOptions.sector}
+      projectManagerEmails={projectManagerEmails}
+      projectSponsorOptions={projectSponsorOptions}
+      fileInputRef={editProjectFileInputRef}
+    />
   ) : showAddProjectForm ? (
-    <section className="bg-white rounded-xl p-6 shadow-sm max-w-5xl mx-auto w-full max-h-[min(calc(100dvh-7rem),56rem)] overflow-y-auto">
-      <p className="text-[16px] font-bold text-primary mb-5">
-        <button type="button" className="underline text-primary font-semibold" onClick={() => setShowAddProjectForm(false)}>Projects</button>
+    <div className="enj-add-project-root flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="enj-add-project-scroll">
+        <div className="enj-add-project-shell">
+          <section className="enj-add-project-card">
+      <p className="enj-add-project-breadcrumb">
+        <button type="button" onClick={() => setShowAddProjectForm(false)}>Projects</button>
         {' > '}Add New Project
       </p>
-      {projectMetaLoading && <p className="mb-3 text-xs text-gray-500">Loading dropdown values...</p>}
+      {projectMetaLoading && <p className="enj-add-project-muted mb-3">Loading dropdown values...</p>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
         <div>
-          <label className={enj.label}><ReqField label="Project Name" /></label>
-          <input className={`mt-1 ${enj.control}`} value={projectForm.projectName} onChange={(e) => setProjectForm((f) => ({ ...f, projectName: e.target.value }))} />
+          <AddProjectFieldLabel label="Project Name" required />
+          <input className={`enj-add-project-field mt-1 ${enj.control}`} placeholder="Enter Project Name" value={projectForm.projectName} onChange={(e) => setProjectForm((f) => ({ ...f, projectName: e.target.value }))} />
           {projectFormErrors.projectName && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.projectName}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Program Name" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.programName} onChange={(e) => setProjectForm((f) => ({ ...f, programName: e.target.value }))}>
-            <option value="">Select Program</option>
+          <AddProjectFieldLabel label="Program Name" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.programName} onChange={(e) => setProjectForm((f) => ({ ...f, programName: e.target.value }))}>
+            <option value="">Select Program Name</option>
             {projectMasterOptions.program.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
           </select>
           {projectFormErrors.programName && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.programName}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Vendor Name" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.vendorName} onChange={(e) => setProjectForm((f) => ({ ...f, vendorName: e.target.value }))}>
-            <option value="">Select Vendor</option>
+          <AddProjectFieldLabel label="Vendor Name" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.vendorName} onChange={(e) => setProjectForm((f) => ({ ...f, vendorName: e.target.value }))}>
+            <option value="">Select Vendor Name</option>
             {vendorOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
           {projectFormErrors.vendorName && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.vendorName}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Project Priority" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.projectPriority} onChange={(e) => setProjectForm((f) => ({ ...f, projectPriority: e.target.value }))}>
+          <AddProjectFieldLabel label="Project Priority" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.projectPriority} onChange={(e) => setProjectForm((f) => ({ ...f, projectPriority: e.target.value }))}>
             <option value="">Select Project Priority</option>
             {projectChoiceOptions.projectPriority.map((opt) => <option key={opt.value} value={String(opt.value)}>{opt.label}</option>)}
           </select>
           {projectFormErrors.projectPriority && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.projectPriority}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Project Category" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.projectCategory} onChange={(e) => setProjectForm((f) => ({ ...f, projectCategory: e.target.value }))}>
+          <AddProjectFieldLabel label="Project Category" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.projectCategory} onChange={(e) => setProjectForm((f) => ({ ...f, projectCategory: e.target.value }))}>
             <option value="">Select Project Category</option>
             {projectMasterOptions.projectCategory.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
           </select>
           {projectFormErrors.projectCategory && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.projectCategory}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Project Type" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.projectType} onChange={(e) => setProjectForm((f) => ({ ...f, projectType: e.target.value }))}>
+          <AddProjectFieldLabel label="Project Type" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.projectType} onChange={(e) => setProjectForm((f) => ({ ...f, projectType: e.target.value }))}>
             <option value="">Select Project Type</option>
             {projectChoiceOptions.projectType.map((opt) => <option key={opt.value} value={String(opt.value)}>{opt.label}</option>)}
           </select>
           {projectFormErrors.projectType && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.projectType}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Strategic Goal" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.strategicGoal} onChange={(e) => setProjectForm((f) => ({ ...f, strategicGoal: e.target.value }))}>
-            <option value="">Select Goal</option>
+          <AddProjectFieldLabel label="Strategic Goal" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.strategicGoal} onChange={(e) => setProjectForm((f) => ({ ...f, strategicGoal: e.target.value }))}>
+            <option value="">Select Strategic Goal</option>
             {projectChoiceOptions.strategicGoal.map((opt) => <option key={opt.value} value={String(opt.value)}>{opt.label}</option>)}
           </select>
           {projectFormErrors.strategicGoal && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.strategicGoal}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Budget" /></label>
-          <div className="mt-1 flex h-9 overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
-            <input className="h-full min-h-0 flex-1 border-0 bg-transparent px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-inset focus:ring-[#b28a44]/30" value={projectForm.budget} inputMode="decimal" onChange={(e) => {
+          <AddProjectFieldLabel label="Budget" required />
+          <div className="enj-add-project-budget-wrap mt-1 flex h-9 overflow-hidden rounded-md border border-[#ADACB4] bg-white">
+            <input className="enj-add-project-budget-input h-full min-h-0 flex-1 border-0 bg-transparent px-3 outline-none focus:outline-none focus:ring-0" placeholder="Enter Budget" value={projectForm.budget} inputMode="decimal" onChange={(e) => {
               const next = e.target.value;
               if (/^\d*\.?\d*$/.test(next)) setProjectForm((f) => ({ ...f, budget: next }));
             }} />
-            <span className="w-12 border-l border-gray-200 text-xs text-gray-500 flex items-center justify-center">AED</span>
+            <span className="enj-add-project-muted w-12 border-l border-[#ADACB4] flex items-center justify-center">AED</span>
           </div>
-          {projectFormErrors.budget && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.budget}</p>}
+          {(projectFormErrors.budget || createProjectBudgetProgramError) && (
+            <p className={`mt-1 ${enj.fieldError}`}>
+              {projectFormErrors.budget || createProjectBudgetProgramError}
+            </p>
+          )}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Assign to Project Manager" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.assignToProjectManager} onChange={(e) => setProjectForm((f) => ({ ...f, assignToProjectManager: e.target.value }))}>
+          <AddProjectFieldLabel label="Assign to Project Manager" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.assignToProjectManager} onChange={(e) => setProjectForm((f) => ({ ...f, assignToProjectManager: e.target.value }))}>
             <option value="">Select Project Manager</option>
             {projectManagerEmails.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
           </select>
           {projectFormErrors.assignToProjectManager && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.assignToProjectManager}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Risks" /></label>
-          <input className={`mt-1 ${enj.control}`} value={projectForm.risks} onChange={(e) => setProjectForm((f) => ({ ...f, risks: e.target.value }))} />
+          <AddProjectFieldLabel label="Risks" required />
+          <input className={`enj-add-project-field mt-1 ${enj.control}`} placeholder="Enter Risks" value={projectForm.risks} onChange={(e) => setProjectForm((f) => ({ ...f, risks: e.target.value }))} />
           {projectFormErrors.risks && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.risks}</p>}
         </div>
         <div>
-          <label className={enj.label}>KPI</label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.kpi} onChange={(e) => setProjectForm((f) => ({ ...f, kpi: e.target.value }))}>
+          <AddProjectFieldLabel label="KPI" />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.kpi} onChange={(e) => setProjectForm((f) => ({ ...f, kpi: e.target.value }))}>
             <option value="">Select KPI</option>
             {projectMasterOptions.kpi.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
           </select>
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Methodology" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.methodology} onChange={(e) => setProjectForm((f) => ({ ...f, methodology: e.target.value }))}>
+          <AddProjectFieldLabel label="Methodology" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.methodology} onChange={(e) => setProjectForm((f) => ({ ...f, methodology: e.target.value }))}>
             <option value="">Select Methodology</option>
             {projectMasterOptions.methodology.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
           </select>
           {projectFormErrors.methodology && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.methodology}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Start Date" /></label>
-          <input type="date" min={todayIso} className={`mt-1 ${enj.control}`} value={projectForm.startDate} onChange={(e) => setProjectForm((f) => ({ ...f, startDate: e.target.value }))} />
+          <AddProjectFieldLabel label="Start Date" required />
+          <DatePickerField min={todayIso} className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.startDate} onChange={(v) => setProjectForm((f) => ({ ...f, startDate: v }))} />
           {projectFormErrors.startDate && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.startDate}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="End Date" /></label>
-          <input type="date" min={projectForm.startDate || todayIso} className={`mt-1 ${enj.control}`} value={projectForm.endDate} onChange={(e) => setProjectForm((f) => ({ ...f, endDate: e.target.value }))} />
+          <AddProjectFieldLabel label="End Date" required />
+          <DatePickerField min={projectForm.startDate || todayIso} className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.endDate} onChange={(v) => setProjectForm((f) => ({ ...f, endDate: v }))} />
           {projectFormErrors.endDate && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.endDate}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Department" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.department} onChange={(e) => setProjectForm((f) => ({ ...f, department: e.target.value }))}>
+          <AddProjectFieldLabel label="Department" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.department} onChange={(e) => setProjectForm((f) => ({ ...f, department: e.target.value }))}>
             <option value="">Select Department</option>
             {projectMasterOptions.sector.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
           </select>
           {projectFormErrors.department && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.department}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Project Status" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.projectStatus} onChange={(e) => setProjectForm((f) => ({ ...f, projectStatus: e.target.value }))}>
+          <AddProjectFieldLabel label="Project Status" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.projectStatus} onChange={(e) => setProjectForm((f) => ({ ...f, projectStatus: e.target.value }))}>
             <option value="">Select Project Status</option>
             {projectChoiceOptions.projectStatus.map((opt) => <option key={opt.value} value={String(opt.value)}>{opt.label}</option>)}
           </select>
           {projectFormErrors.projectStatus && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.projectStatus}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Milestone" /></label>
+          <AddProjectFieldLabel label="Milestone" required />
           <div className="mt-1 relative">
             <button
               type="button"
-              className={`${enj.btn} ${enj.btnDefault} w-full max-w-full justify-start text-left text-sm font-normal shadow-sm`}
+              className={`enj-add-project-combo ${enj.btn} ${enj.btnDefault} w-full max-w-full justify-start text-left font-normal ${projectForm.milestone.length === 0 ? 'enj-add-project-combo--empty' : ''}`}
               onClick={() => setMilestoneMenuOpen((v) => !v)}
             >
               {projectForm.milestone.length > 0 ? projectForm.milestone.join(', ') : 'Select Milestone(s)'}
             </button>
             {milestoneMenuOpen && (
-              <div className="absolute z-20 mt-1 w-full max-h-44 overflow-auto rounded-md border border-gray-200 bg-white p-2 shadow">
+              <div className="enj-add-project-milestone-menu absolute z-20 mt-1 w-full max-h-44 overflow-auto rounded-md p-2">
                 {projectMasterOptions.milestone.length === 0 ? (
-                  <p className="text-xs text-gray-400 px-1 py-1">No milestones available.</p>
+                  <p className="enj-add-project-muted px-1 py-1">No milestones available.</p>
                 ) : (
                   projectMasterOptions.milestone.map((opt) => {
                     const checked = projectForm.milestone.includes(opt);
                     return (
-                      <label key={opt} className="flex items-center gap-2 py-1 text-sm text-gray-700">
+                      <label key={opt} className="flex items-center gap-2 py-1 font-normal text-gray-700">
                         <input
                           type="checkbox"
                           checked={checked}
@@ -1555,8 +1680,8 @@ export function ProgramProjectsSection({
           {projectFormErrors.milestone && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.milestone}</p>}
         </div>
         <div>
-          <label className={enj.label}><ReqField label="Project Sponsor" /></label>
-          <select className={`mt-1 ${enj.control}`} value={projectForm.projectSponsor} onChange={(e) => setProjectForm((f) => ({ ...f, projectSponsor: e.target.value }))}>
+          <AddProjectFieldLabel label="Project Sponsor" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectForm.projectSponsor} onChange={(e) => setProjectForm((f) => ({ ...f, projectSponsor: e.target.value }))}>
             <option value="">Select Project Sponsor</option>
             {projectSponsorOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -1567,7 +1692,7 @@ export function ProgramProjectsSection({
           {projectFormErrors.projectSponsor && <p className={`mt-1 ${enj.fieldError}`}>{projectFormErrors.projectSponsor}</p>}
         </div>
         <div className="md:col-span-2">
-          <label className="text-[11px] font-medium text-secondary mb-1 block">Attachments</label>
+          <AddProjectFieldLabel label="Attachments" />
           <input
             ref={projectFormFileInputRef}
             type="file"
@@ -1582,15 +1707,15 @@ export function ProgramProjectsSection({
               }
             }}
           />
-          <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
+          <div className="enj-add-project-attachments rounded-lg border border-[#ADACB4] bg-white p-4">
             {projectForm.attachments.length === 0 ? (
               <div className="text-center">
-                <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
+                <p className="enj-add-project-muted mb-3">There is nothing attached.</p>
                 <button
                   type="button"
                   onClick={() => projectFormFileInputRef.current?.click()}
                   disabled={projectFormBusy}
-                  className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 font-normal hover:opacity-80 disabled:opacity-50"
                   style={{ color: '#A08149' }}
                 >
                   <Paperclip size={16} />
@@ -1600,14 +1725,14 @@ export function ProgramProjectsSection({
             ) : (
               <div className="space-y-3">
                 <div>
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
+                  <p className="enj-add-project-muted mb-2 font-normal text-gray-600">Files to upload</p>
                   <ul className="space-y-1">
                     {projectForm.attachments.map((file) => (
-                      <li key={file.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                      <li key={file.name} className="flex items-center justify-between gap-2 font-normal text-gray-700">
                         <span className="truncate">{file.name}</span>
                         <button
                           type="button"
-                          className="text-rose-600 shrink-0 hover:underline text-[11px]"
+                          className="enj-add-project-muted shrink-0 hover:underline text-rose-600"
                           disabled={projectFormBusy}
                           onClick={() => setProjectForm((f) => ({ ...f, attachments: f.attachments.filter((x) => x.name !== file.name) }))}
                         >
@@ -1622,7 +1747,7 @@ export function ProgramProjectsSection({
                     type="button"
                     onClick={() => projectFormFileInputRef.current?.click()}
                     disabled={projectFormBusy}
-                    className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 font-normal hover:opacity-80 disabled:opacity-50"
                     style={{ color: '#A08149' }}
                   >
                     <Paperclip size={14} />
@@ -1636,20 +1761,23 @@ export function ProgramProjectsSection({
       </div>
 
       <div className="mt-4">
-        <label className={enj.label}>Note</label>
-        <textarea className={`${enj.textarea} mt-1 h-24 min-h-24 resize-y`} value={projectForm.note} onChange={(e) => setProjectForm((f) => ({ ...f, note: e.target.value }))} />
+        <AddProjectFieldLabel label="Note / Remark" />
+        <textarea className={`enj-add-project-field ${enj.textarea} mt-1 h-24 min-h-24 resize-y font-normal`} placeholder="Enter Note / Remark" value={projectForm.note} onChange={(e) => setProjectForm((f) => ({ ...f, note: e.target.value }))} />
       </div>
 
-      <div className="mt-5 flex items-center justify-end gap-3">
+      <div className="enj-add-project-actions mt-5 flex items-center justify-end gap-3">
         <button type="button" className={`${enj.btn} ${enj.btnOutline} px-8 font-semibold`} onClick={() => setShowAddProjectForm(false)}>Cancel</button>
         <button type="button" className={`${enj.btn} ${enj.btnOutline} px-8 font-semibold`} onClick={clearProjectForm}>Clear</button>
         <button type="button" className={`${enj.btn} ${enj.btnPrimary} px-8 font-semibold disabled:opacity-50`} disabled={projectFormBusy || projectMetaLoading} onClick={() => void saveProject()}>
-          {projectFormBusy ? 'Saving...' : 'Save'}
+          {projectFormBusy ? 'Saving...' : '+ Save'}
         </button>
       </div>
-    </section>
+          </section>
+        </div>
+      </div>
+    </div>
   ) : viewAllStatus ? (
-    <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
+    <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[#f5f6fb] p-0">
       <div className="flex items-center gap-3 mb-4 shrink-0">
         <button
           type="button"
@@ -1661,9 +1789,8 @@ export function ProgramProjectsSection({
         </button>
         <h1 className="text-base font-bold text-[rgba(35,35,96,1)] truncate">All Projects - {viewAllStatus}</h1>
       </div>
-      <div className="flex-1 min-h-0 flex flex-col">
-        <div className="h-[473px] overflow-y-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-[11.5px]">
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 md:grid-rows-2 md:gap-3">
             {(() => {
               const allRows = boardProjectsByStatus[viewAllStatus] ?? [];
               const totalPages = Math.max(1, Math.ceil(allRows.length / VIEW_ALL_PAGE_SIZE));
@@ -1675,16 +1802,16 @@ export function ProgramProjectsSection({
                 const title = String(row.new_projectname ?? row.new_name ?? 'Project Name');
                 const desc = String(row.new_description ?? row.crcf8_description ?? '').trim() || 'No description';
                 const progress = readProjectRowProgress(row);
-                const sponsor = String(row.crcf8_projectsponsor ?? row.new_projectsponsorname ?? row.new_projectsponsor ?? '—');
-                const category = String(row.new_projectcategoryname ?? row.new_projectcategory ?? '—');
-                const method = String(row.new_methodologyname ?? row.new_methodology ?? '—');
+                const sponsor = String(row.crcf8_projectsponsor ?? row.new_projectsponsorname ?? row.new_projectsponsor ?? 'â€”');
+                const category = String(row.new_projectcategoryname ?? row.new_projectcategory ?? 'â€”');
+                const method = String(row.new_methodologyname ?? row.new_methodology ?? 'â€”');
                 const initials = projectCardInitials(row);
                 const budgetStr = formatProjectBudgetShort(row);
 
                 return (
                   <div
                     key={`${viewAllStatus}-${String(row.new_projectid ?? idx)}`}
-                    className="flex h-[150px] flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
+                    className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <button
@@ -1777,32 +1904,30 @@ export function ProgramProjectsSection({
                 );
               });
             })()}
-          </div>
         </div>
         {(() => {
           const allRows = boardProjectsByStatus[viewAllStatus] ?? [];
           return (
-            <div className="border-t border-gray-100 px-3 py-2 shrink-0">
-              <PagerBar
-                page={viewAllPage}
-                pageSize={VIEW_ALL_PAGE_SIZE}
-                total={allRows.length}
-                onPrev={() => setViewAllPage((p) => Math.max(1, p - 1))}
-                onNext={() => setViewAllPage((p) => Math.min(Math.ceil(allRows.length / VIEW_ALL_PAGE_SIZE), p + 1))}
-              />
-            </div>
+            <PagerBar
+              className="shrink-0 border-t border-gray-100 pt-3"
+              page={viewAllPage}
+              pageSize={VIEW_ALL_PAGE_SIZE}
+              total={allRows.length}
+              onPrev={() => setViewAllPage((p) => Math.max(1, p - 1))}
+              onNext={() => setViewAllPage((p) => Math.min(Math.ceil(allRows.length / VIEW_ALL_PAGE_SIZE), p + 1))}
+            />
           );
         })()}
       </div>
     </section>
   ) : (
-    <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
-      <div className="flex items-center justify-between mb-4 shrink-0">
+    <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[#f5f6fb] p-0">
+      <div className={`${enj.screenToolbar} mb-4`}>
         <h2 className="enj-screen-header">Projects</h2>
         {!hideNewProject && (
           <button
             type="button"
-            className={`${enj.btn} ${enj.btnPrimary} px-3 text-xs font-medium sm:px-4`}
+            className={enj.btnPrimary}
             onClick={() => {
               clearProjectForm();
               setShowAddProjectForm(true);
@@ -1817,7 +1942,7 @@ export function ProgramProjectsSection({
           const rows = boardProjectsByStatus[column.title] ?? [];
           return (
             <div key={column.title} className="flex w-full min-w-0 flex-col gap-3">
-              <div className="shrink-0 bg-white rounded-lg border border-gray-100 px-4 py-2.5 flex items-center justify-between">
+              <div className={`${enj.sectionToolbar} shrink-0 rounded-lg border border-gray-100 bg-white px-4 py-2.5`}>
                 <p className="text-xs font-semibold" style={{ color: column.color }}>{column.title}</p>
                 <button
                   type="button"
@@ -1841,9 +1966,9 @@ export function ProgramProjectsSection({
                     const title = String(row.new_projectname ?? row.new_name ?? 'Project Name');
                     const desc = String(row.new_description ?? row.crcf8_description ?? '').trim() || 'No description';
                     const progress = readProjectRowProgress(row);
-                    const sponsor = String(row.crcf8_projectsponsor ?? row.new_projectsponsorname ?? row.new_projectsponsor ?? '—');
-                    const category = String(row.new_projectcategoryname ?? row.new_projectcategory ?? '—');
-                    const method = String(row.new_methodologyname ?? row.new_methodology ?? '—');
+                    const sponsor = String(row.crcf8_projectsponsor ?? row.new_projectsponsorname ?? row.new_projectsponsor ?? 'â€”');
+                    const category = String(row.new_projectcategoryname ?? row.new_projectcategory ?? 'â€”');
+                    const method = String(row.new_methodologyname ?? row.new_methodology ?? 'â€”');
                     const initials = projectCardInitials(row);
                     const budgetStr = formatProjectBudgetShort(row);
                     return (
@@ -2032,7 +2157,7 @@ export function ProgramProjectsSection({
                 <li key={file.id} className="flex items-center justify-between rounded-md border border-gray-100 px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-primary">{file.name}</p>
-                    <p className={enj.label}>{file.modified || '—'}</p>
+                    <p className={enj.label}>{file.modified || 'â€”'}</p>
                   </div>
                   <button
                     type="button"
@@ -2056,480 +2181,6 @@ export function ProgramProjectsSection({
     </div>
   )}
 
-  {editProjectRow && (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-3 py-6 sm:px-4">
-      <div
-        className="w-full max-w-5xl max-h-[min(calc(100dvh-4rem),56rem)] overflow-y-auto rounded-xl bg-white p-5 sm:p-6 shadow-2xl"
-        role="dialog"
-        aria-labelledby="edit-project-title"
-      >
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <h2 id="edit-project-title" className="text-lg font-bold text-gray-900">
-            Edit Project
-          </h2>
-          <button
-            type="button"
-            className="rounded-md p-1 text-2xl leading-none text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-            onClick={closeProjectQuickEdit}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        {projectMetaLoading && <p className="mb-3 text-xs text-gray-500">Loading dropdown values...</p>}
-
-        <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
-          <div>
-            <label className={enj.label}><ReqField label="Project Name" /></label>
-            <input
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.projectName}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, projectName: e.target.value }))}
-            />
-            {editProjectErrors.projectName && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.projectName}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Program Name" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.programName}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, programName: e.target.value }))}
-            >
-              <option value="">Select Program</option>
-              {projectMasterOptions.program.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.programName && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.programName}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Vendor Name" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.vendorName}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, vendorName: e.target.value }))}
-            >
-              <option value="">Select Vendor</option>
-              {editProjectForm.vendorName && !vendorOptions.some((o) => o.value === editProjectForm.vendorName) && (
-                <option value={editProjectForm.vendorName}>{editProjectForm.vendorName}</option>
-              )}
-              {vendorOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.vendorName && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.vendorName}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Project Priority" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.projectPriority}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, projectPriority: e.target.value }))}
-            >
-              <option value="">Select Project Priority</option>
-              {projectChoiceOptions.projectPriority.map((opt) => (
-                <option key={opt.value} value={String(opt.value)}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.projectPriority && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.projectPriority}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Project Category" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.projectCategory}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, projectCategory: e.target.value }))}
-            >
-              <option value="">Select Project Category</option>
-              {projectMasterOptions.projectCategory.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.projectCategory && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.projectCategory}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Project Type" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.projectType}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, projectType: e.target.value }))}
-            >
-              <option value="">Select Project Type</option>
-              {projectChoiceOptions.projectType.map((opt) => (
-                <option key={opt.value} value={String(opt.value)}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.projectType && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.projectType}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Strategic Goal" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.strategicGoal}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, strategicGoal: e.target.value }))}
-            >
-              <option value="">Select Goal</option>
-              {projectChoiceOptions.strategicGoal.map((opt) => (
-                <option key={opt.value} value={String(opt.value)}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.strategicGoal && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.strategicGoal}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Budget" /></label>
-            <div className="mt-1 flex h-9 overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
-              <input
-                className="h-full min-h-0 flex-1 border-0 bg-transparent px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-inset focus:ring-[#b28a44]/30"
-                value={editProjectForm.budget}
-                inputMode="decimal"
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (/^\d*\.?\d*$/.test(next)) setEditProjectForm((f) => ({ ...f, budget: next }));
-                }}
-              />
-              <span className="w-12 border-l border-gray-200 text-xs text-gray-500 flex items-center justify-center">AED</span>
-            </div>
-            {editProjectErrors.budget && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.budget}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Assign to Project Manager" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.assignToProjectManager}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, assignToProjectManager: e.target.value }))}
-            >
-              <option value="">Select Project Manager</option>
-              {projectManagerEmails.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.assignToProjectManager && (
-              <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.assignToProjectManager}</p>
-            )}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Risks" /></label>
-            <input
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.risks}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, risks: e.target.value }))}
-            />
-            {editProjectErrors.risks && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.risks}</p>}
-          </div>
-          <div>
-            <label className={enj.label}>KPI</label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.kpi}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, kpi: e.target.value }))}
-            >
-              <option value="">Select KPI</option>
-              {projectMasterOptions.kpi.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Methodology" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.methodology}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, methodology: e.target.value }))}
-            >
-              <option value="">Select Methodology</option>
-              {projectMasterOptions.methodology.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.methodology && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.methodology}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Start Date" /></label>
-            <input
-              type="date"
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.startDate}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, startDate: e.target.value }))}
-            />
-            {editProjectErrors.startDate && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.startDate}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="End Date" /></label>
-            <input
-              type="date"
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.endDate}
-              min={editProjectForm.startDate || undefined}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, endDate: e.target.value }))}
-            />
-            {editProjectErrors.endDate && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.endDate}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Department" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.department}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, department: e.target.value }))}
-            >
-              <option value="">Select Department</option>
-              {projectMasterOptions.sector.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.department && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.department}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Project Status" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.projectStatus}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, projectStatus: e.target.value }))}
-            >
-              <option value="">Select Project Status</option>
-              {projectChoiceOptions.projectStatus.map((opt) => (
-                <option key={opt.value} value={String(opt.value)}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.projectStatus && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.projectStatus}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Milestone" /></label>
-            <div className="mt-1 relative">
-              <button
-                type="button"
-                className={`${enj.btn} ${enj.btnDefault} w-full max-w-full justify-start text-left text-sm font-normal shadow-sm`}
-                onClick={() => setEditMilestoneMenuOpen((v) => !v)}
-              >
-                {editProjectForm.milestone.length > 0 ? editProjectForm.milestone.join(', ') : 'Select Milestone(s)'}
-              </button>
-              {editMilestoneMenuOpen && (
-                <div className="absolute z-20 mt-1 w-full max-h-44 overflow-auto rounded-md border border-gray-200 bg-white p-2 shadow">
-                  {projectMasterOptions.milestone.length === 0 ? (
-                    <p className="text-xs text-gray-400 px-1 py-1">No milestones available.</p>
-                  ) : (
-                    projectMasterOptions.milestone.map((opt) => {
-                      const checked = editProjectForm.milestone.includes(opt);
-                      return (
-                        <label key={opt} className="flex items-center gap-2 py-1 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              setEditProjectForm((f) => ({
-                                ...f,
-                                milestone: checked ? f.milestone.filter((m) => m !== opt) : [...f.milestone, opt],
-                              }));
-                              setEditMilestoneMenuOpen(false);
-                            }}
-                          />
-                          <span>{opt}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-            {editProjectErrors.milestone && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.milestone}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Project Sponsor" /></label>
-            <select
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.projectSponsor}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, projectSponsor: e.target.value }))}
-            >
-              <option value="">Select Project Sponsor</option>
-              {editProjectForm.projectSponsor
-                && !projectSponsorOptions.some((o) => o.value === editProjectForm.projectSponsor) && (
-                <option value={editProjectForm.projectSponsor}>{editProjectForm.projectSponsor}</option>
-              )}
-              {projectSponsorOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            {editProjectErrors.projectSponsor && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.projectSponsor}</p>}
-          </div>
-          <div>
-            <label className={enj.label}><ReqField label="Progress (%)" /></label>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              className={`mt-1 ${enj.control}`}
-              value={editProjectForm.progress}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, progress: e.target.value }))}
-            />
-            {editProjectErrors.progress && <p className={`mt-1 ${enj.fieldError}`}>{editProjectErrors.progress}</p>}
-          </div>
-          <div className="md:col-span-2">
-            <label className="text-[11px] font-medium text-secondary mb-1 block">Add attachments</label>
-            <input
-              ref={editProjectFileInputRef}
-              type="file"
-              className="sr-only"
-              multiple
-              onChange={(e) => {
-                const files = e.target.files;
-                if (files && files.length > 0) {
-                  const newFiles = Array.from(files);
-                  setEditProjectForm((f) => ({ ...f, attachments: [...f.attachments, ...newFiles] }));
-                  e.target.value = '';
-                }
-              }}
-            />
-            <div className="rounded-lg border border-[#d6dbe8] bg-white p-4">
-              {editProjectForm.existingAttachments.length === 0 && editProjectForm.attachments.length === 0 ? (
-                <div className="text-center">
-                  <p className="text-sm text-gray-600 mb-3">There is nothing attached.</p>
-                  <button
-                    type="button"
-                    onClick={() => editProjectFileInputRef.current?.click()}
-                    disabled={editProjectBusy}
-                    className="inline-flex items-center gap-2 text-sm font-semibold hover:opacity-80 disabled:opacity-50"
-                    style={{ color: '#A08149' }}
-                  >
-                    <Paperclip size={16} />
-                    Attach file
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {editProjectForm.existingAttachments.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-2">Existing attachments</p>
-                      <ul className="space-y-1">
-                        {editProjectForm.existingAttachments.map((file) => (
-                          <li key={file.id} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                            <span className="truncate">{file.name}</span>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <a
-                                href={file.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[#A08149] hover:opacity-80"
-                                title="Download"
-                              >
-                                <Download size={16} />
-                              </a>
-                              <button
-                                type="button"
-                                className="text-rose-600 hover:opacity-80"
-                                disabled={editProjectBusy}
-                                onClick={() => setEditProjectForm((f) => ({ ...f, existingAttachments: f.existingAttachments.filter((x) => x.id !== file.id) }))}
-                                title="Remove"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {editProjectForm.attachments.length > 0 && (
-                    <div className={editProjectForm.existingAttachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
-                      <p className="text-xs font-semibold text-gray-600 mb-2">Files to upload</p>
-                      <ul className="space-y-1">
-                        {editProjectForm.attachments.map((file) => (
-                          <li key={file.name} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                            <span className="truncate">{file.name}</span>
-                            <button
-                              type="button"
-                              className="text-rose-600 shrink-0 hover:opacity-80"
-                              disabled={editProjectBusy}
-                              onClick={() => setEditProjectForm((f) => ({ ...f, attachments: f.attachments.filter((x) => x.name !== file.name) }))}
-                              title="Remove"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div className={editProjectForm.existingAttachments.length > 0 || editProjectForm.attachments.length > 0 ? 'pt-2 border-t border-gray-200' : ''}>
-                    <button
-                      type="button"
-                      onClick={() => editProjectFileInputRef.current?.click()}
-                      disabled={editProjectBusy}
-                      className="inline-flex items-center gap-2 text-xs font-semibold hover:opacity-80 disabled:opacity-50"
-                      style={{ color: '#A08149' }}
-                    >
-                      <Paperclip size={14} />
-                      Attach more
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 space-y-4">
-          <div>
-            <label className={enj.label}>Project description</label>
-            <textarea
-              className={`${enj.textarea} mt-1 min-h-20 resize-y`}
-              value={editProjectForm.description}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, description: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className={enj.label}>Note</label>
-            <textarea
-              className={`${enj.textarea} mt-1 h-24 min-h-24 resize-y`}
-              value={editProjectForm.note}
-              onChange={(e) => setEditProjectForm((f) => ({ ...f, note: e.target.value }))}
-            />
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            className={`${enj.btn} ${enj.btnOutline} px-6`}
-            onClick={closeProjectQuickEdit}
-            disabled={editProjectBusy}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className={`${enj.btn} ${enj.btnPrimary} px-6 disabled:opacity-50`}
-            onClick={() => void saveProjectQuickEdit()}
-            disabled={editProjectBusy || projectMetaLoading}
-          >
-            {editProjectBusy ? 'Saving...' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
   </>
   );
 }

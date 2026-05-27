@@ -6,6 +6,8 @@ import { EnjazMasterDataService } from './services/EnjazMasterDataService';
 import { postMeetingRequestToFlow } from './services/powerAutomateMeeting';
 import { NewUsersService, type NewUserRow } from './services/NewUsersService';
 import type { ToastType } from './NotificationToast';
+import { DatePickerField } from './EnjDatePicker';
+import { FormFieldLabel, FormPageActions, FormPageShell } from './FormPageShell';
 import { enj } from './ui/enjForm';
 
 type AddMeetingFormPanelProps = {
@@ -69,14 +71,6 @@ type MultiSelectComboProps = {
   disabled?: boolean;
 };
 
-function ReqFieldMeeting({ label }: { label: string }) {
-  return (
-    <span className="text-[11px] font-medium text-gray-700">
-      {label} <span className="text-red-500">*</span>
-    </span>
-  );
-}
-
 function MultiSelectCombo({ label, options, selected, onChange, placeholder, disabled }: MultiSelectComboProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -103,14 +97,14 @@ function MultiSelectCombo({ label, options, selected, onChange, placeholder, dis
   };
 
   return (
-    <label className="block">
-      <span className="text-[11px] text-gray-500 mb-1 block">{label}</span>
-      <div ref={hostRef} className="relative">
+    <div className="block">
+      <FormFieldLabel label={label} required />
+      <div ref={hostRef} className="relative mt-1">
         <button
           type="button"
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
-          className={`${enj.btnDefault} h-auto min-h-9 w-full justify-start px-3 text-left text-sm font-normal text-gray-700 disabled:opacity-60`}
+          className={`enj-add-project-field ${enj.btnDefault} h-auto min-h-9 w-full justify-start px-3 text-left text-sm font-normal text-gray-700 disabled:opacity-60`}
         >
           {selected.length === 0 ? (
             <span className="text-gray-400">{placeholder}</span>
@@ -130,7 +124,7 @@ function MultiSelectCombo({ label, options, selected, onChange, placeholder, dis
         {open && !disabled && (
           <div className="absolute z-30 mt-1 w-full rounded-md border border-gray-200 bg-white p-2 shadow-lg">
             <input
-              className={`${enj.control} mb-2`}
+              className={`enj-add-project-field ${enj.control} mb-2`}
               placeholder="Search..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -155,7 +149,7 @@ function MultiSelectCombo({ label, options, selected, onChange, placeholder, dis
           </div>
         )}
       </div>
-    </label>
+    </div>
   );
 }
 
@@ -368,19 +362,13 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
   };
 
   return (
-    <section className="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto">
-      <p className="text-[16px] font-bold text-primary mb-4">
-        <button className="underline text-primary font-semibold" onClick={onCancel}>
-          {parentLabel}
-        </button>
-        {' > '}Add New Meeting
-      </p>
+    <FormPageShell parentLabel={parentLabel} onBack={onCancel} title="Add New Meeting">
       <form onSubmit={onSubmit}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-3">
-          <label className="block">
-            <div className="mb-1"><ReqFieldMeeting label="Meeting Title" /></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+          <div>
+            <FormFieldLabel label="Meeting Title" required />
             <input
-              className={`${enj.control} text-gray-700`}
+              className={`enj-add-project-field mt-1 ${enj.control} text-gray-700`}
               placeholder="Enter Meeting Title"
               value={meetingTitle}
               onChange={(e) => {
@@ -389,11 +377,11 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
               }}
             />
             {formErrors.meetingTitle && <p className="mt-1 text-[11px] text-rose-600">{formErrors.meetingTitle}</p>}
-          </label>
-          <label className="block">
-            <div className="mb-1"><ReqFieldMeeting label="Meeting Category" /></div>
+          </div>
+          <div>
+            <FormFieldLabel label="Meeting Category" required />
             <select
-              className={`${enj.control} text-gray-700`}
+              className={`enj-add-project-field mt-1 ${enj.control} text-gray-700`}
               value={meetingCategory}
               onChange={(e) => {
                 setMeetingCategory(e.target.value);
@@ -408,7 +396,7 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
               ))}
             </select>
             {formErrors.meetingCategory && <p className="mt-1 text-[11px] text-rose-600">{formErrors.meetingCategory}</p>}
-          </label>
+          </div>
           <MultiSelectCombo
             label="Department"
             options={[...DEPARTMENT_OPTIONS]}
@@ -421,10 +409,10 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
             disabled={loadingOptions}
           />
           {formErrors.departments && <p className="-mt-2 text-[11px] text-rose-600">{formErrors.departments}</p>}
-          <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">Project Name</span>
+          <div>
+            <FormFieldLabel label="Project Name" />
             <select
-              className={`${enj.control} text-gray-700`}
+              className={`enj-add-project-field mt-1 ${enj.control} text-gray-700`}
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
             >
@@ -435,11 +423,11 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
                 </option>
               ))}
             </select>
-          </label>
-          <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">Vendor Name</span>
+          </div>
+          <div>
+            <FormFieldLabel label="Vendor Name" />
             <select
-              className={`${enj.control} text-gray-700`}
+              className={`enj-add-project-field mt-1 ${enj.control} text-gray-700`}
               value={vendorName}
               onChange={(e) => setVendorName(e.target.value)}
             >
@@ -450,34 +438,33 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
                 </option>
               ))}
             </select>
-          </label>
-          <label className="block">
-            <span className="text-[11px] text-gray-500 mb-1 block">Project Manager</span>
+          </div>
+          <div>
+            <FormFieldLabel label="Project Manager" />
             <input
               readOnly
-              className={`${enj.control} cursor-default bg-gray-50 text-gray-700`}
+              className={`enj-add-project-field mt-1 ${enj.control} cursor-default bg-gray-50 text-gray-700`}
               placeholder="Auto Fetch"
               value={projectManager}
             />
-          </label>
-          <label className="block">
-            <div className="mb-1"><ReqFieldMeeting label="Meeting Date" /></div>
-            <input
-              type="date"
-              className={`${enj.control} text-gray-700`}
+          </div>
+          <div>
+            <FormFieldLabel label="Meeting Date" required />
+            <DatePickerField
+              className={`enj-add-project-field mt-1 ${enj.control} text-gray-700`}
               value={meetingDate}
-              onChange={(e) => {
-                setMeetingDate(e.target.value);
+              onChange={(v) => {
+                setMeetingDate(v);
                 setFormErrors((prev) => ({ ...prev, meetingDate: undefined }));
               }}
             />
             {formErrors.meetingDate && <p className="mt-1 text-[11px] text-rose-600">{formErrors.meetingDate}</p>}
-          </label>
-          <label className="block">
-            <div className="mb-1"><ReqFieldMeeting label="Start Time" /></div>
+          </div>
+          <div>
+            <FormFieldLabel label="Start Time" required />
             <input
               type="time"
-              className={`${enj.control} text-gray-700`}
+              className={`enj-add-project-field mt-1 ${enj.control} text-gray-700`}
               value={startTime}
               onChange={(e) => {
                 setStartTime(e.target.value);
@@ -485,12 +472,12 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
               }}
             />
             {formErrors.startTime && <p className="mt-1 text-[11px] text-rose-600">{formErrors.startTime}</p>}
-          </label>
-          <label className="block">
-            <div className="mb-1"><ReqFieldMeeting label="End Time" /></div>
+          </div>
+          <div>
+            <FormFieldLabel label="End Time" required />
             <input
               type="time"
-              className={`${enj.control} text-gray-700`}
+              className={`enj-add-project-field mt-1 ${enj.control} text-gray-700`}
               value={endTime}
               onChange={(e) => {
                 setEndTime(e.target.value);
@@ -498,7 +485,7 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
               }}
             />
             {formErrors.endTime && <p className="mt-1 text-[11px] text-rose-600">{formErrors.endTime}</p>}
-          </label>
+          </div>
           <MultiSelectCombo
             label="Invite Members"
             options={inviteOptions}
@@ -512,41 +499,32 @@ export function AddMeetingFormPanel({ parentLabel, onCancel, onCreated, onNotify
           />
           {formErrors.inviteMembers && <p className="-mt-2 text-[11px] text-rose-600">{formErrors.inviteMembers}</p>}
         </div>
-        <label className="block mt-3">
-          <span className="text-[11px] text-gray-500 mb-1 block">Meeting Location</span>
+        <div className="mt-3">
+          <FormFieldLabel label="Meeting Location" />
           <input
-            className={`${enj.control} text-gray-700`}
+            className={`enj-add-project-field mt-1 ${enj.control} text-gray-700`}
             placeholder="Enter Meeting Location"
             value={meetingLocation}
             onChange={(e) => setMeetingLocation(e.target.value)}
           />
-        </label>
-        <label className="block mt-3">
-          <span className="text-[11px] text-gray-500 mb-1 block">Meeting Agenda</span>
+        </div>
+        <div className="mt-3">
+          <FormFieldLabel label="Meeting Agenda" />
           <textarea
-            className={`${enj.textarea} h-20 min-h-[5rem] resize-none text-gray-700`}
+            className={`enj-add-project-field mt-1 ${enj.textarea} h-20 min-h-[5rem] resize-none text-gray-700`}
             placeholder="Agenda..."
             value={agenda}
             onChange={(e) => setAgenda(e.target.value)}
           />
-        </label>
-        <div className="mt-4 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className={`${enj.btnOutline} min-w-[5.5rem] px-6 font-semibold`}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className={`${enj.btnPrimary} min-w-[5.5rem] px-6 font-semibold`}
-          >
-            {saving ? 'Saving...' : 'Add to Calendar'}
-          </button>
         </div>
+        <FormPageActions
+          onCancel={onCancel}
+          onSave={() => {}}
+          busy={saving}
+          saveLabel="Add to Calendar"
+          saveType="submit"
+        />
       </form>
-    </section>
+    </FormPageShell>
   );
 }

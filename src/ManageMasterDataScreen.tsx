@@ -159,7 +159,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [pendingDelete, setPendingDelete] = useState<EnjazMasterDataRow | null>(null);
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 9;
+  const PAGE_SIZE = 6;
   const [categoryOptions, setCategoryOptions] = useState<Array<{ label: string; value: number }>>([]);
   const categoryValueByLabel = useMemo(() => new Map(categoryOptions.map((o) => [o.label, o.value] as const)), [categoryOptions]);
   const categoryLabelByValue = useMemo(() => new Map(categoryOptions.map((o) => [o.value, o.label] as const)), [categoryOptions]);
@@ -367,6 +367,12 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
   const validate = () => {
     const next: Partial<Record<keyof FormState, string>> = {};
     if (!form.name.trim()) next.name = 'Field Name is required';
+    // Edit: Code (ID) is read-only — invalid or duplicate IDs are fixed at save (regenerated).
+    if (editingId) {
+      setErrors(next);
+      return Object.keys(next).length === 0;
+    }
+
     const codeRaw = form.code.trim();
     const codeNumRaw = form.codeNumeric.trim();
     const prefix = codePrefixForCategory(selectedCategory);
@@ -416,7 +422,44 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
       const mappedCategoryValue = categoryValueByLabel.get(selectedCategory);
       const resolvedCategoryValue = editingCategoryValue ?? existingCategoryValue ?? mappedCategoryValue ?? CATEGORY_BY_LABEL.get(selectedCategory) ?? selectedCategory;
       // Recompute at submit time to reduce race conditions across multiple users.
-      const finalCode = editingId ? form.code.trim() : nextCodeFromRows(latestRows, selectedCategory);
+      let finalCode: string;
+      /** Edit: Code field is read-only — regenerate when empty/invalid or when another row already uses this ID (global for non-special). */
+      let idRegenerated = false;
+      if (editingId) {
+        const rowsWithoutSelf = latestRows.filter((r) => String(r.new_enjazmasterdataid ?? '') !== editingId);
+
+        const codeConflictsOther = (code: string) =>
+          latestRows.some((r) => {
+            if (String(r.new_enjazmasterdataid ?? '') === editingId) return false;
+            const rowCategory = categoryTextForRow(r);
+            const selectedIsSpecial = isSpecialCategory(selectedCategory);
+            const rowIsSpecial = isSpecialCategory(rowCategory);
+            if (selectedIsSpecial) {
+              return rowCategory === selectedCategory && displayCodeForRow(r).trim().toLowerCase() === code.trim().toLowerCase();
+            }
+            return !rowIsSpecial && Number(r.new_code ?? NaN) === Number(code);
+          });
+
+        const proposed = form.code.trim();
+        const codeNumRaw = form.codeNumeric.trim();
+        const prefix = codePrefixForCategory(selectedCategory);
+        const proposedInvalid =
+          !proposed ||
+          (!prefix
+            ? (() => {
+                const n = Number(proposed);
+                return Number.isNaN(n) || n < 0;
+              })()
+            : !new RegExp(`^${prefix}\\d+$`, 'i').test(proposed) || !codeNumRaw || Number.isNaN(Number(codeNumRaw)));
+
+        finalCode = proposed;
+        if (proposedInvalid || codeConflictsOther(finalCode)) {
+          finalCode = nextCodeFromRows(rowsWithoutSelf, selectedCategory);
+          idRegenerated = true;
+        }
+      } else {
+        finalCode = nextCodeFromRows(latestRows, selectedCategory);
+      }
       const finalCodeNumeric = Number(finalCode.replace(/^\D+/, ''));
       const hasDuplicate = latestRows.some((r) => {
         if (editingId && String(r.new_enjazmasterdataid ?? '') === editingId) return false;
@@ -455,7 +498,12 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
           });
         }
         if (!res.success) throw new Error(res.error?.message ?? 'Update failed');
-        setToast({ type: 'success', message: `${selectedCategory} updated successfully.` });
+        setToast({
+          type: 'success',
+          message: idRegenerated
+            ? `${selectedCategory} updated. Reference ID was set to ${finalCode}.`
+            : `${selectedCategory} updated successfully.`,
+        });
       } else {
         let createSucceeded = false;
         let lastErr = 'Create failed';
@@ -521,13 +569,13 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
     <section
       className={
         embeddedInManageData
-          ? 'flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden p-0 border-0 bg-transparent shadow-none'
+          ? 'flex h-full min-h-0 w-full min-w-0 flex-1 flex-col p-0 border-0 bg-transparent shadow-none'
           : 'rounded-xl border border-gray-100 bg-white p-4 shadow-sm'
       }
     >
       {toast && <NotificationToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
       {!embeddedInManageData && <h2 className="enj-screen-header mb-3">Manage Master Data</h2>}
-      <p className={embeddedInManageData ? 'shrink-0 text-xs text-gray-600 mb-2' : 'text-sm text-gray-600 mb-3'}>{`Manage '${selectedCategory}'`}</p>
+      <p className={embeddedInManageData ? 'mb-3 shrink-0 text-xs leading-relaxed text-gray-600' : 'mb-3 text-sm text-gray-600'}>{`Manage '${selectedCategory}'`}</p>
       <div
         className={
           embeddedInManageData
@@ -538,8 +586,8 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
         <aside
           className={
             embeddedInManageData
-              ? 'max-h-40 overflow-auto rounded-lg border border-gray-100 bg-gray-50 p-2 lg:max-h-none'
-              : 'rounded-lg border border-gray-100 bg-gray-50 p-2 max-h-[70vh] overflow-auto'
+              ? 'flex max-h-40 flex-col gap-1.5 overflow-auto rounded-lg border border-gray-100 bg-gray-50 p-2 lg:max-h-none'
+              : 'flex max-h-[70vh] flex-col gap-1.5 overflow-auto rounded-lg border border-gray-100 bg-gray-50 p-2'
           }
         >
           {sortedCategories.map((cat) => (
@@ -547,7 +595,7 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
               key={cat}
               type="button"
               onClick={() => setSelectedCategory(cat)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm mb-1 ${
+              className={`w-full rounded-md px-3 py-2 text-left text-sm ${
                 selectedCategory === cat ? 'bg-primary text-white' : 'text-gray-700 hover:bg-white'
               }`}
             >
@@ -557,17 +605,17 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
         </aside>
 
         <div className={embeddedInManageData ? 'flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden' : 'space-y-3'}>
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-            <div className="relative w-full md:w-[320px]">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <div className="relative w-full sm:w-[200px]">
+              <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Search by Name"
-                className={`${enj.control} pl-9`}
+                placeholder="Search"
+                className={`${enj.control} pl-8 text-xs`}
               />
             </div>
-            <button type="button" onClick={openAdd} className={`${enj.btnPrimary} px-4`}>
+            <button type="button" onClick={openAdd} className={`${enj.btnPrimary} shrink-0 px-3`}>
               <Plus size={14} />
               Add New
             </button>
@@ -584,51 +632,62 @@ export default function ManageMasterDataScreen({ embeddedInManageData = false }:
             <div
               className={
                 embeddedInManageData
-                  ? 'grid min-h-0 min-w-0 flex-1 grid-cols-1 content-start items-start gap-2 overflow-y-auto pr-0.5 sm:grid-cols-2 md:grid-cols-3 [scrollbar-gutter:stable]'
+                  ? 'grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 md:grid-rows-2 md:gap-3'
                   : 'grid content-start items-start grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'
               }
             >
               {pagedRows.map((row) => (
                 <article
                   key={String(row.new_enjazmasterdataid ?? `${row.new_enjazmasterdata1}-${row.new_code}`)}
-                  className="w-full max-w-full self-start rounded-xl border border-gray-100 bg-white p-3 shadow-sm"
+                  className={`w-full max-w-full rounded-xl border border-gray-100 bg-white p-3 shadow-sm ${
+                    embeddedInManageData ? 'flex h-full min-h-0 flex-col self-stretch overflow-hidden' : 'self-start'
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div>
-                      <p className="text-sm font-semibold text-primary">{String(row.new_enjazmasterdata1 ?? '-')}</p>
-                      <p className="text-xs text-gray-500 mt-1">ID: {displayCodeForRow(row)}</p>
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold leading-snug text-primary">{String(row.new_enjazmasterdata1 ?? '-')}</p>
+                      <p className="mt-0.5 text-[10px] leading-relaxed text-gray-500">ID: {displayCodeForRow(row)}</p>
                     </div>
-                    <span className={`${enj.badge} ${statusText(row) === 'Active' ? enj.badgeSuccess : enj.badgeNeutral}`}>
-                      {statusText(row)}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className={`${enj.badge} ${statusText(row) === 'Active' ? enj.badgeSuccess : enj.badgeNeutral}`}>
+                        {statusText(row)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => openEdit(row)}
+                        className="h-6 w-6 rounded-md border border-gray-200 inline-flex items-center justify-center text-gray-600 hover:bg-gray-50"
+                        aria-label="Edit record"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPendingDelete(row)}
+                        className="h-6 w-6 rounded-md border border-rose-200 inline-flex items-center justify-center text-rose-600 hover:bg-rose-50"
+                        aria-label="Delete record"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="mb-3 pt-2 border-t border-gray-100">
-                    <p className="text-[11px] text-gray-600">
-                      <span className="font-medium text-gray-700">Category Type: </span>
+                  <div className="mt-1.5 border-t border-gray-100 pt-1.5">
+                    <p className="text-[10px] leading-relaxed text-gray-600">
+                      <span className="font-semibold text-gray-800">Category Type :</span>{' '}
                       <span className="text-gray-700">{categoryTextForRow(row)}</span>
                     </p>
-                  </div>
-                  <div className="mt-3 flex items-center justify-end gap-2">
-                    <button type="button" onClick={() => openEdit(row)} className="h-8 w-8 rounded-md border border-gray-200 inline-flex items-center justify-center text-gray-600 hover:bg-gray-50">
-                      <Pencil size={14} />
-                    </button>
-                    <button type="button" onClick={() => setPendingDelete(row)} className="h-8 w-8 rounded-md border border-rose-200 inline-flex items-center justify-center text-rose-600 hover:bg-rose-50">
-                      <Trash2 size={14} />
-                    </button>
                   </div>
                 </article>
               ))}
             </div>
-            <div className="shrink-0 rounded-lg border border-gray-100 bg-white px-3 py-2">
-              <PagerBar
-                page={pageSafe}
-                pageSize={PAGE_SIZE}
-                total={filtered.length}
-                onPrev={() => setPage((p) => Math.max(1, p - 1))}
-                onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={loading}
-              />
-            </div>
+            <PagerBar
+              className="shrink-0 border-t border-gray-100 pt-3"
+              page={pageSafe}
+              pageSize={PAGE_SIZE}
+              total={filtered.length}
+              onPrev={() => setPage((p) => Math.max(1, p - 1))}
+              onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={loading}
+            />
             </>
           )}
         </div>

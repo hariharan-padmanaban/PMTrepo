@@ -3,23 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  Activity, AlertCircle, ArrowLeft, Briefcase, Calendar, CheckSquare, CheckCircle2, FileCheck,
-  ChevronDown, Clock, FileText, FolderOpen, Inbox, LayoutGrid, ListTree, Pencil, RefreshCw,
-  LogOut, MessageSquare, ShieldCheck, Trash2, TrendingUp, UserCircle, Users,
+  AlertCircle, ArrowLeft, Briefcase, Calendar, CheckSquare, CheckCircle2, FileCheck,
+  ChevronDown, Clock, FileText, FolderOpen, LayoutGrid, ListTree, Pencil, RefreshCw,
+  MessageSquare, ShieldCheck, Trash2, TrendingUp, Users,
 } from 'lucide-react';
 import BusinessFeedbackList from './BusinessFeedbackList';
 import BusinessPipelineScreen from './BusinessPipelineScreen';
+import { BusinessTimelineScreen } from './BusinessTimelineScreen';
 import { newPipelineToTableRow, type BusinessPipelineTableRow } from './pipelineMappers';
 import type { New_clients } from './generated/models/New_clientsModel';
 import type { New_pipelines } from './generated/models/New_pipelinesModel';
 import { New_clientsService } from './generated/services/New_clientsService';
 import { New_pipelinesService } from './generated/services/New_pipelinesService';
 import AdminDashboard from './AdminDashboard';
-import { ActivityHistoryModal } from './ActivityHistoryModal';
-import { UserProfileModal } from './UserProfileModal';
+import { ProfileDropdown } from './ProfileDropdown';
 import { DonutChart } from './DonutChart';
 import { DonutChartCard } from './DonutChartCard';
 import { New_programsService } from './generated/services/New_programsService';
@@ -38,6 +38,8 @@ import { NewUsersService } from './services/NewUsersService';
 import { Office365UsersService } from './generated/services/Office365UsersService';
 import { NotificationToast, type ToastType } from './NotificationToast';
 import { ProgramProjectsSection } from './ProgramProjectsSection';
+import { ProgramFormPanel } from './ProgramFormPanel';
+import { FormFieldLabel, FormPageActions, FormPageShell } from './FormPageShell';
 import { DeliverablesListPanel } from './DeliverablesListPanel';
 import { AddNewTaskFormPanel } from './AddNewTaskFormPanel';
 import { ProjectTaskDetailView } from './ProjectTaskDetailView';
@@ -56,6 +58,7 @@ import { buildInboxNotifications, NotificationBell } from './NotificationInbox';
 import { ThemeModeToggle } from './themeMode';
 import saudiHeroImage from '../refImages/Loginbackground.jpg?inline';
 import { LogoMark } from './LogoMark';
+import { DatePickerField } from './EnjDatePicker';
 import { enj } from './ui/enjForm';
 import { PagerBar } from './PagerBar';
 import {
@@ -63,6 +66,11 @@ import {
   portfolioProjectStatusBadgeClass,
   programTableStatusBadgeClass,
 } from './tableDesign';
+import {
+  PortfolioProjectTimelineDates,
+  PortfolioProjectTimelineTh,
+  formatPortfolioTimelineDate,
+} from './PortfolioProjectTimeline';
 
 /** Application roles — pick at sign-in to route the correct workspace. */
 export type AppRole = 'admin' | 'business' | 'program' | 'project' | 'team' | 'tester';
@@ -119,15 +127,6 @@ function parseTimelineDate(rawValue: unknown): Date | null {
  */
 function exclusiveEndAfterInclusiveDate(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0).getTime();
-}
-
-function sameLocalCalendarDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-function localDateOnlyFromTimeMs(t: number): Date {
-  const d = new Date(t);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
 
 /** One calendar year, weeks as the base column count; Q / month bands = consecutive week spans. */
@@ -213,7 +212,7 @@ function isUserProjectDepartment(u: Record<string, unknown>): boolean {
 
 // --- Business dashboard: derive charts from project rows (Dataverse) ---
 const BUDGET_DONUT_COLORS = [
-  '#1667de', '#f6be00', '#3b3a80', '#d3525a', '#64748b', '#16a34a', '#8b5cf6',
+  '#73a6ee', '#16c784', '#c29a4a', '#34366f', '#d84f5a', '#e4c580', '#8b5cf6',
 ] as const;
 const PROJECT_CATEGORY_DONUT_COLORS = [
   '#2563eb', '#f59e0b', '#4f46e5', '#60a5fa', '#10b981', '#d3525a',
@@ -227,6 +226,203 @@ function formatAEDShort(n: number): string {
   if (n >= 1e6) return `AED ${(n / 1e6).toFixed(1)}M`;
   if (n >= 1e3) return `AED ${(n / 1e3).toFixed(0)}K`;
   return `AED ${n.toFixed(0)}`;
+}
+
+function formatAEDPlain(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return 'AED 0';
+  return `AED ${Math.round(n)}`;
+}
+
+type BusinessDashboardDonutSlice = {
+  label: string;
+  value: number;
+  color: string;
+  detail?: string;
+};
+
+function businessDonutPoint(cx: number, cy: number, radius: number, angleDeg: number) {
+  const angle = (Math.PI / 180) * angleDeg;
+  return {
+    x: cx + radius * Math.cos(angle),
+    y: cy + radius * Math.sin(angle),
+  };
+}
+
+function businessDonutPath(cx: number, cy: number, outerR: number, innerR: number, startDeg: number, endDeg: number) {
+  const startOuter = businessDonutPoint(cx, cy, outerR, startDeg);
+  const endOuter = businessDonutPoint(cx, cy, outerR, endDeg);
+  const endInner = businessDonutPoint(cx, cy, innerR, endDeg);
+  const startInner = businessDonutPoint(cx, cy, innerR, startDeg);
+  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
+  return [
+    `M ${startOuter.x} ${startOuter.y}`,
+    `A ${outerR} ${outerR} 0 ${largeArc} 1 ${endOuter.x} ${endOuter.y}`,
+    `L ${endInner.x} ${endInner.y}`,
+    `A ${innerR} ${innerR} 0 ${largeArc} 0 ${startInner.x} ${startInner.y}`,
+    'Z',
+  ].join(' ');
+}
+
+function shortenBusinessDonutLabel(value: string, max = 11): string {
+  const text = value.trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function BusinessDashboardDonutCard({
+  title,
+  slices,
+  centerText,
+  mode,
+  className = '',
+}: {
+  title: string;
+  slices: BusinessDashboardDonutSlice[];
+  centerText?: string;
+  mode: 'progress' | 'budget';
+  className?: string;
+}) {
+  const [hoveredIdx, setHoveredIdx] = useState<number>(-1);
+  const positiveSlices = slices.filter((slice) => Number.isFinite(slice.value) && slice.value > 0);
+  const total = positiveSlices.reduce((sum, slice) => sum + slice.value, 0);
+  const cx = 155;
+  const cy = 104;
+  const outerR = 63;
+  const innerR = mode === 'budget' ? 22 : 38;
+  const labelR = mode === 'budget' ? 91 : 90;
+  const gap = positiveSlices.length > 1 ? 1.1 : 0;
+  let cursor = mode === 'budget' ? -112 : -94;
+  const segments = positiveSlices.map((slice, idx) => {
+    const sweep = Math.min((slice.value / Math.max(1, total)) * 360, 359.999);
+    const start = cursor + gap / 2;
+    const end = cursor + sweep - gap / 2;
+    cursor += sweep;
+    return { ...slice, idx, start, end, mid: (start + end) / 2 };
+  });
+  const visibleLabelIndices = new Set(
+    [...segments]
+      .sort((a, b) => b.value - a.value)
+      .slice(0, segments.length > 4 ? 4 : segments.length)
+      .map((segment) => segment.idx),
+  );
+
+  const labelFor = (slice: BusinessDashboardDonutSlice) => {
+    if (mode === 'budget') {
+      return {
+        top: formatAEDPlain(slice.value),
+        bottom: shortenBusinessDonutLabel(slice.label, 11),
+      };
+    }
+    return {
+      top: slice.value.toLocaleString(),
+      bottom: slice.label,
+    };
+  };
+
+  return (
+    <div className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-white p-3 ${className}`.trim()}>
+      <h3 className="shrink-0 text-base font-bold leading-tight text-[#232360]">{title}</h3>
+      <div className="relative flex min-h-0 flex-1 items-center justify-center pt-1">
+        {positiveSlices.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-xs font-medium text-gray-400">No data</div>
+        ) : (
+          <svg
+            viewBox="0 0 310 205"
+            className="h-[13.25rem] max-h-full w-full max-w-[19rem]"
+            role="img"
+            aria-label={title}
+            onMouseLeave={() => setHoveredIdx(-1)}
+          >
+            <defs>
+              <filter id={`business-${mode}-donut-shadow`} x="-40%" y="-40%" width="180%" height="180%">
+                <feDropShadow dx="0" dy="5" stdDeviation="5" floodColor="#111827" floodOpacity="0.16" />
+              </filter>
+            </defs>
+            {segments.map((segment) => {
+              const isHovered = hoveredIdx === segment.idx;
+              const dimmed = hoveredIdx >= 0 && !isHovered;
+              const offset = isHovered ? 8 : 0;
+              const dx = Math.cos((Math.PI / 180) * segment.mid) * offset;
+              const dy = Math.sin((Math.PI / 180) * segment.mid) * offset;
+              return (
+                <path
+                  key={`${mode}-${segment.label}-${segment.idx}`}
+                  d={businessDonutPath(cx, cy, outerR, innerR, segment.start, segment.end)}
+                  fill={segment.color}
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                  transform={`translate(${dx} ${dy}) scale(${isHovered ? 1.025 : 1})`}
+                  style={{
+                    cursor: 'pointer',
+                    opacity: dimmed ? 0.5 : 1,
+                    transformOrigin: `${cx}px ${cy}px`,
+                    transition: 'transform 220ms cubic-bezier(.2,.8,.2,1), opacity 160ms ease',
+                    filter: isHovered ? `url(#business-${mode}-donut-shadow)` : undefined,
+                  }}
+                  onMouseEnter={() => setHoveredIdx(segment.idx)}
+                >
+                  <title>
+                    {mode === 'budget'
+                      ? `${segment.label}: ${formatAEDPlain(segment.value)} (${((segment.value / total) * 100).toFixed(1)}%)`
+                      : `${segment.label}: ${segment.value.toLocaleString()} projects (${((segment.value / total) * 100).toFixed(1)}%)`}
+                  </title>
+                </path>
+              );
+            })}
+            <circle cx={cx} cy={cy} r={innerR - 0.5} fill="#ffffff" />
+            {centerText ? (
+              <text x={cx} y={cy + 4} textAnchor="middle" className="fill-black text-sm font-medium">
+                {centerText}
+              </text>
+            ) : null}
+            {segments.map((segment) => {
+              const isHovered = hoveredIdx === segment.idx;
+              const shouldShowLabel = segments.length <= 4 || visibleLabelIndices.has(segment.idx) || isHovered;
+              if (!shouldShowLabel) return null;
+              const lineStart = businessDonutPoint(cx, cy, outerR + 4, segment.mid);
+              const lineEnd = businessDonutPoint(cx, cy, labelR - 5, segment.mid);
+              const rightSide = Math.cos((Math.PI / 180) * segment.mid) >= 0;
+              const labelX = Math.max(18, Math.min(292, lineEnd.x + (rightSide ? 10 : -10)));
+              const labelY = Math.max(22, Math.min(184, lineEnd.y));
+              const label = labelFor(segment);
+              return (
+                <g
+                  key={`label-${mode}-${segment.label}-${segment.idx}`}
+                  onMouseEnter={() => setHoveredIdx(segment.idx)}
+                  style={{ cursor: 'pointer', transition: 'font-weight 160ms ease' }}
+                >
+                  <line
+                    x1={lineStart.x}
+                    y1={lineStart.y}
+                    x2={lineEnd.x}
+                    y2={lineEnd.y}
+                    stroke={segment.color}
+                    strokeWidth={isHovered ? 1.6 : 1.2}
+                    strokeLinecap="round"
+                    opacity={isHovered ? 1 : 0.9}
+                  />
+                  <text
+                    x={labelX}
+                    y={labelY}
+                    textAnchor={rightSide ? 'start' : 'end'}
+                    fill={segment.color}
+                    fontSize="12"
+                    fontWeight={isHovered ? 700 : 600}
+                  >
+                    <tspan x={labelX} dy="-2">
+                      {label.top}
+                    </tspan>
+                    <tspan x={labelX} dy="13">
+                      {label.bottom}
+                    </tspan>
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
+      </div>
+    </div>
+  );
 }
 const PS_ONTRACK = 100000001;
 const PS_DELAYED = 100000002;
@@ -450,21 +646,19 @@ function businessDashboardModel(
     const n = resolveProjectProgramName(r, programIdToName).trim();
     return n !== '' && n !== 'Unassigned';
   });
-  const projTop = Array.from(programCount.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
+  const projTop = Array.from(programCount.entries()).sort((a, b) => b[1] - a[1]);
   const projMax = Math.max(1, ...projTop.map(([, c]) => c));
   const programBars = projTop.map(([name, c], i) => {
     const s = String(name).trim() || 'Unassigned';
     const short = s.length > 10 ? `${s.slice(0, 9)}…` : s;
     return { label: short, name: s, value: c, color: COUNTS_BAR_COLORS[i % COUNTS_BAR_COLORS.length] };
   });
-  // Progress donut: To start green, Completed red, On Track blue, Delayed amber (stakeholder mock)
+  // Progress donut: same status grouping, rendered as the labelled Business dashboard donut.
   const progressData = [
-    { label: 'To start', value: statusCounts.toStart, color: '#10B981' },
-    { label: 'Completed', value: statusCounts.completed, color: '#EF4444' },
-    { label: 'On Track', value: statusCounts.onTrack, color: '#3B82F6' },
-    { label: 'Delayed', value: statusCounts.delayed, color: '#F59E0B' },
+    { label: 'Delayed', value: statusCounts.delayed, color: '#d84f5a' },
+    { label: 'To Start', value: statusCounts.toStart, color: '#16c784' },
+    { label: 'On Track', value: statusCounts.onTrack, color: '#0f6df5' },
+    { label: 'Completed', value: statusCounts.completed, color: '#ffbf00' },
   ];
   const kpiColorByLabel: Record<string, string> = {
     pinnacle: '#d4a759',
@@ -556,8 +750,8 @@ function businessDashboardModel(
     totalProjectCount: totalProjects,
     summary3: [
       { title: 'Completed Projects', value: String(statusCounts.completed), color: '#3B82F6', icon: 'completed', trend: [2, 2, 3, 3, 4, 4, 4] },
-      { title: 'On Track Project', value: String(statusCounts.onTrack), color: '#10B981', icon: 'ontrack', trend: [8, 8, 9, 9, 9, 9, 9] },
-      { title: 'Delayed Project', value: String(statusCounts.delayed), color: '#EF4444', icon: 'delayed', trend: [1, 1, 1, 1, 1, 1, 1] },
+      { title: 'On Track Projects', value: String(statusCounts.onTrack), color: '#10B981', icon: 'ontrack', trend: [8, 8, 9, 9, 9, 9, 9] },
+      { title: 'Delayed Projects', value: String(statusCounts.delayed), color: '#EF4444', icon: 'delayed', trend: [1, 1, 1, 1, 1, 1, 1] },
     ],
     projectTimeline: {
       years: years.map(String),
@@ -742,17 +936,8 @@ function buildDeliverableIncludeString(
   return labels.join(', ');
 }
 
-function ReqFieldDeliverable({ label }: { label: string }) {
-  return (
-    <span className="text-[11px] text-gray-500">
-      {label} <span className="text-rose-500">*</span>
-    </span>
-  );
-}
-
 type AddDeliverableFormPanelProps = {
   onClose: () => void;
-  sectionClassName?: string;
   onNotify?: (type: ToastType, message: string) => void;
   /** Call after a successful save so list views can refetch. */
   onSaved?: () => void;
@@ -761,7 +946,6 @@ type AddDeliverableFormPanelProps = {
 /** New Deliverables — front fields: project names (my projects), PMs (Project dept), goal, category, master checkboxes. */
 function AddDeliverableFormPanel({
   onClose,
-  sectionClassName = 'bg-white rounded-xl p-6 shadow-sm max-w-4xl mx-auto w-full',
   onNotify,
   onSaved,
 }: AddDeliverableFormPanelProps) {
@@ -896,21 +1080,15 @@ function AddDeliverableFormPanel({
   };
 
   return (
-    <section className={sectionClassName}>
-      <p className="text-[16px] font-bold text-primary mb-5">
-        <button type="button" className="underline text-primary font-bold" onClick={onClose}>
-          Deliverables
-        </button>
-        {' > '}Add New Deliverables
-      </p>
-      {loadError && <p className="text-sm text-rose-600 mb-3">{loadError}</p>}
-      {loading && <p className="text-sm text-gray-500 mb-3">Loading options…</p>}
+    <FormPageShell parentLabel="Deliverables" onBack={onClose} title="Add New Deliverables">
+      {loadError && <p className={`mb-3 ${enj.fieldError}`}>{loadError}</p>}
+      {loading && <p className="enj-add-project-muted mb-3">Loading options…</p>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 max-w-3xl">
-        <label>
-          <ReqFieldDeliverable label="Project Name" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        <div>
+          <FormFieldLabel label="Project Name" required />
           <select
-            className={`${enj.control} mt-1`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={projectName}
             onChange={(e) => {
               setProjectName(e.target.value);
@@ -918,19 +1096,19 @@ function AddDeliverableFormPanel({
             }}
             disabled={loading || saveBusy}
           >
-            <option value="">Select project name</option>
+            <option value="">Select Project Name</option>
             {projectNameOptions.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
             ))}
           </select>
-          {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
-        </label>
-        <label>
-          <ReqFieldDeliverable label="Project category" />
+          {errors.projectName && <p className={`mt-1 ${enj.fieldError}`}>{errors.projectName}</p>}
+        </div>
+        <div>
+          <FormFieldLabel label="Project Category" required />
           <select
-            className={`${enj.control} mt-1`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={projectCategory}
             onChange={(e) => {
               setProjectCategory(e.target.value);
@@ -938,45 +1116,45 @@ function AddDeliverableFormPanel({
             }}
             disabled={loading || saveBusy}
           >
-            <option value="">Select project category</option>
+            <option value="">Select Project Category</option>
             {PROJECT_CATEGORY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
           </select>
-          {errors.projectCategory && <p className="mt-1 text-[11px] text-rose-600">{errors.projectCategory}</p>}
-        </label>
-        <label>
-          <span className="text-[11px] text-gray-500">Project Manager</span>
+          {errors.projectCategory && <p className={`mt-1 ${enj.fieldError}`}>{errors.projectCategory}</p>}
+        </div>
+        <div>
+          <FormFieldLabel label="Project Manager" />
           <select
-            className={`${enj.control} mt-1`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={projectManager}
             onChange={(e) => setProjectManager(e.target.value)}
             disabled={loading || saveBusy}
           >
-            <option value="">Select project manager</option>
+            <option value="">Select Project Manager</option>
             {pmOptions.map((e) => (
               <option key={e} value={e}>
                 {e}
               </option>
             ))}
           </select>
-        </label>
-        <label>
-          <span className="text-[11px] text-gray-500">Project Goal</span>
+        </div>
+        <div>
+          <FormFieldLabel label="Project Goal" />
           <input
-            className={`${enj.control} mt-1`}
-            placeholder="Enter project goal"
+            className={`enj-add-project-field mt-1 ${enj.control}`}
+            placeholder="Enter Project Goal"
             value={projectGoal}
             onChange={(e) => setProjectGoal(e.target.value)}
             disabled={loading || saveBusy}
           />
-        </label>
-        <label>
-          <ReqFieldDeliverable label="Deliverable Status" />
+        </div>
+        <div>
+          <FormFieldLabel label="Deliverable Status" required />
           <select
-            className={`${enj.control} mt-1`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={deliverableStatus}
             onChange={(e) => {
               setDeliverableStatus(e.target.value);
@@ -984,29 +1162,28 @@ function AddDeliverableFormPanel({
             }}
             disabled={loading || saveBusy}
           >
-            <option value="">Select deliverable status</option>
+            <option value="">Select Deliverable Status</option>
             {DELIVERABLE_STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
           </select>
-          {errors.deliverableStatus && <p className="mt-1 text-[11px] text-rose-600">{errors.deliverableStatus}</p>}
-        </label>
-        <div className="hidden md:block" aria-hidden="true" />
+          {errors.deliverableStatus && <p className={`mt-1 ${enj.fieldError}`}>{errors.deliverableStatus}</p>}
+        </div>
       </div>
 
-      <p className="text-[12px] font-semibold text-gray-700 mt-5 mb-3">Deliverables Include</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600">
+      <p className="mt-5 mb-3 text-[13px] font-normal text-gray-600">Deliverables Include</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[13px] text-gray-600">
         {deliverableMasterRows.length === 0 && !loading ? (
-          <p className="text-gray-500 text-xs md:col-span-2">No active deliverable rows in Enjaz Master Data (category Deliverables, status Active).</p>
+          <p className="enj-add-project-muted md:col-span-2">No active deliverable rows in Enjaz Master Data.</p>
         ) : (
           deliverableMasterRows.map((row) => {
             const id = String(row.new_enjazmasterdataid ?? '');
             const label = String(row.new_enjazmasterdata1 ?? '').trim();
             if (!id || !label) return null;
             return (
-              <label key={id} className="flex items-center gap-2">
+              <label key={id} className="flex items-center gap-2 font-normal">
                 <input
                   type="checkbox"
                   className="accent-secondary rounded"
@@ -1022,35 +1199,34 @@ function AddDeliverableFormPanel({
       </div>
 
       <div className="mt-4">
-        <label className="text-[11px] text-gray-500">Notes</label>
+        <FormFieldLabel label="Notes" />
         <textarea
-          className="mt-1 w-full h-24 rounded-md border border-gray-200 px-3 py-2 text-sm resize-none"
-          placeholder="Notes…"
+          className={`enj-add-project-field ${enj.textarea} mt-1 h-24 min-h-24 resize-y font-normal`}
+          placeholder="Enter Notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           disabled={loading || saveBusy}
         />
       </div>
 
-      <div className="mt-5 flex items-center justify-end gap-3">
-        <button
-          type="button"
-          className={enj.btnOutline}
-          onClick={onClose}
-          disabled={saveBusy}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={enj.btnPrimary}
-          onClick={() => void handleSave()}
-          disabled={loading || saveBusy}
-        >
-          {saveBusy ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-    </section>
+      <FormPageActions
+        onCancel={onClose}
+        onClear={() => {
+          setProjectName('');
+          setProjectManager('');
+          setProjectGoal('');
+          setProjectCategory('');
+          setDeliverableStatus('');
+          setNotes('');
+          setIncludeByRowId({});
+          setErrors({});
+        }}
+        onSave={() => void handleSave()}
+        busy={saveBusy || loading}
+        saveLabel="+ Save"
+        showClear
+      />
+    </FormPageShell>
   );
 }
 
@@ -1193,98 +1369,91 @@ function EditDeliverableFormPanel({ row, onClose, onNotify, onSaved }: EditDeliv
   };
 
   return (
-    <section className="bg-white rounded-xl p-6 shadow-sm max-w-4xl mx-auto w-full">
-      <p className="text-[16px] font-bold text-primary mb-5">
-        <button type="button" className="underline text-primary font-bold" onClick={onClose}>
-          Deliverables
-        </button>
-        {' > '}Edit Deliverable
-      </p>
-      {loadError && <p className="text-sm text-rose-600 mb-3">{loadError}</p>}
-      {loading && <p className="text-sm text-gray-500 mb-3">Loading options…</p>}
+    <FormPageShell parentLabel="Deliverables" onBack={onClose} title="Edit Deliverable">
+      {loadError && <p className={`mb-3 ${enj.fieldError}`}>{loadError}</p>}
+      {loading && <p className="enj-add-project-muted mb-3">Loading options…</p>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 max-w-3xl">
-        <label>
-          <ReqFieldDeliverable label="Project Name" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+        <div>
+          <FormFieldLabel label="Project Name" required />
           <select
-            className={`${enj.control} mt-1`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={projectName}
             onChange={(e) => { setProjectName(e.target.value); setErrors((p) => ({ ...p, projectName: '' })); }}
             disabled={loading || saveBusy}
           >
-            <option value="">Select project name</option>
+            <option value="">Select Project Name</option>
             {projectNameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
             {projectName && !projectNameOptions.includes(projectName) && (
               <option value={projectName}>{projectName}</option>
             )}
           </select>
-          {errors.projectName && <p className="mt-1 text-[11px] text-rose-600">{errors.projectName}</p>}
-        </label>
-        <label>
-          <ReqFieldDeliverable label="Project category" />
+          {errors.projectName && <p className={`mt-1 ${enj.fieldError}`}>{errors.projectName}</p>}
+        </div>
+        <div>
+          <FormFieldLabel label="Project Category" required />
           <select
-            className={`${enj.control} mt-1`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={projectCategory}
             onChange={(e) => { setProjectCategory(e.target.value); setErrors((p) => ({ ...p, projectCategory: '' })); }}
             disabled={loading || saveBusy}
           >
-            <option value="">Select project category</option>
+            <option value="">Select Project Category</option>
             {PROJECT_CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          {errors.projectCategory && <p className="mt-1 text-[11px] text-rose-600">{errors.projectCategory}</p>}
-        </label>
-        <label>
-          <span className="text-[11px] text-gray-500">Project Manager</span>
+          {errors.projectCategory && <p className={`mt-1 ${enj.fieldError}`}>{errors.projectCategory}</p>}
+        </div>
+        <div>
+          <FormFieldLabel label="Project Manager" />
           <select
-            className={`${enj.control} mt-1`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={projectManager}
             onChange={(e) => setProjectManager(e.target.value)}
             disabled={loading || saveBusy}
           >
-            <option value="">Select project manager</option>
+            <option value="">Select Project Manager</option>
             {pmOptions.map((e) => <option key={e} value={e}>{e}</option>)}
             {projectManager && !pmOptions.includes(projectManager) && (
               <option value={projectManager}>{projectManager}</option>
             )}
           </select>
-        </label>
-        <label>
-          <span className="text-[11px] text-gray-500">Project Goal</span>
+        </div>
+        <div>
+          <FormFieldLabel label="Project Goal" />
           <input
-            className={`${enj.control} mt-1`}
-            placeholder="Enter project goal"
+            className={`enj-add-project-field mt-1 ${enj.control}`}
+            placeholder="Enter Project Goal"
             value={projectGoal}
             onChange={(e) => setProjectGoal(e.target.value)}
             disabled={loading || saveBusy}
           />
-        </label>
-        <label>
-          <ReqFieldDeliverable label="Deliverable Status" />
+        </div>
+        <div>
+          <FormFieldLabel label="Deliverable Status" required />
           <select
-            className={`${enj.control} mt-1`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={deliverableStatus}
             onChange={(e) => { setDeliverableStatus(e.target.value); setErrors((p) => ({ ...p, deliverableStatus: '' })); }}
             disabled={loading || saveBusy}
           >
-            <option value="">Select deliverable status</option>
+            <option value="">Select Deliverable Status</option>
             {DELIVERABLE_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          {errors.deliverableStatus && <p className="mt-1 text-[11px] text-rose-600">{errors.deliverableStatus}</p>}
-        </label>
-        <div className="hidden md:block" aria-hidden="true" />
+          {errors.deliverableStatus && <p className={`mt-1 ${enj.fieldError}`}>{errors.deliverableStatus}</p>}
+        </div>
       </div>
 
-      <p className="text-[12px] font-semibold text-gray-700 mt-5 mb-3">Deliverables Include</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[11px] text-gray-600">
+      <p className="mt-5 mb-3 text-[13px] font-normal text-gray-600">Deliverables Include</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-6 text-[13px] text-gray-600">
         {deliverableMasterRows.length === 0 && !loading ? (
-          <p className="text-gray-500 text-xs md:col-span-2">No active deliverable rows in Enjaz Master Data.</p>
+          <p className="enj-add-project-muted md:col-span-2">No active deliverable rows in Enjaz Master Data.</p>
         ) : (
           deliverableMasterRows.map((mr) => {
             const id = String(mr.new_enjazmasterdataid ?? '');
             const label = String(mr.new_enjazmasterdata1 ?? '').trim();
             if (!id || !label) return null;
             return (
-              <label key={id} className="flex items-center gap-2">
+              <label key={id} className="flex items-center gap-2 font-normal">
                 <input
                   type="checkbox"
                   className="accent-secondary rounded"
@@ -1300,23 +1469,23 @@ function EditDeliverableFormPanel({ row, onClose, onNotify, onSaved }: EditDeliv
       </div>
 
       <div className="mt-4">
-        <label className="text-[11px] text-gray-500">Notes</label>
+        <FormFieldLabel label="Notes" />
         <textarea
-          className="mt-1 w-full h-24 rounded-md border border-gray-200 px-3 py-2 text-sm resize-none"
-          placeholder="Notes…"
+          className={`enj-add-project-field ${enj.textarea} mt-1 h-24 min-h-24 resize-y font-normal`}
+          placeholder="Enter Notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           disabled={loading || saveBusy}
         />
       </div>
 
-      <div className="mt-5 flex items-center justify-end gap-3">
-        <button type="button" className={enj.btnOutline} onClick={onClose} disabled={saveBusy}>Cancel</button>
-        <button type="button" className={enj.btnPrimary} onClick={() => void handleSave()} disabled={loading || saveBusy}>
-          {saveBusy ? 'Saving…' : 'Save Changes'}
-        </button>
-      </div>
-    </section>
+      <FormPageActions
+        onCancel={onClose}
+        onSave={() => void handleSave()}
+        busy={saveBusy || loading}
+        saveLabel="Save"
+      />
+    </FormPageShell>
   );
 }
 
@@ -1415,28 +1584,16 @@ function IssuesDonut({
   ];
   const has = slices.some((s) => s.value > 0);
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center justify-center overflow-visible">
       <DonutChart
         className="h-48 w-48 flex-shrink-0 chart-svg"
         ringWidth={38}
-        showOuterLabels={false}
+        showOuterLabels
         centerText={String(total)}
         centerSubtext="issues"
         slices={has ? slices : [{ label: 'No Data', value: 1, color: '#e5e7eb' }]}
+        fontScale={0.82}
       />
-      <div className="space-y-2 text-xs min-w-[100px]">
-        {[
-          { label: 'Open', val: open, color: '#d3525a' },
-          { label: 'In Prog', val: inProgress, color: '#3b3a80' },
-          { label: 'Resolved', val: closed, color: '#1667de' },
-        ].map((item) => (
-          <div key={item.label} className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: item.color }} />
-            <span className="text-gray-500 w-12">{item.label}</span>
-            <span className="font-semibold text-gray-700">{item.val}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1468,171 +1625,6 @@ function ProgressBar({ pct }: { pct: number }) {
       </div>
       <span className="text-xs whitespace-nowrap text-[#6B7280]">{pct}%</span>
     </div>
-  );
-}
-
-function ProfileDropdown({ onLogout, roleLabel, userData }: { onLogout: () => void; roleLabel: string; userData?: Record<string, unknown> | null }) {
-  const [open, setOpen] = useState(false);
-  const [activityHistoryOpen, setActivityHistoryOpen] = useState(false);
-  const [userProfileOpen, setUserProfileOpen] = useState(false);
-  const [displayName, setDisplayName] = useState('pms');
-  const [profileEmail, setProfileEmail] = useState('');
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const initials = displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? '')
-    .join('') || 'U';
-
-  const items = [
-    { label: 'User Profile', icon: <UserCircle size={14} className="text-[#c7a56a]" /> },
-    { label: 'Inbox', icon: <Inbox size={14} className="text-[#c7a56a]" /> },
-    { label: 'Activity History', icon: <Activity size={14} className="text-[#c7a56a]" /> },
-  ];
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
-        setOpen(false);
-      }
-    };
-    const onEsc = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    window.addEventListener('mousedown', onPointerDown);
-    window.addEventListener('keydown', onEsc);
-    return () => {
-      window.removeEventListener('mousedown', onPointerDown);
-      window.removeEventListener('keydown', onEsc);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    // First priority: use userData from props (current logged-in user)
-    if (userData) {
-      const name = String(userData.new_name ?? '').trim() || String(userData.new_newcolumn ?? '').trim().split('@')[0] || 'User';
-      const email = String(userData.new_newcolumn ?? '').trim();
-      setDisplayName(name);
-      if (email) setProfileEmail(email);
-      return;
-    }
-
-    // Fallback: fetch from session profile
-    let cancelled = false;
-    (async () => {
-      try {
-        const profile = await fetchSessionUserProfileFromUsers({ fallbackToFirstRow: true });
-        if (cancelled || !profile) return;
-        if (profile.displayName) setDisplayName(profile.displayName);
-        if (profile.email) setProfileEmail(profile.email);
-      } catch {
-        // keep fallback defaults
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userData]);
-
-  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      setActiveIndex((v) => (v + 1) % (items.length + 1));
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setActiveIndex((v) => (v - 1 + items.length + 1) % (items.length + 1));
-    } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      if (activeIndex === items.length) {
-        onLogout();
-      }
-      setOpen(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="relative">
-        <button
-          ref={triggerRef}
-          type="button"
-          className="flex items-center gap-1.5 hover:opacity-90 transition-opacity"
-          aria-label="Profile menu"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <div className="w-8 h-8 rounded-full bg-[#b28a44] text-white text-[10px] font-semibold flex items-center justify-center" title={profileEmail || displayName}>{initials}</div>
-          <ChevronDown size={13} className="text-gray-400" />
-        </button>
-        {open && (
-          <div
-            ref={menuRef}
-            tabIndex={0}
-            onKeyDown={onMenuKeyDown}
-            className="absolute right-0 top-10 z-50 w-52 rounded-xl border border-gray-200 bg-white shadow-xl outline-none"
-          >
-            <div className="px-3 py-3 border-b border-gray-100">
-              <p className="enj-screen-subheader">{displayName}</p>
-              <p className="text-[10px] text-gray-400">{roleLabel}</p>
-            </div>
-            <div className="py-1">
-              {items.map((item, index) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => {
-                    if (item.label === 'User Profile') {
-                      setUserProfileOpen(true);
-                      setOpen(false);
-                      return;
-                    }
-                    if (item.label === 'Activity History') {
-                      setActivityHistoryOpen(true);
-                      setOpen(false);
-                      return;
-                    }
-                    if (item.label === 'Inbox') {
-                      window.open('https://outlook.office.com/mail/', '_blank', 'noopener,noreferrer');
-                      setOpen(false);
-                    }
-                  }}
-                  className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 ${
-                    activeIndex === index ? 'bg-gray-50 text-primary' : 'text-gray-500'
-                  }`}
-                >
-                  {item.icon}
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <div className="border-t border-gray-100 p-1">
-              <button
-                type="button"
-                onClick={onLogout}
-                onMouseEnter={() => setActiveIndex(items.length)}
-                className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 rounded-lg ${
-                  activeIndex === items.length ? 'bg-red-50 text-red-600' : 'text-gray-500'
-                }`}
-              >
-                <LogOut size={14} className={activeIndex === items.length ? 'text-red-500' : 'text-[#c7a56a]'} />
-                Logout
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      <UserProfileModal open={userProfileOpen} onClose={() => setUserProfileOpen(false)} />
-      <ActivityHistoryModal open={activityHistoryOpen} onClose={() => setActivityHistoryOpen(false)} userData={userData} />
-    </>
   );
 }
 
@@ -1795,14 +1787,14 @@ function MeetingsBoardPanel({
   return (
     <section className={enj.screenContainer}>
       {loading && <ScreenLoader overlay className="rounded-xl" />}
-      <section className="flex items-center justify-between mb-4 shrink-0">
+      <section className={`${enj.screenToolbar} mb-4`}>
         <h2 className="enj-screen-header">Meetings</h2>
         <button type="button" onClick={onNewMeeting} className={`${enj.btn} ${enj.btnPrimary} font-medium`}>+ New Meeting</button>
       </section>
       <div className="flex items-center justify-between mb-4 shrink-0 gap-3">
         <div className="flex items-center gap-3 text-xs">
           <label className="text-gray-500 flex items-center gap-2"><span>Project Name</span><select className={`${enj.control} !w-auto max-w-[170px] text-sm text-gray-600`} value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="All">All</option>{projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
-          <label className="text-gray-500 flex items-center gap-2"><span>Date</span><input type="date" className={`${enj.control} !w-auto text-sm`} value={selectedDateIso} onChange={(e) => setSelectedDateIso(e.target.value)} /></label>
+          <label className="text-gray-500 flex items-center gap-2"><span>Date</span><DatePickerField className={`${enj.control} !w-auto text-sm`} value={selectedDateIso} onChange={setSelectedDateIso} /></label>
           <button type="button" onClick={() => { setSelectedDateIso(localIsoDate(new Date())); setShowMom(false); }} className={`${enj.btn} ${enj.btnOutline} rounded-full px-3 text-sm`}>Today</button>
           <button type="button" onClick={() => setShowMom((v) => !v)} className={`${enj.btn} ${enj.btnOutline} text-sm`}>MOM</button>
         </div>
@@ -2274,7 +2266,7 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f3f4f8] text-gray-800">
+    <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-[#f5f6fb] text-gray-800">
       {/* ── Sidebar ── */}
       <aside className="z-[60] w-52 bg-[#FBFAFF] border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         {/* Logo + wordmark */}
@@ -2337,10 +2329,8 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
         </header>
 
         <main
-          className={`flex-1 min-h-0 min-w-0 flex flex-col px-6 pb-16 sm:pb-20 ${
-            activeNav === 'Dashboard' ? 'pt-6' : ''
-          } ${
-            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow) || activeNav === 'Meetings'
+          className={`flex-1 min-h-0 min-w-0 flex flex-col p-5 [scrollbar-gutter:stable] ${
+            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
               ? 'overflow-hidden'
               : 'overflow-y-auto'
           }`}
@@ -2353,7 +2343,7 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
             }
           >
           {activeNav === 'Projects' ? (
-            <div className="relative min-h-0 flex min-h-0 flex-1 flex-col overflow-hidden min-w-0">
+            <div className="relative flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
               {teamProjectToast && (
                 <NotificationToast
                   type={teamProjectToast.type}
@@ -2373,9 +2363,9 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
             </div>
           ) : activeNav === 'Timeline' ? (
             <section className={`relative ${enj.screenContainer}`}>
-              <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
+              <div className={`${enj.screenToolbar} mb-3`}>
                 <h2 className="enj-screen-header">Timeline</h2>
-                <div className="flex items-center gap-2 text-xs flex-wrap">
+                <div className={`${enj.screenToolbarActions} text-xs`}>
                   <button
                     type="button"
                     onClick={() => {
@@ -2562,7 +2552,7 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                   }}
                 />
               ) : editingTaskRow ? (
-                <div className="min-h-0 max-h-[min(calc(100dvh-7rem),48rem)] w-full overflow-y-auto">
+                <div className="min-h-0 w-full">
                   <AddNewTaskFormPanel
                     editingTask={editingTaskRow}
                     onClose={() => setEditingTaskRow(null)}
@@ -2578,8 +2568,8 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                   />
                 </div>
               ) : viewAllTaskStatus ? (
-                <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
-                  <div className="flex items-center justify-between mb-4 shrink-0">
+                <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[#f5f6fb] p-0">
+                  <div className={`${enj.screenToolbar} mb-4`}>
                     <h2 className="enj-screen-header">All Tasks - {viewAllTaskStatus}</h2>
                     <button
                       type="button"
@@ -2740,7 +2730,9 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                       onClose={() => setTeamTaskToast(null)}
                     />
                   )}
-                  <h2 className="enj-screen-header mb-4 shrink-0">Tasks List</h2>
+                  <div className={`${enj.screenToolbar} mb-4`}>
+                    <h2 className="enj-screen-header">Tasks List</h2>
+                  </div>
                   <div className="w-full min-w-0 shrink-0">
                     <TasksScreenBoard
                       variant="team"
@@ -2764,8 +2756,8 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
             </section>
           ) : activeNav === 'Issues' ? (
             viewAllIssueStatus ? (
-              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
-                <div className="flex items-center justify-between mb-4 shrink-0">
+              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[#f5f6fb] p-0">
+                <div className={`${enj.screenToolbar} mb-4`}>
                   <h2 className="enj-screen-header">All Issues - {viewAllIssueStatus}</h2>
                   <button
                     type="button"
@@ -2924,7 +2916,9 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                 />
               ) : (
                 <>
-              <h2 className="enj-screen-header mb-4">Issue Register</h2>
+              <div className={`${enj.screenToolbar} mb-4`}>
+                <h2 className="enj-screen-header">Issue Register</h2>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col">
@@ -2992,14 +2986,14 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                   ] as [string, string, Array<Record<string, unknown>>][]
                 ).map(([title, _accent, list]) => (
                   <div key={String(title)} className="space-y-3">
-                    <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
+                    <div className={`${enj.sectionToolbar} rounded-xl border border-gray-100 bg-white px-3 py-2`}>
                       <p className="enj-screen-subheader">{title}</p>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-500">{list.length} items</span>
                         {list.length > 0 && (
                           <button
                             type="button"
-                            className="text-[10px] font-semibold text-blue-600 hover:underline"
+                            className={enj.sectionTextAction}
                             onClick={() => {
                               setViewAllIssueStatus(title);
                               setViewAllIssuePage(1);
@@ -3094,19 +3088,19 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
             </section>
             )
           ) : activeNav === 'Meetings' ? (
+            showAddCalendarMeetingForm ? (
+              <AddMeetingFormPanel
+                parentLabel="Meetings"
+                onCancel={() => setShowAddCalendarMeetingForm(false)}
+                onCreated={() => setWorkspaceRefreshKey((k) => k + 1)}
+                onNotify={(type, message) => setTeamProjectToast({ type, message })}
+              />
+            ) : (
             <section className={enj.screenContainer}>
-              {showAddCalendarMeetingForm ? (
-                <AddMeetingFormPanel
-                  parentLabel="Meetings"
-                  onCancel={() => setShowAddCalendarMeetingForm(false)}
-                  onCreated={() => setWorkspaceRefreshKey((k) => k + 1)}
-                  onNotify={(type, message) => setTeamProjectToast({ type, message })}
-                />
-              ) : (
                 <>
                 <div className="relative">
                   {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
-                  <section className="flex items-center justify-between mb-4 shrink-0">
+                  <section className={`${enj.screenToolbar} mb-4`}>
                     <h2 className="enj-screen-header">Calendar</h2>
                     <button type="button" onClick={() => setShowAddCalendarMeetingForm(true)} className={`${enj.btn} ${enj.btnPrimary} font-medium`}>+ New Meeting</button>
                   </section>
@@ -3131,11 +3125,10 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                       </label>
                       <label className="text-gray-500 flex items-center gap-2">
                         <span className="shrink-0">Date</span>
-                        <input
-                          type="date"
+                        <DatePickerField
                           className={`${enj.control} !w-auto text-sm`}
                           value={teamCalendarSelectedDateIso}
-                          onChange={(e) => setTeamCalendarSelectedDateIso(e.target.value)}
+                          onChange={setTeamCalendarSelectedDateIso}
                         />
                       </label>
                       <button
@@ -3284,23 +3277,23 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                   </div>
                 </div>
                 </>
-              )}
             </section>
+            )
           ) : (
             <div className="space-y-4">
               {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
 
               {/* ── Overview ── */}
-              <section className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+              <section className="bg-white rounded-lg p-5">
                 <h2 className="enj-dashboard-header mb-4">Overview</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                   {overviewCards.map(card => (
                     <div
                       key={card.label}
-                      className={`rounded-xl border-2 ${card.border} bg-white px-4 py-4`}
+                      className={`rounded-lg border-2 ${card.border} bg-white px-4 py-4 text-center`}
                     >
                       <p className="text-sm text-gray-400 mb-3 leading-tight">{card.label}</p>
-                      <p className="text-3xl font-extrabold text-primary">{card.value}</p>
+                      <p className="text-3xl font-semibold text-primary">{card.value}</p>
                     </div>
                   ))}
                 </div>
@@ -3334,11 +3327,11 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
 
               {/* ── Tasks table ── */}
               <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                  <h2 className="text-base font-bold text-[#232360]">Tasks</h2>
+                <div className={`${enj.sectionToolbar} border-b border-gray-100 px-5 py-4`}>
+                  <h2 className={enj.sectionTitle}>Tasks</h2>
                   <button
                     type="button"
-                    className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
+                    className={enj.sectionTextAction}
                     onClick={() => { setShowTaskDetails(false); setEditingTaskRow(null); setActiveNav('Tasks'); }}
                   >
                     View All
@@ -3436,9 +3429,6 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
 function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void; currentUserData: Record<string, unknown> | null }) {
   const [activeNav, setActiveNav] = useState('Dashboard');
   const [businessReportToast, setBusinessReportToast] = useState<{ type: ToastType; message: string } | null>(null);
-  const [timelineYear, setTimelineYear] = useState(() => new Date().getFullYear());
-  const programPickerRef = useRef<HTMLDivElement>(null);
-  const [programMenuOpen, setProgramMenuOpen] = useState(false);
   const [selectedProgramGroup, setSelectedProgramGroup] = useState('All Programs');
   const [timelineProjects, setTimelineProjects] = useState<Array<Record<string, unknown>>>([]);
   const [dashboardMasterRows, setDashboardMasterRows] = useState<Array<Record<string, unknown>>>([]);
@@ -3506,7 +3496,7 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
     [businessDash.categoryData],
   );
   const progressDonutSlices = useMemo(
-    () => businessDash.progressData.map((p) => ({ label: p.label, value: p.value, color: p.color, displayName: p.label })),
+    () => businessDash.progressData.map((p) => ({ label: p.label, value: p.value, color: p.color })),
     [businessDash.progressData],
   );
   const categoryDonutSlices = useMemo(
@@ -3515,24 +3505,8 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
         label: c.label,
         value: c.value,
         color: c.color,
-        displayName: c.name ?? c.label,
       })),
     [businessDash.categoryData],
-  );
-  // Budget donut for potential future use
-  useMemo(
-    () =>
-      businessDash.budgetData.segments.map((s) => {
-        const nm = s.name.length > 14 ? `${s.name.slice(0, 13)}…` : s.name;
-        return {
-          label: s.name,
-          value: s.value,
-          color: s.color,
-          displayName: s.name,
-          labelLine: `${formatAEDShort(s.value)} ${nm}`,
-        };
-      }),
-    [businessDash.budgetData.segments],
   );
 
   const latestPortfolio = useMemo(() => portfolioPrograms.slice(0, 5), [portfolioPrograms]);
@@ -3592,18 +3566,6 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
     { name: 'Timeline', icon: <Calendar size={16} /> },
     { name: 'Feedback', icon: <MessageSquare size={16} /> },
   ];
-  const readTimelineProjectName = (row: Record<string, unknown>) =>
-    String(row.new_projectname ?? row.new_name ?? 'Project').trim() || 'Project';
-  const readTimelineStart = (row: Record<string, unknown>) => {
-    return parseTimelineDate(row.new_startdate);
-  };
-  const readTimelineEnd = (row: Record<string, unknown>) => {
-    return parseTimelineDate(row.new_enddate);
-  };
-  const readTimelineProgress = (row: Record<string, unknown>) => {
-    const n = Number(row.new_progress ?? NaN);
-    return Number.isFinite(n) ? `${Math.max(0, Math.min(100, n))}%` : '0%';
-  };
   const timelineFilterOptions = useMemo(() => {
     const programs = Array.from(new Set(timelineProjects.map(readTimelineProgramName))).sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: 'base' }),
@@ -3613,88 +3575,6 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
   useEffect(() => {
     if (!timelineFilterOptions.includes(selectedProgramGroup)) setSelectedProgramGroup('All Programs');
   }, [timelineFilterOptions, selectedProgramGroup]);
-
-  const timelineRange = useMemo(() => businessYearWeekTimelineModel(timelineYear), [timelineYear]);
-
-  const timelineRows = useMemo(() => {
-    const rangeStart = timelineRange.start.getTime();
-    const rangeEndExcl = timelineRange.endExclusive.getTime();
-    const rs = timelineProjects
-      .filter((p) => selectedProgramGroup === 'All Programs' || readTimelineProgramName(p) === selectedProgramGroup)
-      .map((p) => {
-        const start = readTimelineStart(p);
-        const end = readTimelineEnd(p);
-        return {
-          source: p,
-          program: readTimelineProgramName(p),
-          project: readTimelineProjectName(p),
-          start,
-          end,
-          progress: readTimelineProgress(p),
-        };
-      })
-      .filter((p) => p.start && p.end)
-      .map((p) => {
-        const projectStartMs = p.start!.getTime();
-        const projectEndExcl = exclusiveEndAfterInclusiveDate(p.end!);
-        const visStartMs = Math.max(rangeStart, projectStartMs);
-        const visEndExcl = Math.min(rangeEndExcl, projectEndExcl);
-        if (visEndExcl <= rangeStart || visStartMs >= rangeEndExcl) return null;
-        const viewStart = localDateOnlyFromTimeMs(visStartMs);
-        const viewEnd = localDateOnlyFromTimeMs(visEndExcl - 1);
-        const hasScheduleMismatch =
-          !sameLocalCalendarDay(viewStart, p.start!) || !sameLocalCalendarDay(viewEnd, p.end!);
-        return { ...p, viewStart, viewEnd, hasScheduleMismatch };
-      })
-      .filter((p): p is NonNullable<typeof p> => Boolean(p))
-      .sort((a, b) => a.start!.getTime() - b.start!.getTime());
-    return rs;
-  }, [timelineProjects, selectedProgramGroup, timelineRange, readTimelineProgramName]);
-
-  const timelineBars = useMemo(() => {
-    const rangeStart = timelineRange.start.getTime();
-    const rangeEndExcl = timelineRange.endExclusive.getTime();
-    const totalMs = Math.max(1, rangeEndExcl - rangeStart);
-    const colors = ['#59628a', '#19c37d', '#1766e5', '#f4b400', '#d35b66', '#7c3aed'];
-    return timelineRows
-      .map((row, idx) => {
-        const projectStartMs = row.start!.getTime();
-        const projectEndExcl = exclusiveEndAfterInclusiveDate(row.end!);
-        if (projectEndExcl <= projectStartMs) return null;
-        const s = Math.max(rangeStart, projectStartMs);
-        const e = Math.min(rangeEndExcl, projectEndExcl);
-        if (e <= rangeStart || s >= rangeEndExcl) return null;
-        const startPct = ((s - rangeStart) / totalMs) * 100;
-        const endPct = ((e - rangeStart) / totalMs) * 100;
-        return {
-          label: row.project,
-          startPct,
-          widthPct: Math.max(2, endPct - startPct),
-          row: idx + 1,
-          color: colors[idx % colors.length],
-          progress: row.progress,
-        };
-      })
-      .filter((x): x is NonNullable<typeof x> => Boolean(x));
-  }, [timelineRows, timelineRange]);
-
-  const timelineMaxRow = Math.max(timelineRows.length, 1);
-  const timelineBodyMinHeight = Math.max(280, timelineMaxRow * 48 + 72);
-
-  const timelineAxisMinWidth = useMemo(() => {
-    const n = Math.max(1, timelineRange.bottomLabels.length);
-    return Math.max(1200, n * 22);
-  }, [timelineRange.bottomLabels.length]);
-
-  useEffect(() => {
-    const onDocDown = (e: MouseEvent) => {
-      if (!programMenuOpen) return;
-      const el = programPickerRef.current;
-      if (el && !el.contains(e.target as Node)) setProgramMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDocDown);
-    return () => document.removeEventListener('mousedown', onDocDown);
-  }, [programMenuOpen]);
 
   useEffect(() => {
     if (activeNav !== 'Portfolio') return;
@@ -3730,14 +3610,6 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
           setDashboardMasterRows(
             masterRes.success ? ((masterRes.data ?? []) as unknown as Array<Record<string, unknown>>) : [],
           );
-          const datedRows = rows
-            .map((r) => parseTimelineDate(r.new_startdate))
-            .filter((d): d is Date => Boolean(d))
-            .sort((a, b) => b.getTime() - a.getTime());
-          if (datedRows.length > 0) {
-            const latest = datedRows[0];
-            setTimelineYear(latest.getFullYear());
-          }
         }
       } catch {
         if (!cancelled) {
@@ -3758,7 +3630,7 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
   }, [dataRefresh]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f3f4f8] text-gray-800 enjaz-business-ui">
+    <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-[#f5f6fb] text-gray-800 enjaz-business-ui">
       <aside className="z-[60] w-[86px] shrink-0 border-r border-gray-100 bg-[#FBFAFF] flex min-h-0 flex-col overflow-hidden">
         <div className="h-14 border-b border-gray-100 flex items-center justify-center">
           <LogoMark />
@@ -3804,210 +3676,27 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
           )}
           <div className={`enjaz-business-ui-main enj-app-main enj-stack min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]`}>
           {activeNav === 'Timeline' ? (
-            <>
-              <section className="relative bg-white rounded-xl p-4 shadow-sm chart-card">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <h2 className="enj-screen-header">Timeline</h2>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDataRefresh((k) => k + 1)}
-                      className={`${enj.btn} ${enj.btnOutline} !h-9 !w-9 !min-h-0 !px-0 rounded-full text-amber-800 border-amber-300 hover:bg-amber-50`}
-                      title="Refresh timeline"
-                      aria-label="Refresh timeline"
-                    >
-                      <RefreshCw size={14} className={timelineLoading ? 'animate-spin' : ''} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const now = new Date();
-                        setTimelineYear(now.getFullYear());
-                      }}
-                      className={`${enj.btn} ${enj.btnOutline} rounded-full text-sm text-amber-800 border-amber-300 hover:bg-amber-50`}
-                    >
-                      This year
-                    </button>
-                    <div className="flex h-9 items-center gap-1 rounded-full border border-gray-200 bg-white px-2 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => setTimelineYear((y) => y - 1)}
-                        className={`${enj.btn} ${enj.btnGhost} !h-7 !w-7 !min-h-0 !max-h-none !px-0 rounded-full text-gray-500 shadow-none`}
-                        aria-label="Previous year"
-                      >
-                        {'<'}
-                      </button>
-                      <span className="min-w-[3.2rem] text-center text-sm font-semibold text-primary">{timelineYear}</span>
-                      <button
-                        type="button"
-                        onClick={() => setTimelineYear((y) => y + 1)}
-                        className={`${enj.btn} ${enj.btnGhost} !h-7 !w-7 !min-h-0 !max-h-none !px-0 rounded-full text-gray-500 shadow-none`}
-                        aria-label="Next year"
-                      >
-                        {'>'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div className="grid min-h-0 grid-cols-1 items-stretch gap-3 lg:grid-cols-[300px_1fr]">
-                  <div className="bg-[#f6f8fb] rounded-lg p-3 flex flex-col min-h-0">
-                    <div className="relative mb-2 shrink-0" ref={programPickerRef}>
-                      <button
-                        type="button"
-                        onClick={() => setProgramMenuOpen((o) => !o)}
-                        className={`${enj.btn} ${enj.btnDefault} w-full max-w-full justify-between px-2 text-left text-sm font-normal shadow-sm`}
-                      >
-                        <span className="truncate">{selectedProgramGroup}</span>
-                        <ChevronDown size={10} className={`shrink-0 text-gray-400 transition-transform ${programMenuOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                      {programMenuOpen && (
-                        <ul className="absolute left-0 right-0 top-full z-20 mt-1 py-1 rounded-md border border-gray-200 bg-white shadow-lg max-h-40 overflow-auto">
-                      {timelineFilterOptions.map((opt) => (
-                            <li key={opt}>
-                              <button
-                                type="button"
-                                className={`w-full text-left px-2 py-1.5 text-[10px] hover:bg-gray-50 ${opt === selectedProgramGroup ? 'text-primary font-semibold bg-indigo-50/50' : 'text-gray-600'}`}
-                                onClick={() => {
-                                  setSelectedProgramGroup(opt);
-                                  setProgramMenuOpen(false);
-                                }}
-                              >
-                                {opt}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                    <div className="space-y-2 flex-1 min-h-0 max-h-[560px] overflow-y-auto overflow-x-hidden pr-1 overscroll-contain">
-                      {timelineRows.map((row) => (
-                        <div
-                          key={`${row.project}-${row.start!.getTime()}-${row.end!.getTime()}`}
-                          className="bg-white border border-gray-100 rounded-md p-2"
-                        >
-                          <p className="text-[11px] font-semibold text-[#3a4275] truncate">{row.project}</p>
-                          <p className="mt-1 text-[10px] text-gray-500 truncate">{row.program}</p>
-                          <p className="text-[10px] text-gray-400 mt-1">
-                            {formatTimelineDateLabel(row.viewStart)} - {formatTimelineDateLabel(row.viewEnd)}
-                            {row.hasScheduleMismatch && (
-                              <span className="mt-0.5 block text-[9px] text-gray-400/95" title="Full scheduled range from data">
-                                Full: {formatTimelineDateLabel(row.start)} - {formatTimelineDateLabel(row.end)}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      ))}
-                      {!timelineLoading && timelineRows.length === 0 && (
-                        <p className="text-[11px] text-gray-400 px-1 py-2">No projects found for selected program.</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-gray-100 bg-white">
-                    <div
-                      className="h-[min(36rem,72vh)] min-h-[16rem] w-full min-w-0 overflow-x-auto overflow-y-auto overscroll-contain scroll-smooth rounded-b-lg"
-                    >
-                      <div className="w-full" style={{ minWidth: timelineAxisMinWidth }}>
-                        <div className="sticky top-0 z-10 space-y-0.5 border-b border-gray-100 bg-white px-3 py-2 shadow-sm">
-                          <p className="text-center text-xs font-bold leading-tight text-primary">
-                            {timelineRange.yearLabel}
-                          </p>
-                          <div
-                            className="grid w-full border-b border-slate-100 text-[8px] font-bold text-slate-700"
-                            style={{
-                              gridTemplateColumns: `repeat(${timelineRange.bottomLabels.length}, minmax(0, 1fr))`,
-                            }}
-                          >
-                            {timelineRange.quarterWeekBands.map((b, i) => (
-                              <div
-                                key={`qb-${b.text}-${i}`}
-                                className="min-w-0 border-l border-slate-100 py-0.5 text-center first:border-l-0"
-                                style={{ gridColumn: `span ${b.span}` }}
-                              >
-                                {b.text}
-                              </div>
-                            ))}
-                          </div>
-                          <div
-                            className="grid w-full border-b border-indigo-100/80 text-[8px] font-semibold text-indigo-900"
-                            style={{
-                              gridTemplateColumns: `repeat(${timelineRange.bottomLabels.length}, minmax(0, 1fr))`,
-                            }}
-                          >
-                            {timelineRange.monthWeekBands.map((b, i) => (
-                              <div
-                                key={`mb-${b.text}-${i}`}
-                                className="min-w-0 border-l border-indigo-100 py-0.5 text-center first:border-l-0"
-                                style={{ gridColumn: `span ${b.span}` }}
-                              >
-                                {b.text}
-                              </div>
-                            ))}
-                          </div>
-                          <div
-                            className="grid w-full text-gray-600"
-                            style={{
-                              gridTemplateColumns: `repeat(${timelineRange.bottomLabels.length}, minmax(0, 1fr))`,
-                            }}
-                          >
-                            {timelineRange.bottomLabels.map((w, i) => (
-                              <span
-                                key={`ax-${w}-${i}`}
-                                className="min-w-0 border-l border-gray-100 px-px py-0.5 text-center text-[7px] leading-tight tabular-nums first:border-l-0 sm:text-[8px]"
-                                title={String(w)}
-                              >
-                                {w}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div
-                          className="relative w-full chart-svg"
-                          style={{
-                            minHeight: timelineBodyMinHeight,
-                            background: `repeating-linear-gradient(to right, #f1f5f9 0, #f1f5f9 1px, transparent 1px, transparent ${
-                              100 / Math.max(1, timelineRange.bottomLabels.length)
-                            }%)`,
-                          }}
-                        >
-                          {timelineBars.map((track, idx) => (
-                            <div
-                              key={`${track.label}-${idx}`}
-                              className="absolute h-6 rounded-full text-white text-[9px] px-3 flex items-center justify-between shadow-sm transition-all duration-300 hover:scale-[1.02]"
-                              title={`Project: ${track.label}\nProgress: ${track.progress}`}
-                              style={{
-                                left: `${track.startPct}%`,
-                                width: `${track.widthPct}%`,
-                                top: `${track.row * 48}px`,
-                                backgroundColor: track.color,
-                              }}
-                            >
-                              <span className="truncate">{track.label}</span>
-                              <span className="bg-white/85 text-gray-500 px-1.5 rounded-full shrink-0">{track.progress}</span>
-                            </div>
-                          ))}
-                          {!timelineLoading && timelineBars.length === 0 && (
-                            <p className="absolute left-4 top-4 text-xs text-gray-400">No projects available in selected timeline range.</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {timelineLoading && <ScreenLoader overlay className="rounded-xl" />}
-              </section>
-            </>
+            <BusinessTimelineScreen
+              projects={timelineProjects}
+              programRows={portfolioPrograms}
+              programIdToName={programIdToName}
+              loading={timelineLoading}
+              onRefresh={() => setDataRefresh((k) => k + 1)}
+            />
           ) : activeNav === 'Portfolio' ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <h1 className="enj-screen-header">Portfolio</h1>
-                <button
-                  type="button"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
-                  onClick={() => setActiveNav('Dashboard')}
-                  title="Back"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
+              <div className={enj.screenToolbar}>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                    onClick={() => setActiveNav('Dashboard')}
+                    title="Back"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                  <h1 className="enj-screen-header">Portfolio</h1>
+                </div>
               </div>
               {portfolioPrograms.length > 0 && (
                 <section className="space-y-3">
@@ -4117,7 +3806,7 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Budget</th>
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Strat.goal</th>
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project Manager</th>
-                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Timeline</th>
+                                                <PortfolioProjectTimelineTh />
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Status</th>
                                               </tr>
@@ -4136,8 +3825,8 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                                                 const goalRaw = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
                                                 const strategicObj = GOAL_MAP[Number(goalRaw)] ?? goalRaw;
                                                 const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
-                                                const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
-                                                const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                                const startDate = formatPortfolioTimelineDate(parseTimelineDate(project.new_startdate));
+                                                const endDate = formatPortfolioTimelineDate(parseTimelineDate(project.new_enddate));
                                                 const progressRaw = Number(project.new_progress ?? NaN);
                                                 const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
                                                 const statusText = String(project.new_projectstatusname ?? '').trim();
@@ -4161,11 +3850,8 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                                                     <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
                                                     <td className="px-3 py-1">{strategicObj}</td>
                                                     <td className="px-3 py-1">{manager}</td>
-                                                    <td className="px-3 py-1 text-[10px]">
-                                                      <div className="space-y-0.5">
-                                                        <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
-                                                        <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
-                                                      </div>
+                                                    <td className="border-0 bg-white p-0 align-middle">
+                                                      <PortfolioProjectTimelineDates startDate={startDate} endDate={endDate} />
                                                     </td>
                                                     <td className="px-3 py-1 w-32">
                                                       <div className="flex items-center gap-2">
@@ -4250,11 +3936,11 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
             </div>
           )}
 
-          {/* ── Main Dashboard Grid: Top Section (70% left, 30% right) ── */}
-          <section className="grid grid-cols-1 gap-2 lg:grid-cols-10 mb-2" style={{ minHeight: '510px' }}>
+          {/* ── Main Dashboard Grid: Top Section ── */}
+          <section className="mb-3 grid grid-cols-1 gap-3 lg:grid-cols-12" style={{ minHeight: '520px' }}>
 
-            {/* ── LEFT COLUMN (60%) ── */}
-            <div className="lg:col-span-6 flex flex-col gap-2">
+            {/* ── LEFT COLUMN ── */}
+            <div className="lg:col-span-8 flex flex-col gap-3">
 
               {/* Summary Cards (auto height) */}
               <div className="flex-[0_0_auto]">
@@ -4266,12 +3952,21 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                       delayed: '#D65359',
                     };
                     const darkColorMap = {
-                      completed: '#000000',
-                      ontrack: '#000000',
-                      delayed: '#000000',
+                      completed: '#001A4D',
+                      ontrack: '#003D2A',
+                      delayed: '#6B1F2A',
                     };
                     const lightColor = lightColorMap[card.icon as keyof typeof lightColorMap];
                     const darkColor = darkColorMap[card.icon as keyof typeof darkColorMap];
+                    const iconCircleBg = (() => {
+                      const hex = lightColor.replace('#', '');
+                      const r = parseInt(hex.slice(0, 2), 16);
+                      const g = parseInt(hex.slice(2, 4), 16);
+                      const b = parseInt(hex.slice(4, 6), 16);
+                      return Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)
+                        ? `rgba(${r}, ${g}, ${b}, 0.15)`
+                        : lightColor;
+                    })();
                     const iconMap = {
                       completed: <FileCheck size={18} strokeWidth={2.5} color={darkColor} />,
                       ontrack: <CheckCircle2 size={18} strokeWidth={2.5} color={darkColor} />,
@@ -4282,11 +3977,20 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                     const lastWeekValue = Math.max(0, currentValue - 2);
                     const moreFromLastWeek = currentValue - lastWeekValue;
                     return (
-                      <div key={card.title} className="bg-white rounded-lg border border-gray-100 p-4 flex flex-col">
+                      <div key={card.title} className="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
                         {/* Top Section: Icon + Title (left) and Value (right) */}
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-start gap-2 flex-shrink-0">
-                            <div className="flex items-center justify-center rounded-full" style={{ width: '44px', height: '44px', backgroundColor: lightColor, opacity: 0.15, marginTop: '2px', flexShrink: 0 }}>
+                            <div
+                              className="flex items-center justify-center rounded-full"
+                              style={{
+                                width: '44px',
+                                height: '44px',
+                                backgroundColor: iconCircleBg,
+                                marginTop: '2px',
+                                flexShrink: 0,
+                              }}
+                            >
                               <div style={{ color: darkColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {icon}
                               </div>
@@ -4323,10 +4027,10 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
 
               {/* Project Timeline (65% height) */}
               {businessDash.has.timeline && (
-              <div className="flex-1 min-h-0">
-                <div className="bg-white rounded-xl p-4 shadow-sm chart-card border border-gray-100/90 h-full flex flex-col"
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="chart-card flex min-h-0 flex-1 flex-col rounded-lg bg-white p-4"
                 >
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
                   <h2 className="text-sm font-bold text-[#232360]">Project TimeLine</h2>
                   <div className="flex items-center gap-0.5 text-[10px] text-gray-500">
                     {(['weekly', 'monthly', 'yearly'] as const).map((p) => (
@@ -4343,7 +4047,7 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                     ))}
                   </div>
                 </div>
-                <div className="mb-1.5 flex flex-wrap items-center gap-4 text-[10px] text-gray-700">
+                <div className="mb-1.5 flex shrink-0 flex-wrap items-center gap-4 text-[10px] text-gray-700">
                   <label className="inline-flex items-center gap-1.5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -4393,7 +4097,12 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                   const yFor = (v: number) => yBottom - (v / 50) * (yBottom - yTop);
                   const stroke = { completed: '#10B981', delayed: '#EF4444', onTrack: '#3B82F6' } as const;
                   return (
-                <svg viewBox={`0 0 ${viewW} ${plotH}`} className="h-48 w-full max-w-full chart-svg" preserveAspectRatio="xMidYMid meet">
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <svg
+                    viewBox={`0 0 ${viewW} ${plotH}`}
+                    className="chart-svg h-full min-h-[220px] w-full max-w-full flex-1"
+                    preserveAspectRatio="xMidYMid meet"
+                  >
                   {[0, 1, 2, 3, 4, 5, 6].map((k) => {
                     const y = yBottom - (k / 6) * (yBottom - yTop);
                     return (
@@ -4467,6 +4176,7 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                     </>
                   )}
                 </svg>
+                </div>
                   );
                 })()}
                 </div>
@@ -4474,16 +4184,15 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
               )}
             </div>
 
-            {/* ── RIGHT COLUMN (40%) ── */}
-            <div className="lg:col-span-4 flex flex-col gap-2">
+            {/* ── RIGHT COLUMN ── */}
+            <div className="lg:col-span-4 flex flex-col gap-3">
               {/* Projects by Progress (50% height) */}
               <div className="flex-1 min-h-0">
-                <DonutChartCard
+                <BusinessDashboardDonutCard
                   title="Projects by progress"
-                  ringWidth={40}
                   slices={progressDonutSlices}
                   centerText={String(businessDash.totalProjectCount)}
-                  centerSubtext="projects"
+                  mode="progress"
                   className="h-full"
                 />
               </div>
@@ -4491,19 +4200,15 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
               {/* Budget (50% height) */}
               {businessDash.has.budget && (
               <div className="flex-1 min-h-0">
-                <DonutChartCard
+                <BusinessDashboardDonutCard
                   title="Budget"
-                  ringWidth={56}
-                  slices={businessDash.budgetData.segments.map((s) => {
-                    const nm = s.name.length > 12 ? `${s.name.slice(0, 11)}…` : s.name;
-                    return {
-                      label: s.name,
-                      value: s.value,
-                      color: s.color,
-                      displayName: s.name,
-                      labelLine: `${formatAEDShort(s.value)} ${nm}`,
-                    };
-                  })}
+                  slices={businessDash.budgetData.segments.map((s) => ({
+                    label: s.name,
+                    value: s.value,
+                    color: s.color,
+                    detail: formatAEDShort(s.value),
+                  }))}
+                  mode="budget"
                   className="h-full"
                 />
               </div>
@@ -4512,14 +4217,14 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
           </section>
 
           {/* ── ROW 2: KPI, Categories, Projects Count (3 Equal Columns) ── */}
-          <section className="grid grid-cols-1 gap-2 lg:grid-cols-3 mb-2">
+          <section className="mb-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
             {/* KPI */}
-            <div className="flex flex-col h-[272px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="flex h-[272px] flex-col rounded-lg bg-white p-4">
               <h3 className="text-sm font-semibold text-[#232360] mb-2 shrink-0">KPI</h3>
               {(() => {
                 const bars = businessDash.kpiPinnacle;
-                const VW = 255, VH = 170;
-                const CL = 32, CR = 8, CT = 8, CB = 28;
+                const VW = 255, VH = 160;
+                const CL = 32, CR = 8, CT = 18, CB = 28;
                 const chartW = VW - CL - CR, chartH = VH - CT - CB;
                 const chartX = CL, chartBottom = CT + chartH;
                 const maxV = 100;
@@ -4543,7 +4248,7 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                       return (
                         <g key={bar.label}>
                           <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="2" className="chart-bar" />
-                          <text x={bX + barW / 2} y={bY - 4} fontSize="8" fill="#374151" textAnchor="middle" fontWeight="bold">{Math.round(v)}%</text>
+                          <text x={bX + barW / 2} y={Math.max(10, bY - 4)} fontSize="8" fill="#374151" textAnchor="middle" fontWeight="bold">{Math.round(v)}%</text>
                           <text x={bX + barW / 2} y={chartBottom + 16} fontSize="7.5" fill="#6b7280" textAnchor="middle" fontWeight="500">{bar.label}</text>
                         </g>
                       );
@@ -4555,52 +4260,67 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
 
             {/* Project Categories */}
             {businessDash.has.category && (
-              <DonutChartCard
+              <BusinessDashboardDonutCard
                 title="Project Categories"
-                ringWidth={40}
                 slices={categoryDonutSlices}
                 centerText={String(categoryDonutCenter)}
-                className="h-[272px] rounded-lg border border-gray-200 bg-gray-50 p-4"
+                mode="progress"
+                className="h-[272px] rounded-lg"
               />
             )}
 
-            {/* Projects Count */}
-            <div className="flex flex-col h-[272px] rounded-lg border border-gray-200 bg-gray-50 p-4">
+            {/* Projects Count — horizontal scroll when many programs */}
+            <div className="flex h-[272px] flex-col rounded-lg bg-white p-4">
               <h3 className="text-sm font-semibold text-[#232360] mb-2 shrink-0">Projects Count</h3>
               {(() => {
-                const bars = businessDash.projectCounts.slice(0, 5);
-                const VW = 255, VH = 170;
-                const CL = 32, CR = 8, CT = 8, CB = 28;
-                const chartW = VW - CL - CR, chartH = VH - CT - CB;
-                const chartX = CL, chartBottom = CT + chartH;
+                const bars = businessDash.projectCounts;
+                const VH = 160;
+                const CL = 32;
+                const CR = 12;
+                const CT = 18;
+                const CB = 28;
+                const BAR_SLOT = 48;
+                const minChartW = 215;
+                const chartW = Math.max(minChartW, bars.length * BAR_SLOT);
+                const VW = CL + CR + chartW;
+                const chartH = VH - CT - CB;
+                const chartX = CL;
+                const chartBottom = CT + chartH;
                 const maxV = 100;
                 const yTicks = [0, 25, 50, 75, 100];
                 const yCoord = (v: number) => chartBottom - (v / maxV) * chartH;
                 const slotW = chartW / Math.max(1, bars.length);
                 const barW = Math.max(12, Math.min(28, slotW * 0.55));
-                const maxCount = Math.max(1, ...bars.map(b => b.value));
+                const maxCount = Math.max(1, ...bars.map((b) => b.value));
                 return (
-                  <svg viewBox={`0 0 ${VW} ${VH}`} className="w-full flex-1 chart-svg">
-                    {yTicks.map((tick) => (
-                      <g key={tick}>
-                        <line x1={chartX} x2={chartX + chartW} y1={yCoord(tick)} y2={yCoord(tick)} stroke="#e5e7eb" strokeWidth="0.6" />
-                        <text x={chartX - 4} y={yCoord(tick) + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
-                      </g>
-                    ))}
-                    {bars.map((bar, i) => {
-                      const v = Math.max(0, Math.min(100, (bar.value / maxCount) * 100));
-                      const bH = Math.max(2, (v / maxV) * chartH);
-                      const bX = chartX + i * slotW + (slotW - barW) / 2;
-                      const bY = chartBottom - bH;
-                      return (
-                        <g key={bar.label}>
-                          <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="2" className="chart-bar" />
-                          <text x={bX + barW / 2} y={bY - 4} fontSize="8" fill="#374151" textAnchor="middle" fontWeight="bold">{bar.value}</text>
-                          <text x={bX + barW / 2} y={chartBottom + 16} fontSize="7.5" fill="#6b7280" textAnchor="middle" fontWeight="500">{bar.label}</text>
+                  <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-0.5">
+                    <svg
+                      viewBox={`0 0 ${VW} ${VH}`}
+                      className="block h-full min-w-full chart-svg"
+                      style={{ width: VW, minWidth: '100%' }}
+                      aria-label="Projects count by program"
+                    >
+                      {yTicks.map((tick) => (
+                        <g key={tick}>
+                          <line x1={chartX} x2={chartX + chartW} y1={yCoord(tick)} y2={yCoord(tick)} stroke="#e5e7eb" strokeWidth="0.6" />
+                          <text x={chartX - 4} y={yCoord(tick) + 3} fontSize="8" fill="#9ca3af" textAnchor="end">{tick}</text>
                         </g>
-                      );
-                    })}
-                  </svg>
+                      ))}
+                      {bars.map((bar, i) => {
+                        const v = Math.max(0, Math.min(100, (bar.value / maxCount) * 100));
+                        const bH = Math.max(2, (v / maxV) * chartH);
+                        const bX = chartX + i * slotW + (slotW - barW) / 2;
+                        const bY = chartBottom - bH;
+                        return (
+                          <g key={bar.name}>
+                            <rect x={bX} y={bY} width={barW} height={bH} fill={bar.color} rx="2" className="chart-bar" />
+                            <text x={bX + barW / 2} y={Math.max(10, bY - 4)} fontSize="8" fill="#374151" textAnchor="middle" fontWeight="bold">{bar.value}</text>
+                            <text x={bX + barW / 2} y={chartBottom + 16} fontSize="7.5" fill="#6b7280" textAnchor="middle" fontWeight="500">{bar.label}</text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
                 );
               })()}
             </div>
@@ -4608,15 +4328,15 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
 
           {/* ── ROW 2: Actual VS Planned & Deviation (2 Equal Columns) ── */}
           {businessDash.has.budgeting && (
-          <section className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {/* ── Actual VS Planned ── */}
-            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
+            <div className="flex h-[280px] flex-col rounded-lg bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
               <div className="flex items-center justify-between mb-2 shrink-0">
-                <h3 className="text-[11px] font-semibold text-[#232360]">Actual VS Planned</h3>
+                <h3 className="text-[12px] font-semibold text-[#232360]">Actual VS Planned</h3>
                 <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d9bf89]" />Actual</span>
-                  <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#a07b3c]" />Planned</span>
+                  <span className="flex items-center gap-1 text-[10px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d9bf89]" />Actual</span>
+                  <span className="flex items-center gap-1 text-[10px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#a07b3c]" />Planned</span>
                 </div>
               </div>
               {(() => {
@@ -4666,9 +4386,9 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
             </div>
 
             {/* ── Deviation ── */}
-            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4 min-w-0">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
-              <h3 className="text-[11px] font-semibold text-[#232360] mb-2 shrink-0">Deviation</h3>
+            <div className="flex h-[280px] min-w-0 flex-col rounded-lg bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
+              <h3 className="text-[12px] font-semibold text-[#232360] mb-2 shrink-0">Deviation</h3>
               {(() => {
                 const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
                 const VW = 560, VH = 185;
@@ -4716,13 +4436,13 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
 
           {portfolioPrograms.length > 0 && (
             <section className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-[#232360]">Portfolio</h2>
+              <div className={enj.sectionToolbar}>
+                <h2 className={enj.sectionTitle}>Portfolio</h2>
                 {portfolioPrograms.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setActiveNav('Portfolio')}
-                    className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
+                    className={enj.sectionTextAction}
                   >
                     View All
                   </button>
@@ -4732,14 +4452,14 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                 <table className={`${enj.tableBrand} min-w-[980px] text-xs bg-transparent border-separate`}>
                   <thead>
                     <tr className="bg-gray-50">
-                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-l-[11.9px]">Program</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">KPI</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Benefits</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Budget</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program Manager</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">ROI</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Start Date</th>
-                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-r-[11.9px]">Progress</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Progress</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4834,7 +4554,7 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                                             <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Budget</th>
                                             <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Starg.obj</th>
                                             <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project Manager</th>
-                                            <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Timeline</th>
+                                            <PortfolioProjectTimelineTh />
                                             <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
                                             <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Status</th>
                                           </tr>
@@ -4853,8 +4573,8 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                                             const goalRaw_ = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
                                             const strategicObj = GOAL_MAP_[Number(goalRaw_)] ?? goalRaw_;
                                             const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
-                                            const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
-                                            const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                            const startDate = formatPortfolioTimelineDate(parseTimelineDate(project.new_startdate));
+                                            const endDate = formatPortfolioTimelineDate(parseTimelineDate(project.new_enddate));
                                             const progressRaw = Number(project.new_progress ?? NaN);
                                             const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
                                             const statusText = String(project.new_projectstatusname ?? '').trim();
@@ -4878,11 +4598,8 @@ function BusinessDashboard({ onLogout, currentUserData }: { onLogout: () => void
                                                 <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
                                                 <td className="px-3 py-1">{strategicObj}</td>
                                                 <td className="px-3 py-1">{manager}</td>
-                                                <td className="px-3 py-1 text-[10px]">
-                                                  <div className="space-y-0.5">
-                                                    <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
-                                                    <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
-                                                  </div>
+                                                <td className="border-0 bg-white p-0 align-middle">
+                                                  <PortfolioProjectTimelineDates startDate={startDate} endDate={endDate} />
                                                 </td>
                                                 <td className="px-3 py-1 w-32">
                                                   <div className="flex items-center gap-2">
@@ -5617,6 +5334,22 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
     setShowAddProgramForm(true);
   };
 
+  /** Lock document scroll — only the add/edit program panel scrolls; full-bleed gray canvas. */
+  useEffect(() => {
+    if (!showAddProgramForm) return;
+    const html = document.documentElement;
+    const { body } = document;
+    const main = document.querySelector('main');
+    html.classList.add('enj-add-project-active');
+    body.classList.add('enj-add-project-active');
+    main?.classList.add('enj-add-project-main');
+    return () => {
+      html.classList.remove('enj-add-project-active');
+      body.classList.remove('enj-add-project-active');
+      main?.classList.remove('enj-add-project-main');
+    };
+  }, [showAddProgramForm]);
+
   const toDateInput = (value: unknown) => {
     const raw = String(value ?? '').trim();
     if (!raw) return todayIso;
@@ -5867,7 +5600,7 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
 
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f3f4f8] text-gray-800">
+    <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-[#f5f6fb] text-gray-800">
       <aside className="z-[60] w-52 bg-[#FBFAFF] border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         <div className="h-14 border-b border-gray-100 px-4 flex items-center gap-3">
           <LogoMark />
@@ -5914,11 +5647,9 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
         </header>
 
         <main
-          className={`flex-1 min-h-0 min-w-0 flex flex-col px-4 pb-16 sm:px-6 sm:pb-20 md:px-8 ${
-            activeNav === 'Dashboard' ? 'pt-4 sm:pt-6 md:pt-6' : ''
-          } ${
-            activeNav === 'Projects' || activeNav === 'Program' || activeNav === 'Deliverables' || activeNav === 'Meetings'
-              ? 'overflow-hidden !pb-0'
+          className={`flex-1 min-h-0 min-w-0 flex flex-col p-5 [scrollbar-gutter:stable] ${
+            activeNav === 'Projects'
+              ? 'overflow-hidden'
               : 'overflow-y-auto'
           }`}
         >
@@ -5930,189 +5661,36 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
           <div className={
             activeNav === 'Projects'
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden min-w-0'
-              : activeNav === 'Program' || activeNav === 'Deliverables'
-                ? 'flex min-h-0 flex-1 flex-col overflow-y-auto min-w-0 pb-12'
-                : 'space-y-4'
+              : activeNav === 'Program'
+                ? `flex min-h-0 flex-1 flex-col min-w-0 ${showAddProgramForm ? 'overflow-hidden' : 'pb-12'}`
+                : activeNav === 'Deliverables'
+                ? `flex min-h-0 flex-1 flex-col min-w-0 ${showAddDeliverableForm || editingDeliverableRow ? 'overflow-hidden' : 'pb-12'}`
+                : activeNav === 'Meetings'
+                  ? `flex min-h-0 flex-1 flex-col min-w-0 ${showAddMeetingForm ? 'overflow-hidden' : 'pb-12'}`
+                  : 'space-y-4'
           }>
           {activeNav === 'Program' ? (
             <>
               {showAddProgramForm ? (
-                <section className="bg-white rounded-xl p-6 shadow-sm">
-                  <p className="text-[16px] font-bold text-primary mb-5">
-                    <button type="button" className="underline text-primary font-semibold" onClick={cancelProgramForm}>Program</button>
-                    {' > '}{programFormMode === 'edit' ? 'Edit Program' : 'Add New Program'}
-                  </p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-5">
-                    <label>
-                      <span className="text-sm text-[#353b57]">Program Name <span className="text-rose-500">*</span></span>
-                      <input
-                        className={`${enj.control} mt-2`}
-                        placeholder="Enter"
-                        value={programForm.programName}
-                        onChange={(e) => setProgramForm((f) => ({ ...f, programName: e.target.value }))}
-                      />
-                      {programFormErrors.programName && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.programName}</p>}
-                    </label>
-                    <label>
-                      <span className="text-sm text-[#353b57]">Benefits <span className="text-rose-500">*</span></span>
-                      <select
-                        className={`${enj.control} mt-2 text-gray-500`}
-                        value={programForm.benefits}
-                        onChange={(e) => setProgramForm((f) => ({ ...f, benefits: e.target.value }))}
-                      >
-                        <option value="">Select Benefits</option>
-                        {benefitsOptions.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                      {programFormErrors.benefits && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.benefits}</p>}
-                    </label>
-                    <label>
-                      <span className="text-sm text-[#353b57]">Project Manager <span className="text-rose-500">*</span></span>
-                      <select
-                        className={`${enj.control} mt-2 text-gray-500`}
-                        value={programForm.programManager}
-                        onChange={(e) => setProgramForm((f) => ({ ...f, programManager: e.target.value }))}
-                      >
-                        <option value="">Select Project Manager</option>
-                        {Array.from(new Set([...programManagerEmailOptions, programForm.programManager].filter(Boolean)))
-                          .sort((a, b) => a.localeCompare(b))
-                          .map((email) => (
-                            <option key={email} value={email}>{email}</option>
-                          ))}
-                      </select>
-                      {programFormErrors.programManager && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.programManager}</p>}
-                    </label>
-
-                    <label>
-                      <span className="text-sm text-[#353b57]">Budgets <span className="text-rose-500">*</span></span>
-                      <div className={`mt-2 flex h-9 overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm`}>
-                        <input
-                          className="h-full min-h-0 flex-1 border-0 bg-transparent px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-inset focus:ring-secondary/30"
-                          placeholder="Enter"
-                          value={programForm.budget}
-                          inputMode="decimal"
-                          onChange={(e) => {
-                            const next = e.target.value;
-                            if (/^\d*\.?\d*$/.test(next)) setProgramForm((f) => ({ ...f, budget: next }));
-                          }}
-                        />
-                        <span className="w-12 border-l border-gray-200 text-xs text-gray-500 flex items-center justify-center">AED</span>
-                      </div>
-                      {programFormErrors.budget && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.budget}</p>}
-                    </label>
-                    <label>
-                      <span className="text-sm text-[#353b57]">Start Date <span className="text-rose-500">*</span></span>
-                      <input
-                        type="date"
-                        min={programFormMode === 'add' ? todayIso : undefined}
-                        className={`${enj.control} mt-2`}
-                        value={programForm.startDate}
-                        onChange={(e) => setProgramForm((f) => ({ ...f, startDate: e.target.value }))}
-                      />
-                      {programFormErrors.startDate && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.startDate}</p>}
-                    </label>
-                    <label>
-                      <span className="text-sm text-[#353b57]">End Date <span className="text-rose-500">*</span></span>
-                      <input
-                        type="date"
-                        min={programForm.startDate || (programFormMode === 'add' ? todayIso : undefined)}
-                        className={`${enj.control} mt-2`}
-                        value={programForm.endDate}
-                        onChange={(e) => setProgramForm((f) => ({ ...f, endDate: e.target.value }))}
-                      />
-                      {programFormErrors.endDate && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.endDate}</p>}
-                    </label>
-                    <label>
-                      <span className="text-sm text-[#353b57]">ROI <span className="text-rose-500">*</span></span>
-                      <input
-                        className={`${enj.control} mt-2`}
-                        placeholder="Enter ROI Value"
-                        value={programForm.roi}
-                        onChange={(e) => setProgramForm((f) => ({ ...f, roi: e.target.value }))}
-                      />
-                      {programFormErrors.roi && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.roi}</p>}
-                    </label>
-
-                    <label>
-                      <span className="text-sm text-[#353b57]">KPI <span className="text-rose-500">*</span></span>
-                      <select
-                        className={`${enj.control} mt-2 text-gray-500`}
-                        value={programForm.kpi}
-                        onChange={(e) => setProgramForm((f) => ({ ...f, kpi: e.target.value }))}
-                      >
-                        <option value="">Select KPI</option>
-                        {kpiOptions.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                      {programFormErrors.kpi && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.kpi}</p>}
-                    </label>
-                    <label>
-                      <span className="text-sm text-[#353b57]">Program Status <span className="text-rose-500">*</span></span>
-                      <select
-                        className={`${enj.control} mt-2 text-gray-500`}
-                        value={programForm.status}
-                        onChange={(e) => setProgramForm((f) => ({ ...f, status: e.target.value }))}
-                      >
-                        <option value="">Select Program Status</option>
-                        {statusOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                      {programFormErrors.status && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.status}</p>}
-                    </label>
-
-                    <label>
-                      <span className="text-sm text-[#353b57]">Progress (%)</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        placeholder="0 – 100"
-                        className={`${enj.control} mt-2`}
-                        value={programForm.progress}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          if (raw === '' || /^\d{0,3}$/.test(raw)) {
-                            setProgramForm((f) => ({ ...f, progress: raw }));
-                          }
-                        }}
-                        onBlur={() => {
-                          const n = Number(programForm.progress);
-                          if (programForm.progress !== '' && (n < 0 || n > 100)) {
-                            setProgramForm((f) => ({ ...f, progress: String(Math.max(0, Math.min(100, n))) }));
-                          }
-                        }}
-                      />
-                      {programFormErrors.progress && <p className="mt-1 text-[11px] text-rose-600">{programFormErrors.progress}</p>}
-                    </label>
-                  </div>
-                  {programFormMsg && <p className="mt-4 text-sm text-gray-700">{programFormMsg}</p>}
-
-                  <div className="mt-10 flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      className={`${enj.btn} ${enj.btnOutline} px-4 font-medium`}
-                      onClick={cancelProgramForm}
-                      disabled={programFormBusy}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void saveProgram()}
-                      disabled={programFormBusy}
-                      className={`${enj.btn} ${enj.btnPrimary} px-5 font-medium disabled:opacity-50 hover:brightness-105`}
-                    >
-                      {programFormBusy ? 'Saving...' : programFormMode === 'edit' ? 'Update' : 'Save'}
-                    </button>
-                  </div>
-                </section>
+                <ProgramFormPanel
+                  mode={programFormMode}
+                  form={programForm}
+                  setForm={setProgramForm}
+                  errors={programFormErrors}
+                  busy={programFormBusy}
+                  formMsg={programFormMsg}
+                  todayIso={todayIso}
+                  benefitsOptions={benefitsOptions}
+                  kpiOptions={kpiOptions}
+                  programManagerEmailOptions={programManagerEmailOptions}
+                  statusOptions={statusOptions}
+                  onCancel={cancelProgramForm}
+                  onClear={clearProgramForm}
+                  onSave={() => void saveProgram()}
+                />
               ) : (
                 <section className={enj.screenContainer}>
-                  <section className="flex items-center justify-between mb-4 shrink-0">
+                  <section className={`${enj.screenToolbar} mb-4`}>
                     <h2 className="enj-screen-header">Programs</h2>
                     <button
                       className={`${enj.btn} ${enj.btnPrimary} font-medium`}
@@ -6360,7 +5938,7 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
               )}
             </>
           ) : activeNav === 'Reports' ? (
-            <section className={enj.screenContainer}>
+            <section className={`${enj.screenContainer} w-full self-start`}>
               <ProgramReportsPanel
                 isActive={activeNav === 'Reports'}
                 onNotify={(type, message) => setProgramToast({ type, message })}
@@ -6379,19 +5957,21 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
             </section>
           ) : activeNav === 'Portfolio' ? (
             <section className={`${enj.screenContainer} flex flex-col overflow-hidden !p-0`}>
-              <div className="flex items-center gap-3 px-4 sm:px-5 md:px-6 pt-4 sm:pt-5 md:pt-6 pb-0 shrink-0">
-                <button
-                  type="button"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
-                  onClick={() => setActiveNav('Dashboard')}
-                  title="Back"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <h1 className="enj-screen-header">Portfolio</h1>
+              <div className={`${enj.screenToolbar} pb-0`}>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                    onClick={() => setActiveNav('Dashboard')}
+                    title="Back"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                  <h1 className="enj-screen-header">Portfolio</h1>
+                </div>
               </div>
               {pagedProgramPortfolioRows.length > 0 && (
-                <section className="flex flex-col min-h-0 flex-1 gap-0 px-4 sm:px-5 md:px-6">
+                <section className="flex min-h-0 flex-1 flex-col gap-0">
                   <div className="flex-1 min-h-0 overflow-x-auto bg-transparent">
                     <table className={`${enj.table} min-w-[980px] text-xs bg-transparent border-separate`}>
                       <thead style={{ borderRadius: '0' }}>
@@ -6491,7 +6071,7 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Budget</th>
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Strat.goal</th>
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Project Manager</th>
-                                                <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Timeline</th>
+                                                <PortfolioProjectTimelineTh />
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Progress</th>
                                                 <th style={{ fontFamily: "'DM Sans', ui-sans-serif, system-ui, sans-serif", fontSize: '12.81px', fontWeight: 600, lineHeight: '1', letterSpacing: '0px', color: '#768396', backgroundColor: '#E1E3EC', padding: '12px 10px', border: '0px', textAlign: 'left', verticalAlign: 'middle', height: '44px', display: 'table-cell' }} className="border-0">Status</th>
                                               </tr>
@@ -6509,8 +6089,8 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                                                 const goalRaw = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
                                                 const strategicObj = GOAL_MAP[Number(goalRaw)] ?? goalRaw;
                                                 const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
-                                                const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
-                                                const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                                const startDate = formatPortfolioTimelineDate(parseTimelineDate(project.new_startdate));
+                                                const endDate = formatPortfolioTimelineDate(parseTimelineDate(project.new_enddate));
                                                 const progressRaw = Number(project.new_progress ?? NaN);
                                                 const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
                                                 const statusText = String(project.new_projectstatusname ?? '').trim();
@@ -6526,11 +6106,8 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                                                     <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
                                                     <td className="px-3 py-1">{strategicObj}</td>
                                                     <td className="px-3 py-1">{manager}</td>
-                                                    <td className="px-3 py-1 text-[10px]">
-                                                      <div className="space-y-0.5">
-                                                        <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
-                                                        <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
-                                                      </div>
+                                                    <td className="border-0 bg-white p-0 align-middle">
+                                                      <PortfolioProjectTimelineDates startDate={startDate} endDate={endDate} />
                                                     </td>
                                                     <td className="px-3 py-1 w-32">
                                                       <div className="flex items-center gap-2">
@@ -6567,21 +6144,21 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
               )}
             </section>
           ) : activeNav === 'Deliverables' ? (
-            <section className={enj.screenContainer}>
-              {showAddDeliverableForm ? (
-                <AddDeliverableFormPanel
-                  onClose={() => setShowAddDeliverableForm(false)}
-                  onNotify={(type, message) => setProgramToast({ type, message })}
-                  onSaved={() => setDeliverableListRefresh((k) => k + 1)}
-                />
-              ) : editingDeliverableRow ? (
-                <EditDeliverableFormPanel
-                  row={editingDeliverableRow}
-                  onClose={() => setEditingDeliverableRow(null)}
-                  onNotify={(type, message) => setProgramToast({ type, message })}
-                  onSaved={() => { setEditingDeliverableRow(null); setDeliverableListRefresh((k) => k + 1); }}
-                />
-              ) : (
+            showAddDeliverableForm ? (
+              <AddDeliverableFormPanel
+                onClose={() => setShowAddDeliverableForm(false)}
+                onNotify={(type, message) => setProgramToast({ type, message })}
+                onSaved={() => setDeliverableListRefresh((k) => k + 1)}
+              />
+            ) : editingDeliverableRow ? (
+              <EditDeliverableFormPanel
+                row={editingDeliverableRow}
+                onClose={() => setEditingDeliverableRow(null)}
+                onNotify={(type, message) => setProgramToast({ type, message })}
+                onSaved={() => { setEditingDeliverableRow(null); setDeliverableListRefresh((k) => k + 1); }}
+              />
+            ) : (
+            <section className="flex h-full min-h-0 w-full flex-col rounded-xl bg-[#f5f6fb] p-0">
                 <>
                   <DeliverablesListPanel
                     isActive={activeNav === 'Deliverables' && !showAddDeliverableForm && !editingDeliverableRow}
@@ -6641,8 +6218,8 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                     </div>
                   )}
                 </>
-              )}
             </section>
+            )
           ) : activeNav === 'Meetings' ? (
             <>
               {showAddMeetingForm ? (
@@ -6665,17 +6242,17 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
             <ProgramProjectsSection todayIso={todayIso} onToast={setProgramToast} />
           ) : (
             <>
-          <section className="bg-white rounded-xl p-5 shadow-sm chart-card">
+          <section className="bg-white rounded-lg p-5">
             <h2 className="enj-dashboard-header mb-4">Overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
               {overviewCards.map((card) => (
                 <div
                   key={card.label}
-                  className="rounded-xl border-2 bg-white px-4 py-4"
+                  className="rounded-lg border-2 bg-white px-4 py-4 text-center"
                   style={{ borderColor: card.color }}
                 >
-                  <p className="text-sm text-gray-400 mb-3 leading-tight">{card.label}</p>
-                  <p className="text-3xl font-extrabold text-primary">{card.value}</p>
+                  <p className="mb-3 text-sm leading-tight text-gray-400">{card.label}</p>
+                  <p className="text-3xl font-semibold text-primary">{card.value}</p>
                 </div>
               ))}
             </div>
@@ -6715,15 +6292,16 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                 slices={programInsightBudgetSlices}
                 ringWidth={32}
                 chartSize="sm"
-                className="h-[280px]"
+                className="h-[280px] !rounded-lg !shadow-none !ring-0"
               />
 
               {/* Projects progress bars */}
-              <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
+              <div className="flex h-[280px] flex-col rounded-lg bg-white p-4">
                 <h3 className="text-sm font-semibold text-gray-800 mb-2 shrink-0">Projects</h3>
                 <div className="flex flex-1 flex-col justify-center gap-3 min-h-0">
                   {programInsightProjectBars.map((bar) => {
                     const v = Math.max(0, Math.min(100, bar.val));
+                    const labelInside = v >= 12;
                     return (
                       <div key={bar.label} className="flex items-center gap-2">
                         <div
@@ -6733,18 +6311,17 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                           <div
                             className="flex h-6 items-center px-2"
                             style={{
-                              width: v < 1 ? '0%' : `${v}%`,
-                              minWidth: v >= 1 ? '3.5rem' : '0',
+                              width: `${v}%`,
                               backgroundColor: bar.color,
                               transition: 'width 0.7s ease',
                             }}
                           >
-                            {v >= 1 && (
+                            {labelInside && (
                               <span className="truncate text-[9px] font-bold uppercase tracking-wide text-white">{bar.label}</span>
                             )}
                           </div>
-                          {v < 1 && (
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-bold uppercase tracking-wide text-gray-400">{bar.label}</span>
+                          {!labelInside && (
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-bold uppercase tracking-wide text-white">{bar.label}</span>
                           )}
                         </div>
                         <span className="w-7 shrink-0 text-right text-[9px] font-semibold tabular-nums text-gray-500">{v}%</span>
@@ -6752,10 +6329,18 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                     );
                   })}
                 </div>
+                <div className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-3">
+                  {programInsightProjectBars.map((bar) => (
+                    <span key={`legend-${bar.label}`} className="flex items-center gap-1 text-[11px] text-gray-500">
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: bar.color }} />
+                      {bar.label}
+                    </span>
+                  ))}
+                </div>
               </div>
 
               {/* Deliverables area chart */}
-              <div className="flex flex-col bg-gray-50 rounded-lg border border-gray-200 p-4 h-[280px]">
+              <div className="flex h-[280px] flex-col rounded-lg bg-white p-4">
                 <h3 className="text-sm font-semibold text-gray-800 mb-1 shrink-0">Deliverables</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
@@ -6806,9 +6391,9 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                     );
                   })()}
                   <div className="flex items-center justify-center gap-3 mt-1 shrink-0">
-                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#2563eb]" />Delivered</span>
-                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#f59e0b]" />To Be Delivered</span>
-                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#dc2626]" />Delayed</span>
+                    <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#2563eb]" />Delivered</span>
+                    <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#f59e0b]" />To Be Delivered</span>
+                    <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#dc2626]" />Delayed</span>
                   </div>
                 </div>
               </div>
@@ -6818,13 +6403,13 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
 
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {/* ── Actual VS Planned ── */}
-            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
+            <div className="flex h-[280px] flex-col rounded-lg bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
               <div className="flex items-center justify-between mb-2 shrink-0">
-                <h3 className="text-[11px] font-semibold text-[#232360]">Actual VS Planned</h3>
+                <h3 className="text-[12px] font-semibold text-[#232360]">Actual VS Planned</h3>
                 <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d4b06a]" />Actual</span>
-                  <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#9b6f2c]" />Planned</span>
+                  <span className="flex items-center gap-1 text-[10px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d4b06a]" />Actual</span>
+                  <span className="flex items-center gap-1 text-[10px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#9b6f2c]" />Planned</span>
                 </div>
               </div>
               {(() => {
@@ -6874,9 +6459,9 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
             </div>
 
             {/* ── Deviation ── */}
-            <div className="flex flex-col h-[280px] rounded-lg border border-gray-200 bg-gray-50 p-4 min-w-0">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
-              <h3 className="text-[11px] font-semibold text-[#232360] mb-2 shrink-0">Deviation</h3>
+            <div className="flex h-[280px] min-w-0 flex-col rounded-lg bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-0.5 shrink-0">Budgeting</p>
+              <h3 className="text-[12px] font-semibold text-[#232360] mb-2 shrink-0">Deviation</h3>
               {(() => {
                 const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
                 const VW = 560, VH = 185;
@@ -6922,12 +6507,12 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
           </section>
           {programPortfolioLatestFive.length > 0 && (
             <section className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-[#232360]">Portfolio</h2>
+              <div className={enj.sectionToolbar}>
+                <h2 className={enj.sectionTitle}>Portfolio</h2>
                 <button
                   type="button"
                   onClick={() => setActiveNav('Portfolio')}
-                  className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
+                  className={enj.sectionTextAction}
                 >
                   View All
                 </button>
@@ -6936,14 +6521,14 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                 <table className={`${enj.tableBrand} min-w-[980px] text-xs bg-transparent border-separate`}>
                   <thead>
                     <tr className="bg-gray-50">
-                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-l-[11.9px]">Program</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">KPI</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Benefits</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Budget</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Program Manager</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">ROI</th>
                       <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Start Date</th>
-                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)] rounded-r-[11.9px]">Progress</th>
+                      <th className="px-3 py-2 font-semibold bg-[rgba(225,227,236,1)] border-0 text-[rgba(118,131,150,1)]">Progress</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -7032,7 +6617,7 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                                             <th className="px-3 py-1.5 font-semibold">Budget</th>
                                             <th className="px-3 py-1.5 font-semibold">Strat.goal</th>
                                             <th className="px-3 py-1.5 font-semibold">Project Manager</th>
-                                            <th className="px-3 py-1.5 font-semibold">Timeline</th>
+                                            <PortfolioProjectTimelineTh />
                                             <th className="px-3 py-1.5 font-semibold">Progress</th>
                                             <th className="px-3 py-1.5 font-semibold">Status</th>
                                           </tr>
@@ -7050,8 +6635,8 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                                             const goalRaw = readProjectField(project, ['new_strategicgoalname', 'new_strategicgoal']);
                                             const strategicObj = GOAL_MAP[Number(goalRaw)] ?? goalRaw;
                                             const manager = readProjectField(project, ['crcf8_projectmanagername', 'crcf8_projectmanager', 'owneridname']);
-                                            const startDate = formatTimelineDateLabel(parseTimelineDate(project.new_startdate));
-                                            const endDate = formatTimelineDateLabel(parseTimelineDate(project.new_enddate));
+                                            const startDate = formatPortfolioTimelineDate(parseTimelineDate(project.new_startdate));
+                                            const endDate = formatPortfolioTimelineDate(parseTimelineDate(project.new_enddate));
                                             const progressRaw = Number(project.new_progress ?? NaN);
                                             const progress = Number.isFinite(progressRaw) ? Math.max(0, Math.min(100, progressRaw)) : 0;
                                             const statusText = String(project.new_projectstatusname ?? '').trim();
@@ -7067,11 +6652,8 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
                                                 <td className="px-3 py-1"><TableBudgetDisplay value={budget} /></td>
                                                 <td className="px-3 py-1">{strategicObj}</td>
                                                 <td className="px-3 py-1">{manager}</td>
-                                                <td className="px-3 py-1 text-[10px]">
-                                                  <div className="space-y-0.5">
-                                                    <div><span className="font-normal text-[#6B7280]">Start Date</span>{' '}<span className="font-medium text-[#111827]">{startDate}</span></div>
-                                                    <div><span className="font-normal text-[#6B7280]">End Date</span>{' '}<span className="font-medium text-[#111827]">{endDate}</span></div>
-                                                  </div>
+                                                <td className="border-0 bg-white p-0 align-middle">
+                                                  <PortfolioProjectTimelineDates startDate={startDate} endDate={endDate} />
                                                 </td>
                                                 <td className="px-3 py-1 w-32">
                                                   <div className="flex items-center gap-2">
@@ -8189,7 +7771,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
   const showTaskFormPanel = showAddTaskForm || editingTaskRow != null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f3f4f8] text-gray-800">
+    <div className="flex h-[calc(100vh-2rem)] overflow-hidden bg-[#f5f6fb] text-gray-800">
       <aside className="z-[60] w-52 bg-[#FBFAFF] border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
         <div className="h-14 border-b border-gray-100 px-4 flex items-center gap-3">
           <LogoMark />
@@ -8271,10 +7853,8 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
         </header>
 
         <main
-          className={`flex-1 min-h-0 min-w-0 flex flex-col px-4 pb-16 sm:px-6 sm:pb-20 md:px-8 ${
-            activeNav === 'Dashboard' && !showAllProjectsScreen ? 'pt-4 sm:pt-6 md:pt-6' : ''
-          } ${
-            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen) || activeNav === 'Meetings'
+          className={`flex-1 min-h-0 min-w-0 flex flex-col p-5 [scrollbar-gutter:stable] ${
+            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen)
               ? 'overflow-hidden'
               : 'overflow-y-auto'
           }`}
@@ -8292,7 +7872,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
             className={
               activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen)
                 ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0'
-                : 'space-y-4'
+                : 'space-y-4 pb-12'
             }
           >
           {issueDeleteCandidate && (
@@ -8363,8 +7943,8 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
           )}
           {activeNav === 'Tasks' ? (
             viewAllProjectTaskStatus ? (
-              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
-                <div className="flex items-center justify-between mb-4 shrink-0">
+              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[#f5f6fb] p-0">
+                <div className={`${enj.screenToolbar} mb-4`}>
                   <h2 className="enj-screen-header">All Tasks - {viewAllProjectTaskStatus}</h2>
                   <button
                     type="button"
@@ -8532,7 +8112,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
             ) : (
             <section className={`${enj.screenContainer} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
               {showTaskFormPanel ? (
-                <div className="min-h-0 max-h-[min(calc(100dvh-7rem),48rem)] overflow-y-auto">
+                <div className="min-h-0">
                   <AddNewTaskFormPanel
                     editingTask={editingTaskRow}
                     onClose={() => {
@@ -8564,7 +8144,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                   }}
                 />
               ) : projectTaskDetailRow ? (
-                <div className="min-h-0 w-full min-w-0 max-h-[min(calc(100dvh-7rem),56rem)] flex-1 overflow-y-auto pr-0.5">
+                <div className="min-h-0 w-full min-w-0 flex-1 pr-0.5">
                   <ProjectTaskDetailView
                     task={projectTaskDetailRow}
                     onBack={() => {
@@ -8579,8 +8159,8 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
               ) : (
                 <div className="relative min-w-0 flex w-full flex-col">
                   {projectBoardTasksLoading && <ScreenLoader overlay className="rounded-xl" />}
-                  <div className="flex items-center justify-between mb-3 shrink-0">
-                    <div className="flex items-center gap-3 flex-wrap">
+                  <div className={`${enj.screenToolbar} mb-3`}>
+                    <div className="flex min-w-0 flex-wrap items-center gap-3">
                       <h2 className="enj-screen-header">Tasks List</h2>
                       <label className="flex items-center gap-2 text-xs text-gray-600">
                         <span>Due date</span>
@@ -8646,7 +8226,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                         setEditingTaskRow(null);
                         setProjectTaskDetailRow(null);
                       }}
-                      className={`${enj.btn} ${enj.btnPrimary} text-xs font-semibold shadow-sm hover:bg-[#9a7638]`}
+                      className={`${enj.btn} ${enj.btnPrimary} shadow-sm hover:bg-[#9a7638]`}
                     >
                       + New Task
                     </button>
@@ -8701,7 +8281,6 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                   onClose={() => setShowAddDeliverableForm(false)}
                   onNotify={(type, message) => setProjectDashToast({ type, message })}
                   onSaved={() => setDeliverableListRefresh((k) => k + 1)}
-                  sectionClassName="bg-white rounded-xl p-5 shadow-sm max-w-5xl mx-auto w-full"
                 />
               ) : (
                 <DeliverablesListPanel
@@ -8715,8 +8294,8 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
             </>
           ) : activeNav === 'Issues' ? (
             viewAllProjectIssueStatus ? (
-              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb]">
-                <div className="flex items-center justify-between mb-4 shrink-0">
+              <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[#f5f6fb] p-0">
+                <div className={`${enj.screenToolbar} mb-4`}>
                   <h2 className="enj-screen-header">All Issues - {viewAllProjectIssueStatus}</h2>
                   <button
                     type="button"
@@ -8892,7 +8471,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                 />
               ) : (
                 <>
-                  <div className="flex items-center justify-between mb-4">
+                  <div className={`${enj.screenToolbar} mb-4`}>
                     <h2 className="enj-screen-header">Issue Tracking Dashboard</h2>
                     <button
                       type="button"
@@ -8904,7 +8483,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                         setShowProjectSubIssueForm(false);
                         setProjectSubIssueFromDetail(false);
                       }}
-                      className={`${enj.btn} ${enj.btnPrimary} text-xs font-semibold`}
+                      className={`${enj.btn} ${enj.btnPrimary}`}
                     >
                       + Create Issue
                     </button>
@@ -8940,7 +8519,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                     </label>
                     <label className="block">
                       <span className="text-xs text-primary mb-1 block">Date</span>
-                      <input type="date" className={enj.control} value={issueDateFilter} onChange={(e) => setIssueDateFilter(e.target.value)} />
+                      <DatePickerField className={enj.control} value={issueDateFilter} onChange={setIssueDateFilter} />
                     </label>
                     <label className="block">
                       <span className="text-xs text-primary mb-1 block">Status</span>
@@ -9258,12 +8837,12 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                 </section>
               ) : (
                 <>
-              <div className="flex items-center justify-between mb-3">
+              <div className={`${enj.screenToolbar} mb-3`}>
                 <h2 className="enj-screen-header">Team Management Dashboard</h2>
                 <button
                   type="button"
                   onClick={() => setShowAddTeamMemberForm(true)}
-                  className={`${enj.btn} ${enj.btnPrimary} px-3 text-xs font-semibold`}
+                  className={`${enj.btn} ${enj.btnPrimary} px-3`}
                 >
                   + Add New Member
                 </button>
@@ -9511,7 +9090,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
             <ProgramProjectsSection todayIso={todayIso} onToast={setProjectDashToast} />
           ) : activeNav === 'Dashboard' && showAllProjectsScreen ? (
             <section className="overflow-hidden flex flex-col h-full min-h-0">
-              <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between shrink-0">
+              <div className={`${enj.sectionToolbar} shrink-0 border-b border-gray-100 py-2.5`}>
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -9620,25 +9199,25 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
             </section>
           ) : (
             <>
-          <section className="bg-white rounded-xl p-5 shadow-sm">
+          <section className="bg-white rounded-lg p-5">
             <h2 className="enj-dashboard-header mb-4">Overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
               {overview.map((item) => (
-                <div key={item.label} className="rounded-xl border-2 bg-white px-4 py-4" style={{ borderColor: item.color }}>
+                <div key={item.label} className="rounded-lg border-2 bg-white px-4 py-4 text-center" style={{ borderColor: item.color }}>
                   <p className="text-sm text-gray-400 mb-3 leading-tight">{item.label}</p>
-                  <p className="text-3xl font-extrabold text-primary">{item.value}</p>
+                  <p className="text-3xl font-semibold text-primary">{item.value}</p>
                 </div>
               ))}
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {/* ── Actual VS Planned ── */}
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Budgeting</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Budgeting</p>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-bold text-[#232360]">Actual VS Planned</h3>
+                  <h3 className="text-[12px] font-semibold text-[#232360]">Actual VS Planned</h3>
                   <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#ef4444]" />Actual</span>
-                    <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#2563eb]" />Planned</span>
+                    <span className="flex items-center gap-1 text-[10px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#ef4444]" />Actual</span>
+                    <span className="flex items-center gap-1 text-[10px] text-gray-500"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#2563eb]" />Planned</span>
                   </div>
                 </div>
                 {(() => {
@@ -9689,8 +9268,8 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
 
               {/* ── Deviation ── */}
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Budgeting</p>
-                <h3 className="text-sm font-bold text-[#232360] mb-2">Deviation</h3>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Budgeting</p>
+                <h3 className="text-[12px] font-semibold text-[#232360] mb-2">Deviation</h3>
                 {(() => {
                   const CL = 40, CR = 12, CT = 8, CB = 22, TL = 12;
                   const VW = 560, VH = 185;
@@ -9759,7 +9338,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
             </div>
             <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
               {/* Projects progress bars */}
-              <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex h-[280px] flex-col rounded-lg bg-white p-4">
                 <h3 className="mb-2 shrink-0 text-sm font-semibold text-gray-800">Projects</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
@@ -9809,7 +9388,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
               </div>
 
               {/* Tasks vertical bars */}
-              <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex h-[280px] flex-col rounded-lg bg-white p-4">
                 <h3 className="mb-2 shrink-0 text-sm font-semibold text-gray-800">Tasks</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
@@ -9860,11 +9439,11 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                 slices={projectInsights.categorySlices}
                 ringWidth={32}
                 chartSize="md"
-                className="h-[280px]"
+                className="h-[280px] !rounded-lg !shadow-none !ring-0"
               />
 
               {/* Deliverables area chart */}
-              <div className="flex h-[280px] flex-col rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex h-[280px] flex-col rounded-lg bg-white p-4">
                 <h3 className="mb-2 shrink-0 text-sm font-semibold text-gray-800">Deliverables</h3>
                 <div className="flex flex-1 flex-col min-h-0">
                   {(() => {
@@ -9914,9 +9493,9 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                     );
                   })()}
                   <div className="flex items-center justify-center gap-3 mt-1 shrink-0">
-                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#ef4444]" />Total</span>
-                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#2563eb]" />Delivered</span>
-                    <span className="flex items-center gap-1 text-[8px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#f6be00]" />To Be Delivered</span>
+                    <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#ef4444]" />Total</span>
+                    <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#2563eb]" />Delivered</span>
+                    <span className="flex items-center gap-1 text-[11px] text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#f6be00]" />To Be Delivered</span>
                   </div>
                 </div>
               </div>
@@ -9924,11 +9503,11 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
           </section>
 
           <section className="overflow-hidden">
-            <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
-              <h3 className="enj-screen-header">Projects List</h3>
+            <div className={`${enj.sectionToolbar} border-b border-gray-100 px-4 py-3`}>
+              <h3 className={enj.sectionTitle}>Projects List</h3>
               <button
                 type="button"
-                className="bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline"
+                className={enj.sectionTextAction}
                 onClick={() => setShowAllProjectsScreen(true)}
               >
                 View All
@@ -10020,7 +9599,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
 
 function PlaceholderRoleDashboard({ role, onLogout }: { role: AppRole; onLogout: () => void }) {
   return (
-    <div className="h-screen overflow-hidden bg-[#f5f6fb] flex flex-col">
+    <div className="h-[calc(100vh-2rem)] overflow-hidden bg-[#f5f6fb] flex flex-col">
       <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center justify-between">
         <span className="text-sm font-semibold text-gray-800">{ROLE_LABELS[role]} workspace</span>
         <button
@@ -10042,12 +9621,12 @@ function PlaceholderRoleDashboard({ role, onLogout }: { role: AppRole; onLogout:
 }
 
 function RoleDashboard({ role, onLogout, currentUserData, setCurrentUserData }: { role: AppRole; onLogout: () => void; currentUserData: Record<string, unknown> | null; setCurrentUserData: (data: Record<string, unknown> | null) => void }) {
-  if (role === 'admin') return <AdminDashboard onLogout={onLogout} />;
+  if (role === 'admin') return <AdminDashboard onLogout={onLogout} currentUserData={currentUserData} />;
   if (role === 'team') return <TeamDashboard onLogout={onLogout} currentUserData={currentUserData} />;
   if (role === 'business') return <BusinessDashboard onLogout={onLogout} currentUserData={currentUserData} />;
   if (role === 'program') return <ProgramDashboard onLogout={onLogout} currentUserData={currentUserData} setCurrentUserData={setCurrentUserData} />;
   if (role === 'project') return <ProjectDashboard onLogout={onLogout} currentUserData={currentUserData} />;
-  if (role === 'tester') return <AdminDashboard onLogout={onLogout} />;
+  if (role === 'tester') return <AdminDashboard onLogout={onLogout} currentUserData={currentUserData} />;
   return <PlaceholderRoleDashboard role={role} onLogout={onLogout} />;
 }
 
@@ -10240,56 +9819,12 @@ export default function App() {
     }
   }, [currentUserData]);
 
-  useEffect(() => {
-    const getPickerInput = (target: EventTarget | null) => {
-      if (!(target instanceof Element)) return null;
-      const direct = target instanceof HTMLInputElement ? target : null;
-      const resolved =
-        direct?.matches('input[type="date"], input[type="datetime-local"]')
-          ? direct
-          : (target.closest('input[type="date"], input[type="datetime-local"]') as HTMLInputElement | null);
-      if (!resolved || resolved.disabled || resolved.readOnly) return null;
-      return resolved as HTMLInputElement & { showPicker?: () => void };
-    };
-
-    const openNativePicker = (target: EventTarget | null) => {
-      const pickerInput = getPickerInput(target);
-      if (!pickerInput) return;
-      if (typeof pickerInput.showPicker !== 'function') return;
-      try {
-        pickerInput.focus();
-        pickerInput.showPicker();
-      } catch {
-        // Ignore browser restrictions and fallback behavior.
-      }
-    };
-
-    const onPointerDown = (event: PointerEvent) => {
-      openNativePicker(event.target);
-    };
-    const onClick = (event: MouseEvent) => {
-      openNativePicker(event.target);
-    };
-    const onFocusIn = (event: FocusEvent) => {
-      openNativePicker(event.target);
-    };
-
-    document.addEventListener('pointerdown', onPointerDown, true);
-    document.addEventListener('click', onClick, true);
-    document.addEventListener('focusin', onFocusIn, true);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      document.removeEventListener('click', onClick, true);
-      document.removeEventListener('focusin', onFocusIn, true);
-    };
-  }, []);
-
   if (isLoggedIn) {
     return (
-      <div className="enjaz-dashboard relative h-screen">
+      <div className="enjaz-dashboard relative h-screen overflow-hidden">
         <RoleDashboard role={loginRole} onLogout={handleLogout} currentUserData={currentUserData} setCurrentUserData={setCurrentUserData} />
-        <p className="fixed inset-x-0 bottom-0 z-50 bg-[#E1E3EC] py-2 text-center text-[11px] text-black backdrop-blur-sm">
-          Copyright @2026 Enjaz Management Tool. All rights reserved.
+        <p className="pointer-events-none fixed inset-x-0 bottom-0 z-50 bg-[#E1E3EC] py-2 text-center text-[11px] font-semibold text-black backdrop-blur-sm">
+          Copyright ©2024 Enjaz Management Tool. All rights reserved.
         </p>
       </div>
     );
@@ -10425,8 +9960,8 @@ export default function App() {
         </div>
       </main>
 
-      <p className="fixed inset-x-0 bottom-0 z-50 bg-white py-2 text-center text-[11px] text-gray-500 backdrop-blur-sm">
-        Copyright @2026 Enjaz Management Tool. All rights reserved.
+      <p className="fixed inset-x-0 bottom-0 z-50 bg-white py-2 text-center text-[11px] font-semibold text-gray-500 backdrop-blur-sm">
+        Copyright ©2024 Enjaz Management Tool. All rights reserved.
       </p>
     </div>
   );

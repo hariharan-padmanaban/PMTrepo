@@ -7,6 +7,7 @@ import { type ToastType } from './NotificationToast';
 import { PagerBar } from './PagerBar';
 import { ScreenLoader } from './ScreenLoader';
 import { enj } from './ui/enjForm';
+import { DonutChart } from './DonutChart';
 
 const PAGE_SIZE = 6;
 const FETCH_TOP = 5000;
@@ -128,24 +129,30 @@ export function DeliverablesListPanel({
       const n = String(r.new_projectname ?? '').trim() || '—';
       m.set(n, (m.get(n) ?? 0) + 1);
     });
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const sorted = Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+    if (sorted.length <= 5) return sorted;
+    const top = sorted.slice(0, 4);
+    const otherTotal = sorted.slice(4).reduce((sum, [, value]) => sum + value, 0);
+    return [...top, ['Other', otherTotal] as [string, number]];
   })();
 
-  const stTotal = statusCounts.delivered + statusCounts.toDeliver + statusCounts.delayed || 1;
-  const wDelivered = (statusCounts.delivered / stTotal) * 100;
-  const wTo = (statusCounts.toDeliver / stTotal) * 100;
-  const wDelayed = (statusCounts.delayed / stTotal) * 100;
+  const stTotal = statusCounts.delivered + statusCounts.toDeliver + statusCounts.delayed;
+  const statusSlices = [
+    { label: 'Delivered', value: statusCounts.delivered, color: '#2563eb' },
+    { label: 'To Deliver', value: statusCounts.toDeliver, color: '#f59e0b' },
+    { label: 'Delayed', value: statusCounts.delayed, color: '#f43f5e' },
+  ];
   const maxBar = byProject.length ? Math.max(...byProject.map(([, c]) => c), 1) : 1;
 
   const showActions = !!(onEditRequest || onDeleteRequest);
   const colSpan = showActions ? 5 : 4;
 
   const h2 = 'enj-screen-header';
-  const h3 = variant === 'program' ? 'enj-screen-subheader' : 'enj-screen-header';
-  const btnNew = `${enj.btn} ${enj.btnPrimary} px-4 ${variant === 'program' ? 'text-sm font-medium' : 'text-xs font-semibold'}`;
+  const chartTitle = 'text-sm font-semibold text-[#232360]';
+  const btnNew = `${enj.btn} ${enj.btnPrimary} px-3`;
 
   const tableBlock = (
-    <div className="relative bg-transparent overflow-hidden flex flex-col gap-0">
+    <div className="relative flex min-w-0 flex-col gap-0 overflow-x-auto bg-transparent">
       {loading && <ScreenLoader className="min-h-[220px]" />}
       {!loading && (
         <table className={`${enj.table} w-full text-xs bg-transparent border-separate`}>
@@ -220,7 +227,7 @@ export function DeliverablesListPanel({
           </tbody>
         </table>
       )}
-      <div className="shrink-0 px-3 py-2">
+      <div className="shrink-0 py-2">
         <PagerBar
           page={showRange ? pageSafe : 1}
           pageSize={PAGE_SIZE}
@@ -235,21 +242,24 @@ export function DeliverablesListPanel({
   );
 
   const charts = (
-    <aside className="space-y-4">
-      <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm chart-card">
-        <h3 className={`${h3} mb-3`}>Deliverables Status</h3>
-        <p className="text-[9px] text-gray-500 mb-3">
-          Delivered: {statusCounts.delivered}, To deliver: {statusCounts.toDeliver}, Delayed: {statusCounts.delayed}
-        </p>
-        <div className="flex h-3 rounded overflow-hidden w-full max-w-full">
-          <div className="h-full bg-blue-600" style={{ width: `${wDelivered}%` }} title="Delivered" />
-          <div className="h-full bg-amber-400" style={{ width: `${wTo}%` }} title="To be delivered" />
-          <div className="h-full bg-rose-500" style={{ width: `${wDelayed}%` }} title="Delayed" />
+    <aside className="min-w-0 space-y-3">
+      <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
+        <h3 className={`${chartTitle} mb-2`}>Deliverables Status</h3>
+        <div className="flex min-h-[11.5rem] items-center justify-center overflow-visible">
+          <DonutChart
+            className="chart-svg h-44 w-44 shrink-0"
+            ringWidth={42}
+            slices={stTotal > 0 ? statusSlices : [{ label: 'No Data', value: 1, color: '#e5e7eb' }]}
+            centerText={String(stTotal)}
+            centerSubtext="items"
+            showOuterLabels
+            labelFontSize={11}
+          />
         </div>
       </div>
-      <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm chart-card">
-        <h3 className={`${h3} mb-3`}>Deliverables via Projects</h3>
-        <div className="flex items-end justify-between gap-1 h-32 px-1">
+      <div className="bg-white rounded-xl p-3 shadow-sm chart-card">
+        <h3 className={`${chartTitle} mb-2`}>Deliverables via Projects</h3>
+        <div className="flex h-36 items-end justify-between gap-1 px-1">
           {byProject.length === 0 ? (
             <p className="text-[10px] text-gray-400">No data</p>
           ) : (
@@ -263,7 +273,7 @@ export function DeliverablesListPanel({
                     style={{ height: `${Math.max(8, h * 0.9)}px`, backgroundColor: colors[i % colors.length] }}
                     title={`${name}: ${cnt}`}
                   />
-                  <span className="text-[6px] text-gray-500 text-center line-clamp-2 leading-tight">{name}</span>
+                  <span className="min-h-[2rem] text-center text-[9px] leading-[1.05] text-gray-500 line-clamp-2">{name}</span>
                 </div>
               );
             })
@@ -276,7 +286,7 @@ export function DeliverablesListPanel({
   if (!isActive) return null;
 
   const headerRow = (
-    <div className="flex items-center justify-between">
+    <div className={enj.screenToolbar}>
       <h2 className={h2}>Display List Of Deliverables</h2>
       <button type="button" className={btnNew} onClick={onNewDeliverable}>
         {variant === 'program' ? '+ New Deliverable' : '+ New List'}
@@ -285,7 +295,7 @@ export function DeliverablesListPanel({
   );
 
   const body = (
-    <section className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-4 mt-4">
+    <section className="mt-3 grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_240px]">
       {tableBlock}
       {charts}
     </section>
@@ -293,8 +303,8 @@ export function DeliverablesListPanel({
 
   if (variant === 'project') {
     return (
-      <section className={enj.screenContainer}>
-        <div className="mb-4">{headerRow}</div>
+      <section className="flex h-full min-h-0 w-full flex-col rounded-xl bg-[#f5f6fb] p-0">
+        <div>{headerRow}</div>
         {body}
       </section>
     );

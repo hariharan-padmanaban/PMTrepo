@@ -8,7 +8,7 @@
   --color-primary: #151d5d;
   --color-primary-container: #2c3474;
   --color-secondary: #745b27;
-  --color-surface: #f3f4f8;
+  --color-surface: #f5f6fb;
   --color-surface-container-low: #FBFAFF;
   --color-surface-container-lowest: #FFFFFF;
   --color-on-surface-variant: #464650;
@@ -65,12 +65,12 @@ html.enjaz-dark .enjaz-dashboard select option {
 }
 
 .chart-card {
-  transition: transform 220ms ease, box-shadow 220ms ease;
+  transition: none;
 }
 
 .chart-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  transform: none;
+  box-shadow: none;
 }
 
 .chart-svg {
@@ -150,6 +150,33 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     min-height: 32px;
   }
 
+  .enj-screen-toolbar {
+    @apply flex shrink-0 flex-wrap items-center justify-between gap-3;
+  }
+
+  .enj-screen-toolbar-actions {
+    @apply flex shrink-0 flex-wrap items-center justify-end gap-2;
+  }
+
+  .enj-screen-toolbar .enj-btn {
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
+    max-height: 2.25rem !important;
+    border-radius: 0.375rem !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    font-size: 0.75rem !important;
+    font-weight: 500 !important;
+  }
+
+  .enj-section-toolbar {
+    @apply flex shrink-0 items-center justify-between gap-3;
+  }
+
+  .enj-section-text-action {
+    @apply bg-transparent p-0 text-xs font-semibold text-[#A08149] hover:underline;
+  }
+
   /* ── Subheaders (consistent secondary titles) ── */
   .enj-screen-subheader {
     font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
@@ -161,15 +188,16 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
   /* ── Standardized Screen Containers (All Screens) ── */
   .enj-screen-container {
-    @apply rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] overflow-y-auto;
+    @apply rounded-xl bg-[#f5f6fb] p-0 overflow-y-auto;
+    scrollbar-gutter: stable;
   }
 
   .enj-screen-section {
-    @apply rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-col;
+    @apply rounded-xl bg-[#f5f6fb] p-0 flex flex-col;
   }
 
   .enj-screen-section-fullheight {
-    @apply rounded-xl p-4 sm:p-5 md:p-6 bg-[#f5f6fb] flex flex-1 min-h-0 w-full flex-col overflow-hidden;
+    @apply rounded-xl bg-[#f5f6fb] p-0 flex flex-1 min-h-0 w-full flex-col overflow-hidden;
   }
 
   /* ── Dashboard Overview/Insights Headers ── */
@@ -223,7 +251,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
       placeholder:text-gray-400;
   }
   .enj-btn {
-    @apply inline-flex h-9 min-h-9 max-h-9 max-w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-4 text-sm font-medium leading-none shadow-sm
+    @apply inline-flex h-9 min-h-9 max-h-9 max-w-full cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-xs font-medium leading-none shadow-sm
       transition-[color,background-color,border-color,opacity,box-shadow,transform] duration-150
       focus:outline-none focus:ring-2 focus:ring-[#b28a44]/30 focus:ring-offset-0
       disabled:cursor-not-allowed disabled:opacity-50
@@ -247,18 +275,23 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
   /* ── Enjaz layout + typography scale (all roles / screens) ── */
   .enj-app-main {
-    /* Extra bottom space prevents last section from being clipped near page end. */
-    @apply px-4 pt-4 pb-16 sm:px-6 sm:pt-6 sm:pb-20 md:px-8 md:pt-6;
+    @apply p-5;
+    scrollbar-gutter: stable;
+  }
+  .enj-page-scrollbar-end {
+    margin-right: -1.25rem;
+    padding-right: 1.25rem;
+    scrollbar-gutter: stable;
   }
   .enj-stack {
-    @apply space-y-6 sm:space-y-8;
+    @apply space-y-3;
   }
   .enj-page-title {
     font-family: var(--font-headline);
     @apply text-lg font-bold tracking-tight text-[#2f3150] sm:text-xl;
   }
   .enj-section-title {
-    @apply text-sm font-bold text-gray-900 sm:text-base;
+    @apply text-base font-bold text-[#232360];
   }
   .enj-subhead {
     @apply text-xs font-semibold text-gray-800;
@@ -271,6 +304,128 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   }
   .enj-body {
     @apply text-sm text-gray-800;
+  }
+  main.enj-add-project-main {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    background-color: #f5f6fb;
+  }
+  .enj-add-project-root {
+    background-color: #f5f6fb;
+  }
+  .enj-add-project-scroll {
+    @apply h-full min-h-0 flex-1 overflow-y-auto overscroll-contain;
+    background-color: #f5f6fb;
+    /* Equal 1.5rem inset on top/left/right; bottom adds same gap plus fixed footer clearance */
+    padding: 1.5rem;
+    padding-bottom: calc(1.5rem + 2.75rem);
+  }
+  html.enj-add-project-active,
+  html.enj-add-project-active body {
+    overflow: hidden;
+    height: 100%;
+  }
+  .enj-add-project-shell {
+    @apply w-full self-start;
+  }
+  .enj-add-project-card {
+    @apply w-full max-w-3xl shrink-0 rounded-xl border border-gray-200 bg-white p-6 text-[13px] font-normal leading-normal text-gray-800;
+    box-shadow: none !important;
+  }
+  .enj-add-project-breadcrumb {
+    @apply mb-5 text-[13px] font-semibold leading-normal text-gray-700;
+  }
+  .enj-add-project-breadcrumb button {
+    @apply font-semibold text-primary underline;
+  }
+  .enj-add-project-card .enj-label {
+    @apply mb-1 block !text-[13px] !font-normal leading-normal text-gray-600;
+  }
+  .enj-add-project-card .enj-label > span {
+    @apply !text-[13px] !font-normal leading-normal !text-gray-600;
+  }
+  .enj-add-project-card .enj-control {
+    @apply !text-[13px] !font-normal leading-normal !shadow-none focus:!ring-0 focus:!ring-offset-0 focus:!shadow-none;
+    border-color: #ADACB4 !important;
+  }
+  .enj-add-project-card .enj-textarea {
+    @apply !text-[13px] !font-normal leading-normal !shadow-none focus:!ring-0 focus:!ring-offset-0 focus:!shadow-none;
+    border-color: #ADACB4 !important;
+  }
+  .enj-add-project-card .enj-field-error {
+    @apply !text-[13px] !font-normal leading-normal text-rose-600;
+  }
+  .enj-add-project-card .enj-btn {
+    @apply !text-[13px] leading-normal !shadow-none;
+  }
+  .enj-add-project-card .enj-add-project-field,
+  .enj-add-project-card .enj-add-project-combo,
+  .enj-add-project-card .enj-add-project-budget-wrap,
+  .enj-add-project-card .enj-add-project-attachments {
+    @apply !shadow-none;
+    border-color: #ADACB4 !important;
+  }
+  .enj-add-project-card .enj-control:hover,
+  .enj-add-project-card .enj-textarea:hover,
+  .enj-add-project-card .enj-add-project-combo:hover,
+  .enj-add-project-card .enj-add-project-budget-wrap:hover,
+  .enj-add-project-card .enj-add-project-attachments:hover {
+    border-color: #ADACB4 !important;
+    box-shadow: none !important;
+  }
+  .enj-add-project-card .enj-control:focus,
+  .enj-add-project-card .enj-control:focus-visible,
+  .enj-add-project-card .enj-textarea:focus,
+  .enj-add-project-card .enj-textarea:focus-visible,
+  .enj-add-project-card .enj-add-project-combo:focus,
+  .enj-add-project-card .enj-add-project-combo:focus-visible,
+  .enj-add-project-card .enj-add-project-budget-input:focus,
+  .enj-add-project-card .enj-add-project-budget-input:focus-visible {
+    border-color: #ADACB4 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    --tw-ring-offset-shadow: 0 0 #0000 !important;
+  }
+  .enj-add-project-card .enj-add-project-budget-wrap:focus-within {
+    border-color: #ADACB4 !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    --tw-ring-offset-shadow: 0 0 #0000 !important;
+  }
+  .enj-add-project-card select.enj-add-project-field:has(option[value=""]:checked) {
+    @apply text-gray-400;
+  }
+  .enj-add-project-card select.enj-add-project-field option {
+    @apply text-gray-800;
+  }
+  .enj-add-project-card .enj-add-project-combo {
+    border-color: #ADACB4 !important;
+  }
+  .enj-add-project-card .enj-add-project-combo:hover,
+  .enj-add-project-card .enj-add-project-combo:focus,
+  .enj-add-project-card .enj-add-project-combo:focus-visible {
+    border-color: #ADACB4 !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    --tw-ring-offset-shadow: 0 0 #0000 !important;
+    @apply focus:!ring-0 focus:!ring-offset-0;
+  }
+  .enj-add-project-card .enj-add-project-combo.enj-add-project-combo--empty {
+    @apply font-normal text-gray-400;
+  }
+  .enj-add-project-card .enj-add-project-milestone-menu {
+    @apply border bg-white !shadow-none;
+    border-color: #ADACB4 !important;
+  }
+  .enj-add-project-actions .enj-btn {
+    @apply !font-semibold !shadow-none;
+  }
+  .enj-add-project-card .enj-add-project-budget-input {
+    @apply text-[13px] font-normal leading-normal text-gray-800;
+  }
+  .enj-add-project-card .enj-add-project-muted {
+    @apply text-[13px] font-normal leading-normal text-gray-500;
   }
   .enj-field-error {
     @apply text-[11px] leading-snug text-rose-600;
@@ -323,6 +478,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     letter-spacing: 0%;
     color: #768396;
     @apply bg-[#E1E3EC] normal-case tracking-normal;
+  }
+  .enj-table--brand thead tr th {
+    border-radius: 0 !important;
   }
   .enj-table--brand tbody td {
     @apply bg-white py-2 text-[12px] font-medium text-[rgba(35,35,96,1)] sm:py-2;
@@ -597,5 +755,90 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   /* ── Tinted section panel background ── */
   .enj-panel-bg {
     @apply rounded-xl bg-[#eef0f6] p-3 sm:p-4;
+  }
+
+  /* ── Custom date picker (EnjDatePicker.tsx) ── */
+  .enj-date-picker-field {
+    @apply w-full;
+  }
+
+  .enj-date-picker-trigger-icon {
+    @apply absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center rounded p-0.5 text-gray-400 hover:text-[#b28a44] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .enj-date-picker-popover {
+    @apply absolute left-0 top-[calc(100%+6px)] z-[200] w-[min(100%,20.5rem)] rounded-xl border border-[#e8e6ef] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)];
+  }
+
+  .enj-date-picker-header {
+    @apply mb-3 flex items-center justify-between gap-2;
+  }
+
+  .enj-date-picker-month {
+    @apply flex-1 text-center text-[15px] font-bold text-gray-800;
+  }
+
+  .enj-date-picker-nav {
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-700 transition-colors;
+  }
+
+  .enj-date-picker-nav--prev {
+    @apply bg-[#ece8f4] hover:bg-[#e2ddf0];
+  }
+
+  .enj-date-picker-nav--next {
+    @apply bg-transparent hover:bg-gray-50;
+  }
+
+  .enj-date-picker-weekdays {
+    @apply mb-1 grid grid-cols-7 gap-0.5;
+  }
+
+  .enj-date-picker-weekday {
+    @apply py-1 text-center text-[11px] font-bold text-gray-800;
+  }
+
+  .enj-date-picker-grid {
+    @apply grid grid-cols-7 gap-0.5;
+  }
+
+  .enj-date-picker-day {
+    @apply flex h-9 w-full items-center justify-center rounded-lg text-[13px] font-medium text-gray-800 transition-colors;
+  }
+
+  .enj-date-picker-day--muted {
+    @apply text-gray-300;
+  }
+
+  .enj-date-picker-day--disabled {
+    @apply cursor-not-allowed opacity-40;
+  }
+
+  .enj-date-picker-day--today:not(.enj-date-picker-day--endpoint):not(.enj-date-picker-day--in-range) {
+    @apply bg-[#ece8f4] text-gray-800;
+  }
+
+  .enj-date-picker-day--in-range {
+    @apply rounded-none bg-[#f3f0f8] text-[#b28a44];
+  }
+
+  .enj-date-picker-day--endpoint {
+    @apply rounded-lg bg-[#b28a44] text-white hover:bg-[#9a7638];
+  }
+
+  .enj-date-picker-day:not(.enj-date-picker-day--disabled):not(.enj-date-picker-day--endpoint):not(.enj-date-picker-day--in-range):hover {
+    @apply bg-[#f3f0f8];
+  }
+
+  .enj-date-picker-footer {
+    @apply mt-4 flex items-center justify-end gap-4 border-t border-gray-100 pt-3;
+  }
+
+  .enj-date-picker-clear {
+    @apply text-[13px] font-medium text-gray-800 hover:text-gray-600;
+  }
+
+  .enj-date-picker-apply {
+    @apply rounded-full bg-[#b28a44] px-5 py-2 text-[13px] font-semibold text-white hover:bg-[#9a7638] disabled:opacity-50;
   }
 }

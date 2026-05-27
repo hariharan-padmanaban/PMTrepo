@@ -1,171 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, ChevronDown, FileSpreadsheet, HelpCircle, Inbox, LayoutGrid, LogOut, UserCircle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { FileSpreadsheet, LayoutGrid } from 'lucide-react';
 import { enj } from './ui/enjForm';
 import { NewUsersService, type NewUserRow } from './services/NewUsersService';
 import { SponsorsService } from './services/SponsorsService';
 import ManageDataScreen from './ManageDataScreen';
 import { type OnboardingForm, roleLabel } from './ManageUsersScreen';
 import { ScreenLoader } from './ScreenLoader';
-import { ActivityHistoryModal } from './ActivityHistoryModal';
-import { UserProfileModal } from './UserProfileModal';
 import { getSessionUserEmail } from './sessionUser';
-import { ThemeModeToggle } from './themeMode';
-import { LogoMark } from './LogoMark';
+import { RoleDashboardShell } from './RoleDashboardShell';
 
 type AdminDashboardProps = {
   onLogout: () => void;
+  currentUserData: Record<string, unknown> | null;
 };
 
-function ProfileDropdown({
-  onLogout,
-  displayName,
-  roleLabel,
-}: {
-  onLogout: () => void;
-  displayName: string;
-  roleLabel: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [activityHistoryOpen, setActivityHistoryOpen] = useState(false);
-  const [userProfileOpen, setUserProfileOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const initials = displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? '')
-    .join('') || 'U';
-
-  const items = [
-    { label: 'User Profile', icon: <UserCircle size={14} className="text-[#c7a56a]" /> },
-    { label: 'Inbox', icon: <Inbox size={14} className="text-[#c7a56a]" /> },
-    { label: 'Activity History', icon: <Activity size={14} className="text-[#c7a56a]" /> },
-    { label: 'Help', icon: <HelpCircle size={14} className="text-[#c7a56a]" /> },
-  ];
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
-        setOpen(false);
-      }
-    };
-    const onEsc = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    window.addEventListener('mousedown', onPointerDown);
-    window.addEventListener('keydown', onEsc);
-    return () => {
-      window.removeEventListener('mousedown', onPointerDown);
-      window.removeEventListener('keydown', onEsc);
-    };
-  }, [open]);
-
-  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      setActiveIndex((v) => (v + 1) % (items.length + 1));
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setActiveIndex((v) => (v - 1 + items.length + 1) % (items.length + 1));
-    } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      if (activeIndex === items.length) {
-        onLogout();
-      }
-      setOpen(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="relative">
-        <button
-          ref={triggerRef}
-          type="button"
-          className="flex items-center gap-1.5 hover:opacity-90 transition-opacity"
-          aria-label="Profile menu"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <div className="w-8 h-8 rounded-full bg-[#b28a44] text-white text-[10px] font-semibold flex items-center justify-center">{initials}</div>
-          <ChevronDown size={13} className="text-gray-400" />
-        </button>
-        {open && (
-          <div
-            ref={menuRef}
-            tabIndex={0}
-            onKeyDown={onMenuKeyDown}
-            className="absolute right-0 top-10 z-50 w-52 rounded-xl border border-gray-200 bg-white shadow-xl outline-none"
-          >
-            <div className="px-3 py-3 border-b border-gray-100">
-              <p className="text-sm font-semibold text-primary truncate">{displayName}</p>
-              <p className="text-[10px] text-gray-400 truncate">{roleLabel}</p>
-            </div>
-            <div className="py-1">
-              {items.map((item, index) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => {
-                    if (item.label === 'User Profile') {
-                      setUserProfileOpen(true);
-                      setOpen(false);
-                      return;
-                    }
-                    if (item.label === 'Activity History') {
-                      setActivityHistoryOpen(true);
-                      setOpen(false);
-                      return;
-                    }
-                    if (item.label === 'Inbox') {
-                      window.open('https://outlook.office.com/mail/', '_blank', 'noopener,noreferrer');
-                      setOpen(false);
-                    }
-                  }}
-                  className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 ${
-                    activeIndex === index ? 'bg-gray-50 text-[#2d356b]' : 'text-gray-500'
-                  }`}
-                >
-                  {item.icon}
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <div className="border-t border-gray-100 p-1">
-              <button
-                type="button"
-                onClick={onLogout}
-                onMouseEnter={() => setActiveIndex(items.length)}
-                className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 rounded-lg ${
-                  activeIndex === items.length ? 'bg-red-50 text-red-600' : 'text-gray-500'
-                }`}
-              >
-                <LogOut size={14} className={activeIndex === items.length ? 'text-red-500' : 'text-[#c7a56a]'} />
-                Logout
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      <UserProfileModal open={userProfileOpen} onClose={() => setUserProfileOpen(false)} />
-      <ActivityHistoryModal open={activityHistoryOpen} onClose={() => setActivityHistoryOpen(false)} />
-    </>
-  );
+function darkenHex(hex: string, factor = 0.82): string {
+  const h = hex.replace('#', '');
+  const r = Math.round(parseInt(h.slice(0, 2), 16) * factor);
+  const g = Math.round(parseInt(h.slice(2, 4), 16) * factor);
+  const b = Math.round(parseInt(h.slice(4, 6), 16) * factor);
+  return `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
 }
 
 function StatCard({ value, label, color }: { value: number; label: string; color: string }) {
+  const borderColor = darkenHex(color);
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm" style={{ borderColor: `${color}66` }}>
-      <p className="text-4xl font-semibold" style={{ color }}>{value}</p>
-      <p className="mt-1 text-gray-700">{label}</p>
+    <div className="overflow-hidden rounded-lg border-2 bg-white p-5 text-center sm:p-6" style={{ borderColor }}>
+      <p className="text-[1.8rem] font-semibold leading-none" style={{ color }}>
+        {value}
+      </p>
+      <p className="mt-1 text-[0.8rem] text-gray-700">{label}</p>
     </div>
   );
 }
@@ -276,11 +140,12 @@ function OnboardingByMonthChart({ rows }: { rows: NewUserRow[] }) {
 
 type AdminNavId = 'Dashboard' | 'mm-reference';
 
-const REFERENCE_DATA_SUB: { id: AdminNavId; label: string; icon: ReactNode }[] = [
+const ADMIN_NAV_ITEMS: { id: AdminNavId; label: string; icon: ReactNode }[] = [
+  { id: 'Dashboard', label: 'Dashboard', icon: <LayoutGrid size={16} /> },
   { id: 'mm-reference', label: 'Manage Data', icon: <FileSpreadsheet size={16} /> },
 ];
 
-export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
+export default function AdminDashboard({ onLogout, currentUserData }: AdminDashboardProps) {
   const [activeNav, setActiveNav] = useState<AdminNavId>('Dashboard');
   const [rows, setRows] = useState<NewUserRow[]>([]);
   const [sponsorTableCount, setSponsorTableCount] = useState(0);
@@ -323,92 +188,69 @@ export default function AdminDashboard({ onLogout }: AdminDashboardProps) {
     );
   }, [rows]);
 
-  const currentUser = useMemo(() => {
-    const matched = sessionMatchedUser ?? rows[0];
-    if (!matched) {
-      return { name: 'Admin User', departments: ['Admin'] };
-    }
-    const dept = matched.new_rolename ?? roleLabel[String(matched.new_role) as OnboardingForm['department']] ?? 'Admin';
-    return { name: matched.new_name ?? 'Admin User', departments: [dept] };
-  }, [rows, sessionMatchedUser]);
-
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f5f6fb] text-gray-800">
-      <aside className="z-[60] w-56 bg-[#f3f4f8] border-r border-gray-100 flex min-h-0 flex-col flex-shrink-0 pb-8">
-        <div className="px-5 py-5 border-b border-gray-100">
-          <LogoMark />
-        </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto py-4 px-3 space-y-1">
-          <button
-            type="button"
-            onClick={() => setActiveNav('Dashboard')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              activeNav === 'Dashboard' ? 'bg-white text-[#151d5d]' : 'text-[#344054] hover:bg-white hover:text-[#344054]'
-            }`}
-          >
-            <LayoutGrid size={16} />
-            Dashboard
-          </button>
-          {REFERENCE_DATA_SUB.map(({ id, label, icon }) => (
+    <RoleDashboardShell
+      roleLabel="Admin"
+      userData={currentUserData}
+      onLogout={onLogout}
+      notificationItems={[]}
+      mainClassName={`relative flex min-h-0 min-w-0 flex-1 flex-col p-5 [scrollbar-gutter:stable] ${
+        activeNav === 'mm-reference' ? 'overflow-hidden' : 'overflow-y-auto'
+      }`}
+      sidebarNav={
+        <>
+          {ADMIN_NAV_ITEMS.map(({ id, label, icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => setActiveNav(id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                activeNav === id ? 'bg-white text-[#151d5d]' : 'text-[#344054] hover:bg-white hover:text-[#344054]'
+              className={`relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                activeNav === id
+                  ? 'font-semibold text-[#A08149]'
+                  : 'text-[#344054] hover:bg-gray-50 hover:text-[#344054]'
               }`}
             >
+              {activeNav === id && (
+                <span className="absolute bottom-1 left-0 top-1 w-[3px] rounded-r-full bg-[#A08149]" />
+              )}
               {icon}
               {label}
             </button>
           ))}
-        </nav>
-        <div className="shrink-0 border-t border-gray-100 px-3 py-4">
-          <ThemeModeToggle />
+        </>
+      }
+    >
+      {loading && <ScreenLoader overlay />}
+      {activeNav === 'mm-reference' ? (
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <ManageDataScreen
+            userRows={rows}
+            userLoading={loading}
+            onRefreshUsers={fetchUsers}
+            ownUserRecordId={sessionMatchedUser?.new_usersid ? String(sessionMatchedUser.new_usersid) : null}
+          />
         </div>
-      </aside>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col space-y-4">
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StatCard value={totals.users} label="Total Users" color="#c7763f" />
+            <StatCard value={totals.clients} label="Total Clients" color="#6aa3c5" />
+            <StatCard value={totals.vendors} label="Total Vendors" color="#c9a64a" />
+            <StatCard value={sponsorTableCount} label="Total Sponsors" color="#4b3f8a" />
+          </section>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-gray-100 px-6 h-14 flex items-center">
-          <div className="ml-auto flex items-center gap-4">
-            <ProfileDropdown onLogout={onLogout} displayName={currentUser.name} roleLabel="Admin" />
-          </div>
-        </header>
-
-        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-5">
-          {loading && <ScreenLoader overlay />}
-          {activeNav === 'mm-reference' ? (
-            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <ManageDataScreen
-                userRows={rows}
-                userLoading={loading}
-                onRefreshUsers={fetchUsers}
-                ownUserRecordId={sessionMatchedUser?.new_usersid ? String(sessionMatchedUser.new_usersid) : null}
-              />
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className={`${enj.card} ${enj.cardPad} chart-card`}>
+              <h3 className={`${enj.subhead} mb-2 text-center`}>Active / Inactive Users per Department</h3>
+              <UsersByRoleChart rows={rows} />
             </div>
-          ) : (
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-              <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <StatCard value={totals.users} label="Total Users" color="#c7763f" />
-                <StatCard value={totals.clients} label="Total Clients" color="#6aa3c5" />
-                <StatCard value={totals.vendors} label="Total Vendors" color="#c9a64a" />
-                <StatCard value={sponsorTableCount} label="Total Sponsors" color="#4b3f8a" />
-              </section>
-
-              <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <div className={`${enj.card} ${enj.cardPad} chart-card`}>
-                  <h3 className={`${enj.subhead} text-center mb-2`}>Active / Inactive Users per Department</h3>
-                  <UsersByRoleChart rows={rows} />
-                </div>
-                <div className={`${enj.card} ${enj.cardPad} chart-card`}>
-                  <h3 className={`${enj.subhead} text-center mb-2`}>Monthwise Onboarding Count</h3>
-                  <OnboardingByMonthChart rows={rows} />
-                </div>
-              </section>
+            <div className={`${enj.card} ${enj.cardPad} chart-card`}>
+              <h3 className={`${enj.subhead} mb-2 text-center`}>Monthwise Onboarding Count</h3>
+              <OnboardingByMonthChart rows={rows} />
             </div>
-          )}
-        </main>
-      </div>
-    </div>
+          </section>
+        </div>
+      )}
+    </RoleDashboardShell>
   );
 }

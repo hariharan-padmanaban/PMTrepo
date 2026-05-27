@@ -41,3 +41,18 @@ export function programTableStatusBadgeClass(statusLabel: string): string {
   if (s.includes('on hold')) return 'enj-table-status--neutral';
   return 'enj-table-status--ontrack';
 }
+
+/** Feedback list — satisfaction level column (matches Projects status pills). */
+export function feedbackSatisfactionStatusClass(label: string): string {
+  const s = label.toLowerCase();
+  if (s.includes('unsatisfied')) return 'enj-table-status--delayed';
+  if (s.includes('very')) return 'enj-table-status--completed';
+  return 'enj-table-status--ontrack';
+}
+
+/** Feedback list — project phase column (matches Projects status pills). */
+export function feedbackPhaseStatusClass(label: string): string {
+  const s = label.toLowerCase();
+  if (s === 'live') return 'enj-table-status--ontrack';
+  return 'enj-table-status--neutral';
+}

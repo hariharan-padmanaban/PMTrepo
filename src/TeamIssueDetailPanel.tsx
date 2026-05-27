@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Paperclip, RefreshCw } from 'lucide-react';
+import { DatePickerField } from './EnjDatePicker';
 import { enj } from './ui/enjForm';
 import { New_issuesnew_issuestatus } from './generated/models/New_issuesModel';
 import { New_issuesService } from './generated/services/New_issuesService';
@@ -362,12 +363,11 @@ export function TeamIssueDetailPanel({ issue, onBack, onRefreshWorkspace, onOpen
               <label className={labelGold}>
                 Issue Raised Date <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="date"
-                className={`${inputBase} [color-scheme:light]`}
+              <DatePickerField
+                className={inputBase}
                 value={form.issueDate}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, issueDate: e.target.value }));
+                onChange={(v) => {
+                  setForm((f) => ({ ...f, issueDate: v }));
                   setErrors((e0) => ({ ...e0, issueDate: '' }));
                 }}
                 disabled={saving}
