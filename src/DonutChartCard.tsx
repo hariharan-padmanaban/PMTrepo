@@ -15,6 +15,11 @@ type DonutChartCardProps = {
   className?: string;
   /** Chart size variant — controls SVG viewBox and display box. */
   chartSize?: 'sm' | 'md' | 'lg';
+  /**
+   * `fill`: chart area grows to fill card (tables / tall layouts).
+   * `intrinsic`: chart hugs its natural size — use for dense dashboard rows beside bar charts.
+   */
+  chartAreaLayout?: 'fill' | 'intrinsic';
 };
 
 
@@ -59,10 +64,12 @@ export function DonutChartCard({
   footer,
   className = '',
   chartSize = 'md',
+  chartAreaLayout = 'fill',
 }: DonutChartCardProps) {
   const [hoveredIdx, setHoveredIdx] = useState<number>(-1);
   const layout = chartLayout[chartSize];
   const hoveredSlice = hoveredIdx >= 0 ? slices[hoveredIdx] : null;
+  const headMb = chartAreaLayout === 'intrinsic' ? 'mb-2' : 'mb-3';
 
   /** Center hole: numeric count only (labels live in legend / title). */
   const computedCenterText = hoveredSlice ? hoveredSlice.value.toLocaleString() : centerText;
@@ -70,13 +77,31 @@ export function DonutChartCard({
   return (
     <div className={`flex min-h-0 flex-col rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-100 sm:p-4 ${className}`.trim()}>
       {(title || subtitle) && (
-        <div className="mb-3 shrink-0">
-          {title && <h3 className="text-sm font-semibold text-[#232360]">{title}</h3>}
-          {subtitle && <p className="mt-0.5 text-[10px] leading-snug text-gray-500">{subtitle}</p>}
+        <div className={`${headMb} shrink-0`}>
+          {title && (
+            <h3 className="text-sm font-semibold leading-snug text-[#232360]">{title}</h3>
+          )}
+          {subtitle && (
+            <p
+              className={
+                chartAreaLayout === 'intrinsic'
+                  ? 'mt-0.5 line-clamp-2 h-[2.625rem] text-[11.5px] leading-snug text-gray-500'
+                  : 'mt-0.5 text-[11.5px] leading-snug text-gray-500'
+              }
+            >
+              {subtitle}
+            </p>
+          )}
         </div>
       )}
 
-      <div className="relative flex min-h-0 w-full min-w-0 flex-1 items-center justify-center overflow-visible">
+      <div
+        className={`relative flex w-full min-w-0 items-center justify-center overflow-visible ${
+          chartAreaLayout === 'intrinsic'
+            ? 'min-h-0 shrink-0 py-1'
+            : 'min-h-0 flex-1'
+        }`.trim()}
+      >
         {slices.length === 0 ? (
           <p className="text-[10px] text-gray-400">No data</p>
         ) : (

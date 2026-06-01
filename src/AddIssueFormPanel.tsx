@@ -6,6 +6,7 @@ import { NewUsersService } from './services/NewUsersService';
 import { sendEmailNotification, generateEmailTemplate } from './services/PMTMailNotificationService';
 import type { ToastType } from './NotificationToast';
 import { ScreenLoader } from './ScreenLoader';
+import { FormFieldLabel, FormPageActions, FormPageShell } from './FormPageShell';
 import { enj } from './ui/enjForm';
 import { getSessionUserEmail } from './sessionUser';
 
@@ -274,23 +275,18 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
     }
   };
 
-  const areaCls = `mt-1 ${enj.textarea} h-20 min-h-[4.5rem] resize-none`;
+  const areaCls = `enj-add-project-field mt-1 ${enj.textarea} h-20 min-h-[4.5rem] resize-none font-normal`;
+
+  const formTitle = issueToEdit ? 'Edit Issue' : 'Add New Issue';
 
   return (
-    <section className="relative bg-white rounded-xl p-5 shadow-sm max-w-6xl mx-auto">
+    <FormPageShell parentLabel="Issues" onBack={onClose} title={formTitle} cardClassName="!max-w-6xl">
       {loading && <ScreenLoader overlay />}
-      <p className="text-[16px] font-bold text-primary mb-5">
-        <button className="underline text-primary font-semibold" onClick={onClose} type="button">
-          Issue
-        </button>
-        {' > '}{issueToEdit ? 'Edit Issue' : 'Add New Issue'}
-      </p>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-x-5 gap-y-4">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-3">
         <div>
-          <label className={enj.label}>Project Name *</label>
+          <FormFieldLabel label="Project Name" required />
           <select
-            className={`mt-1 ${enj.control}`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             value={projectName}
             onChange={(e) => { setProjectName(e.target.value); setAssignTeamMember(''); setErrors((prev) => ({ ...prev, projectName: '' })); }}
             disabled={loading || saving}
@@ -301,13 +297,13 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
           {errors.projectName && <p className={`mt-1 ${enj.fieldError}`}>{errors.projectName}</p>}
         </div>
         <div>
-          <label className={enj.label}>Issue Title *</label>
-          <input className={`mt-1 ${enj.control}`} value={issueTitle} onChange={(e) => { setIssueTitle(e.target.value); setErrors((prev) => ({ ...prev, issueTitle: '' })); }} disabled={saving} />
+          <FormFieldLabel label="Issue Title" required />
+          <input className={`enj-add-project-field mt-1 ${enj.control}`} value={issueTitle} onChange={(e) => { setIssueTitle(e.target.value); setErrors((prev) => ({ ...prev, issueTitle: '' })); }} disabled={saving} />
           {errors.issueTitle && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueTitle}</p>}
         </div>
         <div>
-          <label className={enj.label}>Issue Owner *</label>
-          <select className={`mt-1 ${enj.control}`} value={issueOwner} onChange={(e) => { setIssueOwner(e.target.value); setErrors((prev) => ({ ...prev, issueOwner: '' })); }} disabled={loading || saving}>
+          <FormFieldLabel label="Issue Owner" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={issueOwner} onChange={(e) => { setIssueOwner(e.target.value); setErrors((prev) => ({ ...prev, issueOwner: '' })); }} disabled={loading || saving}>
             <option value="">Select owner</option>
             {ownerOptions.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
@@ -322,8 +318,8 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
           {errors.issueSeverity && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueSeverity}</p>}
         </div>
         <div>
-          <label className={enj.label}>Assign To Team Member *</label>
-          <select className={`mt-1 ${enj.control}`} value={assignTeamMember} onChange={(e) => { setAssignTeamMember(e.target.value); setErrors((prev) => ({ ...prev, assignTeamMember: '' })); }} disabled={loading || saving}>
+          <FormFieldLabel label="Assign To Team Member" required />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={assignTeamMember} onChange={(e) => { setAssignTeamMember(e.target.value); setErrors((prev) => ({ ...prev, assignTeamMember: '' })); }} disabled={loading || saving}>
             <option value="">Select team member</option>
             {teamMemberOptions.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -338,16 +334,16 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
           {errors.issueStatus && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueStatus}</p>}
         </div>
         <div>
-          <label className={enj.label}>Project Sponsor</label>
-          <select className={`mt-1 ${enj.control}`} value={projectSponsor} onChange={(e) => setProjectSponsor(e.target.value)} disabled={saving}>
+          <FormFieldLabel label="Project Sponsor" />
+          <select className={`enj-add-project-field mt-1 ${enj.control}`} value={projectSponsor} onChange={(e) => setProjectSponsor(e.target.value)} disabled={saving}>
             <option value="">Select sponsor</option>
             {PROJECT_SPONSOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
-          <label className={enj.label}>Progress</label>
+          <FormFieldLabel label="Progress" />
           <input
-            className={`mt-1 ${enj.control}`}
+            className={`enj-add-project-field mt-1 ${enj.control}`}
             inputMode="numeric"
             maxLength={3}
             value={progress}
@@ -356,8 +352,8 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
           />
         </div>
         <div>
-          <label className={enj.label}>Raised Issue</label>
-          <input className={`mt-1 ${enj.control}`} value={raisedIssue} onChange={(e) => setRaisedIssue(e.target.value)} disabled={saving} />
+          <FormFieldLabel label="Raised Issue" />
+          <input className={`enj-add-project-field mt-1 ${enj.control}`} value={raisedIssue} onChange={(e) => setRaisedIssue(e.target.value)} disabled={saving} />
         </div>
         <div className="md:col-span-2">
           <label className={enj.label}>Issue Response *</label>
@@ -365,25 +361,23 @@ export function AddIssueFormPanel({ onClose, onNotify, onSaved, issueToEdit }: P
           {errors.issueResponse && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueResponse}</p>}
         </div>
         <div>
-          <label className={enj.label}>Issue Impacted Area *</label>
+          <FormFieldLabel label="Issue Impacted Area" required />
           <textarea className={areaCls} value={issueImpactedArea} onChange={(e) => { setIssueImpactedArea(e.target.value); setErrors((prev) => ({ ...prev, issueImpactedArea: '' })); }} disabled={saving} />
           {errors.issueImpactedArea && <p className={`mt-1 ${enj.fieldError}`}>{errors.issueImpactedArea}</p>}
         </div>
         <div className="md:col-span-3">
-          <label className={enj.label}>Issue Description</label>
+          <FormFieldLabel label="Issue Description" />
           <textarea className={areaCls} value={issueDescription} onChange={(e) => setIssueDescription(e.target.value)} disabled={saving} />
         </div>
       </div>
 
-      <div className="mt-4 flex justify-end gap-3">
-        <button type="button" onClick={onClose} className={`${enj.btnOutline} min-w-[6.5rem] px-8 font-semibold`} disabled={saving}>
-          Cancel
-        </button>
-        <button type="button" onClick={() => void save()} className={`${enj.btnPrimary} min-w-[6.5rem] px-8 font-semibold`} disabled={saving || loading}>
-          {saving ? 'Saving...' : issueToEdit ? 'Update' : 'Save'}
-        </button>
-      </div>
-    </section>
+      <FormPageActions
+        onCancel={onClose}
+        onSave={() => void save()}
+        busy={saving || loading}
+        saveLabel={issueToEdit ? 'Update' : 'Save'}
+      />
+    </FormPageShell>
   );
 }
 

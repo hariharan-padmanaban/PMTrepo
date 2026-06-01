@@ -22,6 +22,7 @@ import AdminDashboard from './AdminDashboard';
 import { ProfileDropdown } from './ProfileDropdown';
 import { DonutChart } from './DonutChart';
 import { DonutChartCard } from './DonutChartCard';
+import { ReportsStyleBarChart } from './ReportsStyleBarChart';
 import { New_programsService } from './generated/services/New_programsService';
 import { New_projectsService } from './generated/services/New_projectsService';
 import { buildProgramIdToNameMap, normalizeDataverseId, resolveProjectProgramName } from './programNameResolve';
@@ -1789,16 +1790,23 @@ function MeetingsBoardPanel({
       {loading && <ScreenLoader overlay className="rounded-xl" />}
       <section className={`${enj.screenToolbar} mb-4`}>
         <h2 className="enj-screen-header">Meetings</h2>
-        <button type="button" onClick={onNewMeeting} className={`${enj.btn} ${enj.btnPrimary} font-medium`}>+ New Meeting</button>
-      </section>
-      <div className="flex items-center justify-between mb-4 shrink-0 gap-3">
-        <div className="flex items-center gap-3 text-xs">
-          <label className="text-gray-500 flex items-center gap-2"><span>Project Name</span><select className={`${enj.control} !w-auto max-w-[170px] text-sm text-gray-600`} value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}><option value="All">All</option>{projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
-          <label className="text-gray-500 flex items-center gap-2"><span>Date</span><DatePickerField className={`${enj.control} !w-auto text-sm`} value={selectedDateIso} onChange={setSelectedDateIso} /></label>
+        <div className={`${enj.screenToolbarActions} text-xs`}>
+          <label className="flex items-center gap-2 text-gray-500">
+            <span>Project Name</span>
+            <select className={`${enj.control} !w-auto max-w-[170px] text-sm text-gray-600`} value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+              <option value="All">All</option>
+              {projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
           <button type="button" onClick={() => { setSelectedDateIso(localIsoDate(new Date())); setShowMom(false); }} className={`${enj.btn} ${enj.btnOutline} rounded-full px-3 text-sm`}>Today</button>
+          <label className="flex items-center gap-2 text-gray-500">
+            <span className="shrink-0">Date</span>
+            <DatePickerField className={`${enj.control} !w-auto text-sm`} value={selectedDateIso} onChange={setSelectedDateIso} />
+          </label>
           <button type="button" onClick={() => setShowMom((v) => !v)} className={`${enj.btn} ${enj.btnOutline} text-sm`}>MOM</button>
+          <button type="button" onClick={onNewMeeting} className={`${enj.btn} ${enj.btnPrimary} font-medium`}>+ New Meeting</button>
         </div>
-      </div>
+      </section>
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
         {showMom ? (
           <section className="bg-white rounded-xl p-4 sm:p-5">
@@ -2198,6 +2206,12 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
       .filter((t): t is NonNullable<typeof t> => Boolean(t));
   }, [myTasks, teamTimelineProjectFilter, teamTimelineRange]);
 
+  const TEAM_TIMELINE_ROW_H = 48;
+  const teamTimelineChartHeight = useMemo(() => {
+    const rows = Math.max(2, teamTimelineTasks.length);
+    return rows * TEAM_TIMELINE_ROW_H;
+  }, [teamTimelineTasks.length]);
+
   useEffect(() => {
     if (teamTimelineProjectFilter !== 'All' && !teamTimelineProjects.includes(teamTimelineProjectFilter)) {
       setTeamTimelineProjectFilter('All');
@@ -2330,14 +2344,14 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
 
         <main
           className={`flex-1 min-h-0 min-w-0 flex flex-col p-5 [scrollbar-gutter:stable] ${
-            activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
+            activeNav === 'Projects' || activeNav === 'Timeline' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
               ? 'overflow-hidden'
               : 'overflow-y-auto'
           }`}
         >
           <div
             className={
-              activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
+              activeNav === 'Projects' || activeNav === 'Timeline' || (activeNav === 'Tasks' && !showTaskDetails && !editingTaskRow)
                 ? 'flex min-h-0 flex-1 flex-col gap-4 overflow-hidden'
                 : 'flex flex-col gap-5 pb-5'
             }
@@ -2362,8 +2376,8 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
               />
             </div>
           ) : activeNav === 'Timeline' ? (
-            <section className={`relative ${enj.screenContainer}`}>
-              <div className={`${enj.screenToolbar} mb-3`}>
+            <section className={`relative w-full ${enj.screenContainer}`}>
+              <div className={`${enj.screenToolbar} mb-3 shrink-0`}>
                 <h2 className="enj-screen-header">Timeline</h2>
                 <div className={`${enj.screenToolbarActions} text-xs`}>
                   <button
@@ -2403,13 +2417,16 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                 </div>
               </div>
 
-              <section className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                <div className="grid grid-cols-[280px_1fr]">
-                  <aside className="border-r border-gray-100">
-                    <div className="h-9 px-3 flex items-center text-[11px] font-semibold text-primary bg-gray-50 border-b border-gray-100">
+              <section className="enj-team-timeline overflow-hidden rounded-xl border border-gray-100 bg-white">
+                <div className="grid grid-cols-[280px_1fr] items-stretch">
+                  <aside className="flex min-h-0 flex-col border-r border-gray-100">
+                    <div className="flex h-9 shrink-0 items-center border-b border-gray-100 bg-gray-50 px-3 text-[11px] font-semibold text-primary">
                       Assigned Tasks
                     </div>
-                    <div className="p-2 space-y-2 h-[min(36rem,72vh)] min-h-[16rem] overflow-auto">
+                    <div
+                      className="overflow-y-auto overscroll-contain p-2 space-y-2"
+                      style={{ minHeight: teamTimelineChartHeight }}
+                    >
                       {teamTimelineTasks.map((task) => (
                         <div key={`left-${task.id}`} className="border border-gray-100 rounded-md p-2">
                           <p className="text-[11px] font-semibold text-primary truncate">{task.title}</p>
@@ -2425,7 +2442,8 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                     </div>
                   </aside>
 
-                  <div className="h-[min(36rem,72vh)] min-h-[16rem] w-full min-w-0 overflow-x-auto overflow-y-auto overscroll-contain">
+                  <div className="flex min-w-0 flex-col overflow-hidden">
+                    <div className="max-h-[calc(100vh-11rem)] overflow-x-auto overflow-y-auto overscroll-contain">
                     <div className="w-full" style={{ minWidth: teamTimelineAxisMinWidth }}>
                       <div className="sticky top-0 z-10 space-y-0.5 border-b border-gray-100 bg-white px-3 py-2 shadow-sm">
                         <p className="text-center text-xs font-bold leading-tight text-primary">
@@ -2483,7 +2501,7 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                       <div
                         className="relative w-full chart-svg"
                         style={{
-                          minHeight: Math.max(280, teamTimelineTasks.length * 48 + 72),
+                          height: teamTimelineChartHeight,
                           background: `repeating-linear-gradient(to right, #f1f5f9 0, #f1f5f9 1px, transparent 1px, transparent ${
                             100 / Math.max(1, teamTimelineRange.bottomLabels.length)
                           }%)`,
@@ -2494,7 +2512,7 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                             key={task.id}
                             className="absolute h-6 rounded-full px-3 text-[9px] font-semibold text-white flex items-center justify-between gap-2 shadow-sm"
                             title={`Project: ${task.project}\nTask: ${task.title}\nProgress: ${task.progress}`}
-                            style={{ top: task.row * 48, left: `${task.left}%`, width: `${task.width}%`, backgroundColor: task.color }}
+                            style={{ top: task.row * TEAM_TIMELINE_ROW_H, left: `${task.left}%`, width: `${task.width}%`, backgroundColor: task.color }}
                           >
                             <span className="truncate">{task.title}</span>
                             <span className="bg-white/85 text-gray-700 px-1.5 rounded-full shrink-0 tabular-nums">
@@ -2503,6 +2521,7 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                           </div>
                         ))}
                       </div>
+                    </div>
                     </div>
                   </div>
                 </div>
@@ -2552,7 +2571,6 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                   }}
                 />
               ) : editingTaskRow ? (
-                <div className="min-h-0 w-full">
                   <AddNewTaskFormPanel
                     editingTask={editingTaskRow}
                     onClose={() => setEditingTaskRow(null)}
@@ -2566,7 +2584,6 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                       setEditingTaskRow(null);
                     }}
                   />
-                </div>
               ) : viewAllTaskStatus ? (
                 <section className="flex flex-1 min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-[#f5f6fb] p-0">
                   <div className={`${enj.screenToolbar} mb-4`}>
@@ -3102,11 +3119,8 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                   {teamWorkspaceLoading && <ScreenLoader overlay className="rounded-xl" />}
                   <section className={`${enj.screenToolbar} mb-4`}>
                     <h2 className="enj-screen-header">Calendar</h2>
-                    <button type="button" onClick={() => setShowAddCalendarMeetingForm(true)} className={`${enj.btn} ${enj.btnPrimary} font-medium`}>+ New Meeting</button>
-                  </section>
-                  <div className="flex items-center justify-between mb-4 shrink-0 gap-3">
-                    <div className="flex items-center gap-3 text-xs">
-                      <label className="text-gray-500 flex items-center gap-2">
+                    <div className={`${enj.screenToolbarActions} text-xs`}>
+                      <label className="flex items-center gap-2 text-gray-500">
                         <span>Project Name</span>
                         <select
                           className={`${enj.control} !w-auto max-w-[160px] text-sm text-gray-600`}
@@ -3123,14 +3137,6 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                             ))}
                         </select>
                       </label>
-                      <label className="text-gray-500 flex items-center gap-2">
-                        <span className="shrink-0">Date</span>
-                        <DatePickerField
-                          className={`${enj.control} !w-auto text-sm`}
-                          value={teamCalendarSelectedDateIso}
-                          onChange={setTeamCalendarSelectedDateIso}
-                        />
-                      </label>
                       <button
                         type="button"
                         onClick={() => {
@@ -3144,6 +3150,14 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                       >
                         Today
                       </button>
+                      <label className="flex items-center gap-2 text-gray-500">
+                        <span className="shrink-0">Date</span>
+                        <DatePickerField
+                          className={`${enj.control} !w-auto text-sm`}
+                          value={teamCalendarSelectedDateIso}
+                          onChange={setTeamCalendarSelectedDateIso}
+                        />
+                      </label>
                       <button
                         type="button"
                         onClick={() => setShowCalendarMom(true)}
@@ -3151,8 +3165,9 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
                       >
                         MOM
                       </button>
+                      <button type="button" onClick={() => setShowAddCalendarMeetingForm(true)} className={`${enj.btn} ${enj.btnPrimary} font-medium`}>+ New Meeting</button>
                     </div>
-                  </div>
+                  </section>
 
                   <div className="grid grid-cols-1 xl:grid-cols-[1fr_240px] gap-4">
                     {showCalendarMom ? (
@@ -3286,14 +3301,14 @@ function TeamDashboard({ onLogout, currentUserData }: { onLogout: () => void; cu
               {/* ── Overview ── */}
               <section className="bg-white rounded-lg p-5">
                 <h2 className="enj-dashboard-header mb-4">Overview</h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                <div className="enj-overview-stat-grid enj-overview-stat-grid--equal enj-overview-stat-grid--count-6">
                   {overviewCards.map(card => (
                     <div
                       key={card.label}
-                      className={`rounded-lg border-2 ${card.border} bg-white px-4 py-4 text-center`}
+                      className={`enj-overview-stat-card ${card.border}`}
                     >
-                      <p className="text-sm text-gray-400 mb-3 leading-tight">{card.label}</p>
-                      <p className="text-3xl font-semibold text-primary">{card.value}</p>
+                      <p className="enj-overview-stat-label">{card.label}</p>
+                      <p className="enj-overview-stat-value">{card.value}</p>
                     </div>
                   ))}
                 </div>
@@ -5647,10 +5662,14 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
         </header>
 
         <main
-          className={`flex-1 min-h-0 min-w-0 flex flex-col p-5 [scrollbar-gutter:stable] ${
+          className={`flex-1 min-h-0 min-w-0 flex flex-col [scrollbar-gutter:stable] ${
             activeNav === 'Projects'
-              ? 'overflow-hidden'
-              : 'overflow-y-auto'
+              ? 'overflow-hidden p-5'
+              : showAddProgramForm
+                || (activeNav === 'Deliverables' && (showAddDeliverableForm || editingDeliverableRow))
+                || (activeNav === 'Meetings' && showAddMeetingForm)
+                ? 'overflow-hidden p-0'
+                : 'overflow-y-auto p-5'
           }`}
         >
           {programToast && (
@@ -5661,12 +5680,12 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
           <div className={
             activeNav === 'Projects'
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden min-w-0'
-              : activeNav === 'Program'
-                ? `flex min-h-0 flex-1 flex-col min-w-0 ${showAddProgramForm ? 'overflow-hidden' : 'pb-12'}`
-                : activeNav === 'Deliverables'
-                ? `flex min-h-0 flex-1 flex-col min-w-0 ${showAddDeliverableForm || editingDeliverableRow ? 'overflow-hidden' : 'pb-12'}`
-                : activeNav === 'Meetings'
-                  ? `flex min-h-0 flex-1 flex-col min-w-0 ${showAddMeetingForm ? 'overflow-hidden' : 'pb-12'}`
+              : (activeNav === 'Program' && showAddProgramForm)
+                || (activeNav === 'Deliverables' && (showAddDeliverableForm || editingDeliverableRow))
+                || (activeNav === 'Meetings' && showAddMeetingForm)
+                ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+                : activeNav === 'Program' || activeNav === 'Deliverables' || activeNav === 'Meetings'
+                  ? 'flex min-h-0 min-w-0 flex-1 flex-col pb-12'
                   : 'space-y-4'
           }>
           {activeNav === 'Program' ? (
@@ -6241,18 +6260,18 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
           ) : activeNav === 'Projects' ? (
             <ProgramProjectsSection todayIso={todayIso} onToast={setProgramToast} />
           ) : (
-            <>
+            <div className="enj-program-dashboard space-y-4">
           <section className="bg-white rounded-lg p-5">
             <h2 className="enj-dashboard-header mb-4">Overview</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+            <div className="enj-overview-stat-grid enj-overview-stat-grid--equal enj-overview-stat-grid--count-7">
               {overviewCards.map((card) => (
                 <div
                   key={card.label}
-                  className="rounded-lg border-2 bg-white px-4 py-4 text-center"
+                  className="enj-overview-stat-card"
                   style={{ borderColor: card.color }}
                 >
-                  <p className="mb-3 text-sm leading-tight text-gray-400">{card.label}</p>
-                  <p className="text-3xl font-semibold text-primary">{card.value}</p>
+                  <p className="enj-overview-stat-label">{card.label}</p>
+                  <p className="enj-overview-stat-value">{card.value}</p>
                 </div>
               ))}
             </div>
@@ -6683,7 +6702,7 @@ function ProgramDashboard({ onLogout, currentUserData, setCurrentUserData }: { o
               </div>
             </section>
           )}
-            </>
+            </div>
           )}
           </div>
         </main>
@@ -7377,14 +7396,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
     const projectBars = Array.from(projectMap.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-      .map(([name, value], i) => ({
-        name,
-        shortName: name.length > 12 ? `${name.slice(0, 12)}...` : name,
-        value,
-        color: ['#d4a759', '#6ea3ef', '#d35b66', '#6b7280', '#b8872e'][i % 5],
-      }));
-    const projectMax = Math.max(1, ...projectBars.map((p) => p.value));
-    const projectTicks = [0, 0.25, 0.5, 0.75, 1].map((step) => Math.round(projectMax * step));
+      .map(([name, value]) => ({ name, value }));
     const severitySlices = [
       { label: 'High', value: severityCounts.High, color: '#dc595f' },
       { label: 'Medium', value: severityCounts.Medium, color: '#efb4b8' },
@@ -7416,8 +7428,6 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
       severitySlices: hasSeverityData ? severitySlices : [{ label: 'No Data', value: 1, color: '#e5e7eb' }],
       hasSeverityData,
       projectBars,
-      projectMax,
-      projectTicks,
       statusSlices: hasStatusData ? statusSlices : [{ label: 'No Data', value: 1, color: '#e5e7eb' }],
       hasStatusData,
       hasBothStatusBuckets: openCount > 0 && closedCount > 0,
@@ -7853,10 +7863,12 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
         </header>
 
         <main
-          className={`flex-1 min-h-0 min-w-0 flex flex-col p-5 [scrollbar-gutter:stable] ${
+          className={`flex-1 min-h-0 min-w-0 flex flex-col [scrollbar-gutter:stable] ${
             activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen)
-              ? 'overflow-hidden'
-              : 'overflow-y-auto'
+              ? 'overflow-hidden p-5'
+              : (activeNav === 'Tasks' && showTaskFormPanel) || showAddMeetingForm || showAddDeliverableForm || showAddIssueForm
+                ? 'overflow-hidden p-0'
+                : 'overflow-y-auto p-5'
           }`}
         >
           {projectDashToast && (
@@ -7872,7 +7884,9 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
             className={
               activeNav === 'Projects' || (activeNav === 'Tasks' && !showTaskFormPanel && !projectTaskDetailRow) || (activeNav === 'Dashboard' && showAllProjectsScreen)
                 ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden gap-0'
-                : 'space-y-4 pb-12'
+                : (activeNav === 'Tasks' && showTaskFormPanel) || showAddMeetingForm || showAddDeliverableForm || showAddIssueForm
+                  ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+                  : 'space-y-4 pb-12'
             }
           >
           {issueDeleteCandidate && (
@@ -8110,9 +8124,8 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                 </div>
               </section>
             ) : (
-            <section className={`${enj.screenContainer} min-w-0 flex min-h-0 flex-1 flex-col overflow-hidden`}>
+            <section className={`min-w-0 flex flex-col ${showTaskFormPanel ? 'min-h-0 flex-1 overflow-hidden' : `${enj.screenContainer} min-h-0 flex-1 overflow-hidden`}`}>
               {showTaskFormPanel ? (
-                <div className="min-h-0">
                   <AddNewTaskFormPanel
                     editingTask={editingTaskRow}
                     onClose={() => {
@@ -8122,7 +8135,6 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                     onNotify={(type, message) => setProjectDashToast({ type, message })}
                     onSaved={() => setTaskListRefresh((k) => k + 1)}
                   />
-                </div>
               ) : showProjectSubTaskForm && projectTaskDetailRow ? (
                 <TeamSubTaskFormPanel
                   parentTask={projectTaskDetailRow}
@@ -8414,7 +8426,13 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                 </div>
               </section>
             ) : (
-            <section className={`relative min-w-0 max-w-full ${enj.screenContainer}`}>
+            <section
+              className={`relative min-w-0 max-w-full flex flex-col ${
+                showAddIssueForm
+                  ? 'min-h-0 flex-1 overflow-hidden'
+                  : enj.screenContainer
+              }`}
+            >
               {!showAddIssueForm &&
                 !showProjectIssueDetails &&
                 !showProjectSubIssueForm &&
@@ -8532,7 +8550,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                     </label>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                     {[
                       ['Total Issues', String(issueCharts.total), 'border-[#d4a759]', null],
                       ['Open Issues', String(issueCharts.openCount), 'border-[#ef4444]', 'Open'],
@@ -8548,53 +8566,40 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                           }
                         }}
                         disabled={!statusValue}
-                        className={`bg-white rounded-xl border-2 ${border} p-4 sm:p-5 text-center ${statusValue ? 'cursor-pointer hover:shadow-md transition-shadow' : ''} disabled:cursor-default`}
+                        className={`rounded-xl border-2 bg-white px-4 py-3 text-center shadow-sm sm:px-5 ${border} ${statusValue ? 'cursor-pointer transition-shadow hover:shadow-md' : ''} disabled:cursor-default`}
                       >
-                        <p className="text-[11px] text-gray-500">{label}</p>
-                        <p className="text-4xl font-bold text-primary mt-2">{value}</p>
+                        <p className="text-[11px] uppercase tracking-wide text-gray-500">{label}</p>
+                        <p className="mt-1 text-3xl font-bold leading-none text-primary sm:text-4xl">{value}</p>
                       </button>
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3 md:items-start">
                     <DonutChartCard
                       title="Issues Severity"
                       subtitle="Live distribution of High, Medium, and Low issues"
                       ringWidth={32}
                       chartSize="sm"
+                      chartAreaLayout="intrinsic"
                       centerText={String(issueCharts.total)}
                       centerSubtext="Total"
                       slices={issueCharts.severitySlices}
                     />
 
-                    <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm">
-                      <h3 className="text-sm font-semibold text-[#232360] mb-3">Issues vs Projects</h3>
-                      <p className="text-[10px] text-gray-500 mb-3">Top projects by number of issues</p>
-                      <svg viewBox="0 0 220 140" className="w-full h-40 chart-svg">
-                        {issueCharts.projectTicks.map((v) => (
-                          <g key={v}>
-                            <line x1="24" x2="210" y1={108 - ((v / issueCharts.projectMax) * 80)} y2={108 - ((v / issueCharts.projectMax) * 80)} stroke="#eef2f7" />
-                            <text x="6" y={111 - ((v / issueCharts.projectMax) * 80)} fontSize="7" fill="#9ca3af">{v}</text>
-                          </g>
-                        ))}
-                        {issueCharts.projectBars.map((item, i) => {
-                          const scaledHeight = (item.value / issueCharts.projectMax) * 80;
-                          return (
-                            <g key={item.name}>
-                              <rect x={34 + i * 34} y={108 - scaledHeight} width="12" height={scaledHeight} rx="3" className="chart-bar" fill={item.color} />
-                              <text x={40 + i * 34} y="126" textAnchor="middle" fontSize="7.5" fill="#9ca3af" transform={`rotate(-60 ${40 + i * 34} 126)`}>
-                                {item.shortName}
-                              </text>
-                              <text x={40 + i * 34} y={102 - scaledHeight} textAnchor="middle" fontSize="8.5" fill="#6b7280">{item.value}</text>
-                            </g>
-                          );
-                        })}
-                        {issueCharts.projectBars.length === 0 && (
-                          <text x="110" y="72" textAnchor="middle" fontSize="9" fill="#9ca3af">
-                            No issue data
-                          </text>
-                        )}
-                      </svg>
+                    <div className="flex min-h-0 flex-col rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-100 sm:p-4">
+                      <div className="mb-2 shrink-0">
+                        <h3 className="text-sm font-semibold leading-snug text-[#232360]">Issues vs Projects</h3>
+                        <p className="mt-0.5 line-clamp-2 h-[2.625rem] text-[11.5px] leading-snug text-gray-500">
+                          Top projects by number of issues
+                        </p>
+                      </div>
+                      <div className="flex min-h-0 shrink-0 justify-center py-1">
+                        <ReportsStyleBarChart
+                          bars={issueCharts.projectBars}
+                          ariaLabel="Top projects by number of issues"
+                          className="mx-auto shrink-0 !aspect-[260/200] !h-[176px] !min-h-[176px] !max-h-[176px] !w-auto"
+                        />
+                      </div>
                     </div>
 
                     <DonutChartCard
@@ -8602,6 +8607,7 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
                       subtitle="Open vs Closed issues"
                       ringWidth={32}
                       chartSize="sm"
+                      chartAreaLayout="intrinsic"
                       centerText={String(issueCharts.total)}
                       centerSubtext="Issues"
                       slices={issueCharts.statusSlices}
@@ -9201,11 +9207,11 @@ function ProjectDashboard({ onLogout, currentUserData }: { onLogout: () => void;
             <>
           <section className="bg-white rounded-lg p-5">
             <h2 className="enj-dashboard-header mb-4">Overview</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
+            <div className="enj-overview-stat-grid enj-overview-stat-grid--equal enj-overview-stat-grid--count-6 mb-3">
               {overview.map((item) => (
-                <div key={item.label} className="rounded-lg border-2 bg-white px-4 py-4 text-center" style={{ borderColor: item.color }}>
-                  <p className="text-sm text-gray-400 mb-3 leading-tight">{item.label}</p>
-                  <p className="text-3xl font-semibold text-primary">{item.value}</p>
+                <div key={item.label} className="enj-overview-stat-card" style={{ borderColor: item.color }}>
+                  <p className="enj-overview-stat-label">{item.label}</p>
+                  <p className="enj-overview-stat-value">{item.value}</p>
                 </div>
               ))}
             </div>

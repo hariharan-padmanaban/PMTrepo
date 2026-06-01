@@ -1068,12 +1068,17 @@ export function ProgramProjectsSection({
     }
   };
 
+  /** Load board data on mount (Program / Project roles). Previously rows only loaded when opening New Project. */
+  useEffect(() => {
+    if (isExternal) return;
+    void loadProjectRows();
+  }, [isExternal]);
+
   useEffect(() => {
     if (showAddProjectForm) {
       void loadProjectFormData();
-      if (!isExternal) void loadProjectRows();
     }
-  }, [showAddProjectForm, isExternal]);
+  }, [showAddProjectForm]);
 
   /** Lock document scroll â€” only the add/edit project panel scrolls; full-bleed gray canvas. */
   useEffect(() => {
@@ -1506,7 +1511,7 @@ export function ProgramProjectsSection({
       fileInputRef={editProjectFileInputRef}
     />
   ) : showAddProjectForm ? (
-    <div className="enj-add-project-root flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="enj-add-project-root">
       <div className="enj-add-project-scroll">
         <div className="enj-add-project-shell">
           <section className="enj-add-project-card">
@@ -1790,7 +1795,8 @@ export function ProgramProjectsSection({
         <h1 className="text-base font-bold text-[rgba(35,35,96,1)] truncate">All Projects - {viewAllStatus}</h1>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 md:grid-rows-2 md:gap-3">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-0.5">
+          <div className="grid w-full grid-cols-1 gap-[10.4px] sm:grid-cols-2 xl:grid-cols-4 items-start content-start pb-2">
             {(() => {
               const allRows = boardProjectsByStatus[viewAllStatus] ?? [];
               const totalPages = Math.max(1, Math.ceil(allRows.length / VIEW_ALL_PAGE_SIZE));
@@ -1811,56 +1817,100 @@ export function ProgramProjectsSection({
                 return (
                   <div
                     key={`${viewAllStatus}-${String(row.new_projectid ?? idx)}`}
-                    className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
+                    className="flex min-h-[158px] h-auto w-full self-start shrink-0 flex-col rounded-lg border border-gray-100 bg-white px-2 py-1.5 shadow-sm"
                   >
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <button
-                        type="button"
-                        className="text-left text-[13px] font-bold leading-snug hover:underline break-words flex-1"
-                        style={{ color: column?.color || '#000' }}
-                        title={title}
-                        onClick={() => void openProjectQuickEdit(row)}
-                      >
-                        {title}
-                      </button>
-                      <div className="flex shrink-0 flex-col items-end">
+                    <div className="grid min-h-0 grid-cols-[1fr_auto] items-start gap-2">
+                      {hideEdit ? (
+                        <p
+                          className="line-clamp-2 min-w-0 text-left text-[13px] font-bold leading-snug break-words"
+                          style={{ color: column?.color || '#000' }}
+                          title={title}
+                        >
+                          {title}
+                        </p>
+                      ) : (
+                        <button
+                          type="button"
+                          className="line-clamp-2 min-w-0 text-left text-[13px] font-bold leading-snug hover:underline break-words"
+                          style={{ color: column?.color || '#000' }}
+                          title={title}
+                          onClick={() => {
+                            void openProjectQuickEdit(row);
+                          }}
+                        >
+                          {title}
+                        </button>
+                      )}
+                      <div className="flex w-12 shrink-0 flex-col items-end">
                         <span className="text-[10px] text-gray-500 tabular-nums leading-none">{progress}%</span>
                         <div className="mt-0.5 h-1 w-12 overflow-hidden rounded-full bg-gray-200">
                           <div
-                            className="h-full rounded-full"
+                            className="h-full rounded-full transition-[width]"
                             style={{ width: `${progress}%`, backgroundColor: column?.color }}
                           />
                         </div>
                       </div>
                     </div>
-                    <p className="text-[10px] font-medium leading-tight text-gray-700 break-words line-clamp-1 mb-2 min-h-[14px]">{desc}</p>
-                    <div className="flex min-w-0 items-start justify-between gap-2 text-[9px] leading-tight text-primary mb-2">
-                      <p className="min-w-0 flex-1 break-words">
+
+                    <p
+                      className="mt-1 min-h-[1rem] line-clamp-1 text-[9px] font-medium leading-tight text-primary break-words pr-1"
+                      title={desc}
+                    >
+                      {desc}
+                    </p>
+
+                    <div className="mt-0.5 flex min-w-0 items-start justify-between gap-1 text-[8px] leading-tight text-primary">
+                      <p className="min-w-0 flex-1 break-words line-clamp-2">
                         <span className="font-normal">Sponsor: </span>
                         <span className="font-medium">{sponsor}</span>
                       </p>
-                      <div className="flex shrink-0 items-center gap-0.5">
+                      <div className="flex shrink-0 items-center gap-0.5" title="Budget">
+                        <Coins className="h-3 w-3 shrink-0 text-amber-500" strokeWidth={2} />
                         <span className="font-semibold tabular-nums">{budgetStr}</span>
                       </div>
                     </div>
-                    <div className="flex min-w-0 items-start justify-between gap-2 text-[9px] text-primary mb-2">
-                      <p className="min-w-0 max-w-[48%] break-words">
+
+                    <div className="mt-0.5 flex min-w-0 items-start justify-between gap-2 text-[9px] text-primary">
+                      <p className="min-w-0 max-w-[48%] break-words line-clamp-2">
                         <span className="font-normal">Category: </span>
                         <span className="font-medium">{category}</span>
                       </p>
-                      <p className="min-w-0 max-w-[48%] break-words text-right">
+                      <p className="min-w-0 max-w-[48%] break-words line-clamp-2 text-right">
                         <span className="font-normal">Approach: </span>
                         <span className="font-medium">{method}</span>
                       </p>
                     </div>
-                    <div className="mt-auto flex items-end justify-between border-t border-gray-100 pt-2">
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#ffd8c2] text-[8px] font-semibold text-[#3d2914] leading-none">
+
+                    <div className="mt-1 grid min-w-0 grid-cols-2 gap-2 text-primary">
+                      <div className="flex min-w-0 gap-1">
+                        <Calendar className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" strokeWidth={1.75} />
+                        <div className="min-w-0">
+                          <p className="text-[8px] font-normal leading-none text-gray-500">Start</p>
+                          <p className="text-[9px] font-bold leading-tight">
+                            {formatProjectDisplayDate(row.new_startdate)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="min-w-0 text-right">
+                        <p className="text-[8px] font-normal leading-none text-gray-500">End</p>
+                        <p className="text-[9px] font-bold leading-tight">
+                          {formatProjectDisplayDate(row.new_enddate)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-auto flex items-end justify-between border-t border-gray-100 pt-1">
+                      <div
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#ffd8c2] text-[8px] font-semibold text-[#3d2914] leading-none"
+                        aria-hidden
+                        title="Owner"
+                      >
                         {initials}
                       </div>
-                      <div className="flex items-center gap-1 text-primary">
+                      <div className="flex items-end gap-2 text-primary">
                         <button
                           type="button"
-                          className="flex flex-col items-center gap-0 rounded p-1 hover:bg-gray-50"
+                          className="flex min-w-0 flex-col items-center gap-0 rounded p-0 hover:bg-gray-50"
                           title="Files"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1868,42 +1918,49 @@ export function ProgramProjectsSection({
                           }}
                         >
                           <Paperclip className="h-3 w-3 text-gray-600" strokeWidth={2} />
-                          <span className="text-[8px] font-medium">Files</span>
+                          <span className="text-[8px] font-medium leading-tight text-primary underline decoration-primary/50 underline-offset-1 break-words text-center">
+                            View Files
+                          </span>
                         </button>
-                        <button
-                          type="button"
-                          className="flex flex-col items-center gap-0 rounded p-1 hover:bg-gray-50"
-                          title="Sprint"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isAgileProject(row)) setAgileSprintProject(row);
-                            else setWaterfallSprintProject(row);
-                          }}
-                        >
-                          <SquareArrowUpRight className="h-3 w-3 text-gray-600" strokeWidth={2} />
-                          <span className="text-[8px] font-medium">Sprint</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="flex flex-col items-center gap-0 rounded p-1 hover:bg-gray-50"
-                          title="Members"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAllocateMemberCtx({
-                              projectName: title,
-                              projectId: String(row.new_projectid ?? '').trim(),
-                            });
-                          }}
-                        >
-                          <Users className="h-3 w-3 text-gray-600" strokeWidth={2} />
-                          <span className="text-[8px] font-medium">Members</span>
-                        </button>
+                        {!hideSprintAndMembers && (
+                          <>
+                            <button
+                              type="button"
+                              className="flex min-w-0 flex-col items-center gap-0 rounded p-0 hover:bg-gray-50"
+                              title="Sprint"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isAgileProject(row)) setAgileSprintProject(row);
+                                else setWaterfallSprintProject(row);
+                              }}
+                            >
+                              <SquareArrowUpRight className="h-3 w-3 text-gray-600" strokeWidth={2} />
+                              <span className="text-[8px] font-medium leading-tight">Sprint</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="flex min-w-0 flex-col items-center gap-0 rounded p-0 hover:bg-gray-50"
+                              title="Members"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAllocateMemberCtx({
+                                  projectName: title,
+                                  projectId: String(row.new_projectid ?? '').trim(),
+                                });
+                              }}
+                            >
+                              <Users className="h-3 w-3 text-gray-600" strokeWidth={2} />
+                              <span className="text-[8px] font-medium leading-tight">Members</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
               });
             })()}
+          </div>
         </div>
         {(() => {
           const allRows = boardProjectsByStatus[viewAllStatus] ?? [];
@@ -1937,11 +1994,11 @@ export function ProgramProjectsSection({
           </button>
         )}
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4">
         {projectBoardColumns.map((column) => {
           const rows = boardProjectsByStatus[column.title] ?? [];
           return (
-            <div key={column.title} className="flex w-full min-w-0 flex-col gap-3">
+            <div key={column.title} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
               <div className={`${enj.sectionToolbar} shrink-0 rounded-lg border border-gray-100 bg-white px-4 py-2.5`}>
                 <p className="text-xs font-semibold" style={{ color: column.color }}>{column.title}</p>
                 <button
@@ -1956,7 +2013,7 @@ export function ProgramProjectsSection({
                   View All ({rows.length})
                 </button>
               </div>
-              <div className="h-[calc(3*135px+10.4px*2)] w-full min-h-0 shrink-0 space-y-[10.4px] overflow-y-auto pr-0.5">
+              <div className="min-h-0 flex-1 space-y-[10.4px] overflow-y-auto overflow-x-hidden pr-0.5 pb-2">
                 {projectRowsLoading ? (
                   <p className="text-xs text-gray-500 px-1">Loading projects...</p>
                 ) : rows.length === 0 ? (
@@ -1974,7 +2031,7 @@ export function ProgramProjectsSection({
                     return (
                       <div
                         key={`${column.title}-${String(row.new_projectid ?? rowIdx)}`}
-                        className="flex h-[135px] w-full shrink-0 flex-col overflow-hidden rounded-lg border border-gray-100 bg-white px-2 py-1 shadow-sm"
+                        className="flex min-h-[158px] w-full shrink-0 flex-col rounded-lg border border-gray-100 bg-white px-2 py-1.5 shadow-sm"
                       >
                         <div className="grid min-h-0 grid-cols-[1fr_auto] items-start gap-2">
                           {hideEdit ? (

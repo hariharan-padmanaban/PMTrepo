@@ -33,18 +33,21 @@ export function FormPageShell({
   onBack,
   title,
   children,
+  cardClassName = '',
 }: {
   parentLabel: string;
   onBack: () => void;
   title: string;
   children: ReactNode;
+  /** Optional width/layout overrides for the white card (e.g. `!max-w-6xl`). */
+  cardClassName?: string;
 }) {
   useFormPageLayout(true);
   return (
-    <div className="enj-add-project-root flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="enj-add-project-root">
       <div className="enj-add-project-scroll">
         <div className="enj-add-project-shell">
-          <section className="enj-add-project-card">
+          <section className={`enj-add-project-card ${cardClassName}`.trim()}>
             <p className="enj-add-project-breadcrumb">
               <button type="button" onClick={onBack}>{parentLabel}</button>
               {' > '}{title}

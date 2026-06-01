@@ -62,7 +62,7 @@ export function ProgramFormPanel({
   ).sort((a, b) => a.localeCompare(b));
 
   return (
-    <div className="enj-add-project-root flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="enj-add-project-root">
       <div className="enj-add-project-scroll">
         <div className="enj-add-project-shell">
           <section className="enj-add-project-card">

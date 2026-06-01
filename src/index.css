@@ -217,6 +217,77 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     min-height: 32px;
   }
 
+  .enj-overview-stat-grid {
+    @apply flex flex-wrap items-stretch gap-3;
+  }
+
+  .enj-overview-stat-grid--equal {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 768px) {
+    .enj-overview-stat-grid--equal {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .enj-overview-stat-grid--equal.enj-overview-stat-grid--count-7 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .enj-overview-stat-grid--equal.enj-overview-stat-grid--count-6 {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .enj-overview-stat-grid--equal.enj-overview-stat-grid--count-7 {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+  }
+
+  .enj-overview-stat-grid--equal .enj-overview-stat-card {
+    width: 90%;
+    justify-self: center;
+    min-width: 0;
+    min-height: 4.15rem;
+    border-radius: 9px;
+    border-width: 2px;
+    @apply border-solid px-3 py-3;
+  }
+
+  .enj-overview-stat-grid--equal .enj-overview-stat-label {
+    @apply mb-2 text-[11px];
+  }
+
+  .enj-overview-stat-grid--equal .enj-overview-stat-value {
+    @apply text-[1.6rem];
+  }
+
+  .enj-overview-stat-card {
+    @apply flex w-[6.6rem] shrink-0 flex-col items-center justify-center rounded-[10px] border border-solid bg-white px-1.5 py-2.5 text-center;
+    min-height: 4.15rem;
+  }
+
+  .enj-overview-stat-label {
+    @apply mb-1.5 text-[10px] leading-tight text-gray-400;
+  }
+
+  .enj-overview-stat-value {
+    @apply text-[1.375rem] font-bold leading-none text-[#232360];
+  }
+
+  /* Program dashboard: 10% tighter corner radius on panels */
+  .enj-program-dashboard :where(.rounded-lg) {
+    border-radius: 7px;
+  }
+
+  .enj-program-dashboard :where(.rounded-xl) {
+    border-radius: 11px;
+  }
+
   .enj-control {
     @apply h-9 min-h-9 max-h-9 w-full max-w-full rounded-md border border-gray-200 bg-white px-3 text-sm leading-none text-gray-800 shadow-sm
       transition-[color,background-color,border-color,box-shadow] duration-150
@@ -306,19 +377,18 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     @apply text-sm text-gray-800;
   }
   main.enj-add-project-main {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
+    padding: 0 !important;
     background-color: #f5f6fb;
   }
   .enj-add-project-root {
     background-color: #f5f6fb;
+    @apply flex min-h-0 w-full min-w-0 flex-1 flex-col;
   }
   .enj-add-project-scroll {
-    @apply h-full min-h-0 flex-1 overflow-y-auto overscroll-contain;
+    @apply min-h-0 w-full flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable];
     background-color: #f5f6fb;
-    /* Equal 1.5rem inset on top/left/right; bottom adds same gap plus fixed footer clearance */
-    padding: 1.5rem;
-    padding-bottom: calc(1.5rem + 2.75rem);
+    /* Match dashboard main inset (`p-5`) on all sides */
+    padding: 1.25rem;
   }
   html.enj-add-project-active,
   html.enj-add-project-active body {
@@ -329,7 +399,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     @apply w-full self-start;
   }
   .enj-add-project-card {
-    @apply w-full max-w-3xl shrink-0 rounded-xl border border-gray-200 bg-white p-6 text-[13px] font-normal leading-normal text-gray-800;
+    @apply relative w-full max-w-3xl shrink-0 rounded-xl border border-gray-200 bg-white p-6 text-[13px] font-normal leading-normal text-gray-800;
     box-shadow: none !important;
   }
   .enj-add-project-breadcrumb {
